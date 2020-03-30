@@ -1,7 +1,7 @@
 From 89067d28ca90681fc6cf108de79b9aedb93dfa9d Mon Sep 17 00:00:00 2001
 From: Tk-Glitch <ti3nou@gmail.com>
 Date: Mon, 9 Dec 2019 7:11:23 +0100
-Subject: PDS 099o, 5.5rc1 rebase
+Subject: PDS 099o, 5.6 rebase
 
 
 diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
@@ -1070,7 +1070,7 @@ new file mode 100644
 index 000000000000..aefbd9cebcfb
 --- /dev/null
 +++ b/kernel/sched/pds.c
-@@ -0,0 +1,6541 @@
+@@ -0,0 +1,6548 @@
 +/*
 + *  kernel/sched/pds.c, was kernel/sched.c
 + *
@@ -4026,25 +4026,28 @@ index 000000000000..aefbd9cebcfb
 +	 * statistics and checks timeslices in a time-independent way, regardless
 +	 * of when exactly it is running.
 +	 */
-+	if (idle_cpu(cpu) || !tick_nohz_tick_stopped_cpu(cpu))
++	if (!tick_nohz_tick_stopped_cpu(cpu))
 +		goto out_requeue;
 +
 +	raw_spin_lock_irqsave(&rq->lock, flags);
 +	curr = rq->curr;
 +
-+	if (is_idle_task(curr) || cpu_is_offline(cpu))
++	if (cpu_is_offline(cpu))
 +		goto out_unlock;
 +
++	curr = rq->curr;
 +	update_rq_clock(rq);
-+	delta = rq_clock_task(rq) - curr->last_ran;
-+
-+	/*
-+	 * Make sure the next tick runs within a reasonable
-+	 * amount of time.
-+	 */
-+	WARN_ON_ONCE(delta > (u64)NSEC_PER_SEC * 3);
++	if (!is_idle_task(curr)) {
++		/*
++		 * Make sure the next tick runs within a reasonable
++		 * amount of time.
++		 */
++		delta = rq_clock_task(rq) - curr->last_ran;
++		WARN_ON_ONCE(delta > (u64)NSEC_PER_SEC * 3);
++	}
 +	pds_scheduler_task_tick(rq);
 +	update_sched_rq_queued_masks_normal(rq);
++	calc_load_nohz_remote(rq);
 +
 +out_unlock:
 +	raw_spin_unlock_irqrestore(&rq->lock, flags);
@@ -6628,20 +6631,24 @@ index 000000000000..aefbd9cebcfb
 + */
 +int get_nohz_timer_target(void)
 +{
-+	int i, cpu = smp_processor_id();
++	int i, cpu = smp_processor_id(), default_cpu = -1;
 +	struct cpumask *mask;
 +
-+	if (!idle_cpu(cpu) && housekeeping_cpu(cpu, HK_FLAG_TIMER))
-+		return cpu;
++	if (housekeeping_cpu(cpu, HK_FLAG_TIMER)) {
++		if (!idle_cpu(cpu))
++			return cpu;
++		default_cpu = cpu;
++	}
 +
 +	for (mask = &(per_cpu(sched_cpu_affinity_chk_masks, cpu)[0]);
 +	     mask < per_cpu(sched_cpu_affinity_chk_end_masks, cpu); mask++)
-+		for_each_cpu(i, mask)
-+			if (!idle_cpu(i) && housekeeping_cpu(i, HK_FLAG_TIMER))
++		for_each_cpu_and(i, mask, housekeeping_cpumask(HK_FLAG_TIMER))
++			if (!idle_cpu(i))
 +				return i;
 +
-+	if (!housekeeping_cpu(cpu, HK_FLAG_TIMER))
-+		cpu = housekeeping_any_cpu(HK_FLAG_TIMER);
++	if (default_cpu == -1)
++		default_cpu = housekeeping_any_cpu(HK_FLAG_TIMER);
++	cpu = default_cpu;
 +
 +	return cpu;
 +}
@@ -7617,7 +7624,7 @@ new file mode 100644
 index 000000000000..b3926a8425b2
 --- /dev/null
 +++ b/kernel/sched/pds_sched.h
-@@ -0,0 +1,481 @@
+@@ -0,0 +1,482 @@
 +#ifndef PDS_SCHED_H
 +#define PDS_SCHED_H
 +
@@ -7695,7 +7702,8 @@ index 000000000000..b3926a8425b2
 +	/* runqueue lock: */
 +	raw_spinlock_t lock;
 +
-+	struct task_struct *curr, *idle, *stop;
++	struct task_struct __rcu *curr;
++	struct task_struct *idle, *stop;
 +	struct mm_struct *prev_mm;
 +
 +	struct skiplist_node sl_header;

@@ -87,7 +87,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 _basekernel=5.6
-_sub=rc7
+_sub=0
 pkgver="${_basekernel}"."${_sub}"
 pkgrel=1
 pkgdesc='Linux-tkg'
@@ -103,7 +103,8 @@ else
   msg2 'ccache was not found and will not be used'
   options=('!strip')
 fi
-source=("https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
+source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
+        #"https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         # ARCH Patches
@@ -128,7 +129,7 @@ source=("https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
         #0012-linux-hardened.patch
         0013-tp_smapi_ec.patch
 )
-sha256sums=('d18c846ef07a699561d3884a34f10941aed4e079c5f2a6fc151e9c54dd8d6373'
+sha256sums=('e342b04a2aa63808ea0ef1baab28fc520bd031ef8cf93d9ee4a31d4058fcb622'
             '1f2c39041b00ad8cddc3a17b589ccdcd4e9e4524bd47cf9f6292e2bbc105398b'
             '31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
             'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
@@ -139,12 +140,12 @@ sha256sums=('d18c846ef07a699561d3884a34f10941aed4e079c5f2a6fc151e9c54dd8d6373'
             'd0509062a9939cc3a59c86b34a77b9d428dcea344a53a84e2cddd3d48a21591d'
             '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
             '7fd8e776209dac98627453fda754bdf9aff4a09f27cb0b3766d7983612eb3c74'
-            '5255ec9387d85a1e1f50b5d7f6ac9983111b31f6e437153b7fab49bb31fdf000'
+            '9ddfb1abaa01acf70e1352db1564fba591c2229d71d3c912213915388e944d6f'
             '90917e09bb06fbed6853efe9e52f8c2ba4066fca44accdf7608222212561104a'
             '2d9260b80b43bbd605cf420d6bd53aa7262103dfd77196ba590ece5600b6dc0d'
             'e27ad5ff23a81b5be73a642db5186b447f336956a427d1300e8ccc49abf0dd74'
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
-            '1a647aa24074af0cc3a0ecbf8c720ab496be9fe1a62fab41c524eb6cc5dcccda'
+            'a214cfe4188ff24284de8ee5b0fa5ff4b0b604148a3e663e02e97cc56fec172c'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '5fe8b22389d9df109f80fc4785908d1c32f1d469f5ef32fee613a0937965469e')
 
@@ -204,7 +205,7 @@ prepare() {
 
   ln -s "${_where}/customization.cfg" "${srcdir}" # workaround
 
-  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+  cd "${srcdir}/linux-${_basekernel}"
 
   msg2 "Setting version..."
   scripts/setlocalversion --save-scmversion
@@ -268,6 +269,7 @@ prepare() {
   echo "CONFIG_DEFAULT_CAKE=y" >> ./.config
   echo "CONFIG_NR_TTY_DEVICES=63" >> ./.config
   echo "CONFIG_TP_SMAPI=m" >> ./.config
+  echo "CONFIG_RAID6_USE_PREFER_GEN=y" >> ./.config
   echo "# CONFIG_NTP_PPS is not set" >> ./.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4=m/CONFIG_CRYPTO_LZ4=y/' ./.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4HC=m/CONFIG_CRYPTO_LZ4HC=y/' ./.config
@@ -277,6 +279,10 @@ prepare() {
   sed -i -e 's/# CONFIG_CMDLINE_BOOL is not set/CONFIG_CMDLINE_BOOL=y/' ./.config
   echo "CONFIG_CMDLINE=\"${_custom_commandline}\"" >> ./.config
   echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ./.config
+
+  if [ "$_font_autoselect" != "false" ]; then
+    sed -i -e 's/CONFIG_FONT_TER16x32=y/# CONFIG_FONT_TER16x32 is not set\nCONFIG_FONT_AUTOSELECT=y/' ./.config
+  fi
 
   # Inject cpuopts options
   echo "# CONFIG_MK8SSE3 is not set" >> ./.config
@@ -887,7 +893,7 @@ prepare() {
 }
 
 build() {
-  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+  cd "${srcdir}/linux-${_basekernel}"
 
   # Use custom compiler paths if defined
   if [ -n "${CUSTOM_GCC_PATH}" ]; then
@@ -916,7 +922,7 @@ hackbase() {
               'update-grub: Simple wrapper around grub-mkconfig.')
   provides=("linux=${pkgver}" "${pkgbase}")
 
-  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+  cd "${srcdir}/linux-${_basekernel}"
 
   # get kernel version
   local _kernver="$(<version)"
@@ -944,7 +950,7 @@ hackheaders() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
 
-  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+  cd "${srcdir}/linux-${_basekernel}"
   local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
 
   msg2 "Installing build files..."

@@ -1,6 +1,6 @@
-**Due to intel_pstate poor performances as of late, I have decided to disable it by default. It is still builtin though, and you can add `intel_pstate=enable` or `intel_pstate=passive` to your kernel command line (in GRUB for example) to either use plain intel_pstate governors or make use of acpi_cpufreq governors while keeping full support for turbo frequencies, respectively.**
+**Due to intel_pstate poor performances as of late, I have decided to set it to passive mode to make use of the acpi_cpufreq governors passthrough, keeping full support for turbo frequencies.**
 
-A custom Linux kernel 5.6 RC with specific PDS, MuQSS and BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+A custom Linux kernel 5.6.y with specific PDS, MuQSS and BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 Various personalization options available and userpatches support (put your own patches in the same dir as the PKGBUILD, with the ".mypatch" extension.
 
@@ -9,6 +9,7 @@ MuQSS : http://ck-hack.blogspot.com/
 BMQ : http://cchalpha.blogspot.com/
 
 PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
+
 While he dropped it with kernel 5.1 in favor of its BMQ evolution/rework, my pretty bad gaming experiences with BMQ up to this point convinced me to keep PDS afloat for as long as it'll make sense/I'll be able to.
 
 You can find prebuilts on chaotic-aur, but if you need the extra-spice of per-arch optimized prebuilts, you can find PDS and MuQSS variants daily builds here : https://repo.kitsuna.net/ - Thanks to LordKitsuna.
