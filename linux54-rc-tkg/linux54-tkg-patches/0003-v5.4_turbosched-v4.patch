@@ -1,0 +1,613 @@
+Jitter tasks are short/bursty tasks, typically performing some housekeeping
+work and are less important in the overall scheme of things.
+
+So provide a way to mark the task as jitter with the use of additional flag
+to the existing task attribute. Also provide an interface from the
+userspace which uses sched_setattr syscall to mark tasks as jitter.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ include/linux/sched.h      | 1 +
+ include/uapi/linux/sched.h | 4 +++-
+ kernel/sched/core.c        | 9 +++++++++
+ 3 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 1113dd4706ae..e03b85166e34 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1463,6 +1463,7 @@ extern struct pid *cad_pid;
+ #define PF_NO_SETAFFINITY	0x04000000	/* Userland is not allowed to meddle with cpus_mask */
+ #define PF_MCE_EARLY		0x08000000      /* Early kill for mce process policy */
+ #define PF_MEMALLOC_NOCMA	0x10000000	/* All allocation request will have _GFP_MOVABLE cleared */
++#define PF_CAN_BE_PACKED	0x20000000	/* Provide hints to the scheduler to pack such tasks */
+ #define PF_FREEZER_SKIP		0x40000000	/* Freezer should not count it as freezable */
+ #define PF_SUSPEND_TASK		0x80000000      /* This thread called freeze_processes() and should not be frozen */
+ 
+diff --git a/include/uapi/linux/sched.h b/include/uapi/linux/sched.h
+index 617bb59aa8ba..fccb1c57d037 100644
+--- a/include/uapi/linux/sched.h
++++ b/include/uapi/linux/sched.h
+@@ -55,6 +55,7 @@
+ #define SCHED_FLAG_KEEP_PARAMS		0x10
+ #define SCHED_FLAG_UTIL_CLAMP_MIN	0x20
+ #define SCHED_FLAG_UTIL_CLAMP_MAX	0x40
++#define SCHED_FLAG_TASK_PACKING		0x80
+ 
+ #define SCHED_FLAG_KEEP_ALL	(SCHED_FLAG_KEEP_POLICY | \
+ 				 SCHED_FLAG_KEEP_PARAMS)
+@@ -66,6 +67,7 @@
+ 			 SCHED_FLAG_RECLAIM		| \
+ 			 SCHED_FLAG_DL_OVERRUN		| \
+ 			 SCHED_FLAG_KEEP_ALL		| \
+-			 SCHED_FLAG_UTIL_CLAMP)
++			 SCHED_FLAG_UTIL_CLAMP		| \
++			 SCHED_FLAG_TASK_PACKING)
+ 
+ #endif /* _UAPI_LINUX_SCHED_H */
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index fa43ce3962e7..e7cda4aa8696 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -4498,6 +4498,8 @@ static void __setscheduler_params(struct task_struct *p,
+ 	p->rt_priority = attr->sched_priority;
+ 	p->normal_prio = normal_prio(p);
+ 	set_load_weight(p, true);
++	if (attr->sched_flags & SCHED_FLAG_TASK_PACKING)
++		p->flags |= PF_CAN_BE_PACKED;
+ }
+ 
+ /* Actually do priority change: must hold pi & rq lock. */
+@@ -4557,6 +4559,8 @@ static int __sched_setscheduler(struct task_struct *p,
+ 	struct rq_flags rf;
+ 	int reset_on_fork;
+ 	int queue_flags = DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
++	unsigned long long task_packing_flag =
++				attr->sched_flags & SCHED_FLAG_TASK_PACKING;
+ 	struct rq *rq;
+ 
+ 	/* The pi code expects interrupts enabled */
+@@ -4686,6 +4690,8 @@ static int __sched_setscheduler(struct task_struct *p,
+ 			goto change;
+ 		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)
+ 			goto change;
++		if (task_packing_flag)
++			goto change;
+ 
+ 		p->sched_reset_on_fork = reset_on_fork;
+ 		task_rq_unlock(rq, p, &rf);
+@@ -5181,6 +5187,9 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
+ 	attr.sched_util_max = p->uclamp_req[UCLAMP_MAX].value;
+ #endif
+ 
++	if (p->flags & PF_CAN_BE_PACKED)
++		kattr.sched_flags |= SCHED_FLAG_TASK_PACKING;
++
+ 	rcu_read_unlock();
+ 
+ 	retval = sched_read_attr(uattr, &attr, size);
+-- 
+2.17.1
+
+Create a static key which allows to enable or disable TurboSched feature at
+runtime.
+
+This key is added in order to enable the TurboSched feature only when
+required. This helps in optimizing the scheduler fast-path when the
+TurboSched feature is disabled.
+
+Also provide get/put methods to keep track of the tasks using the
+TurboSched feature and also refcount jitter tasks. This allows to enable
+the feature on setting first task classified as jitter, similarly disable
+the feature on unsetting of such last task.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ kernel/sched/core.c  | 20 ++++++++++++++++++++
+ kernel/sched/sched.h |  9 +++++++++
+ 2 files changed, 29 insertions(+)
+
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index e7cda4aa8696..ee5980b4e150 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -72,6 +72,26 @@ __read_mostly int scheduler_running;
+  */
+ int sysctl_sched_rt_runtime = 950000;
+ 
++DEFINE_STATIC_KEY_FALSE(__turbo_sched_enabled);
++static DEFINE_MUTEX(turbo_sched_lock);
++static int turbo_sched_count;
++
++void turbo_sched_get(void)
++{
++	mutex_lock(&turbo_sched_lock);
++	if (!turbo_sched_count++)
++		static_branch_enable(&__turbo_sched_enabled);
++	mutex_unlock(&turbo_sched_lock);
++}
++
++void turbo_sched_put(void)
++{
++	mutex_lock(&turbo_sched_lock);
++	if (!--turbo_sched_count)
++		static_branch_disable(&__turbo_sched_enabled);
++	mutex_unlock(&turbo_sched_lock);
++}
++
+ /*
+  * __task_rq_lock - lock the rq @p resides on.
+  */
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index 802b1f3405f2..4a0b90ea8652 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -2423,3 +2423,12 @@ static inline bool sched_energy_enabled(void)
+ static inline bool sched_energy_enabled(void) { return false; }
+ 
+ #endif /* CONFIG_ENERGY_MODEL && CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
++
++void turbo_sched_get(void);
++void turbo_sched_put(void);
++DECLARE_STATIC_KEY_FALSE(__turbo_sched_enabled);
++
++static inline bool is_turbosched_enabled(void)
++{
++	return static_branch_unlikely(&__turbo_sched_enabled);
++}
+-- 
+2.17.1
+
+Use the get/put methods to add/remove the use of TurboSched support, such
+that the feature is turned on only if there is atleast one jitter task.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ kernel/sched/core.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index ee5980b4e150..60340fa18abb 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -3141,6 +3141,9 @@ static struct rq *finish_task_switch(struct task_struct *prev)
+ 		mmdrop(mm);
+ 	}
+ 	if (unlikely(prev_state == TASK_DEAD)) {
++		if (unlikely(prev->flags & PF_CAN_BE_PACKED))
++			turbo_sched_put();
++
+ 		if (prev->sched_class->task_dead)
+ 			prev->sched_class->task_dead(prev);
+ 
+@@ -4793,6 +4796,10 @@ static int __sched_setscheduler(struct task_struct *p,
+ 
+ 	prev_class = p->sched_class;
+ 
++	/* Refcount tasks classified as jitter task */
++	if (task_packing_flag != (p->flags & PF_CAN_BE_PACKED))
++		(task_packing_flag) ? turbo_sched_get() : turbo_sched_put();
++
+ 	__setscheduler(rq, p, attr, pi);
+ 	__setscheduler_uclamp(p, attr);
+ 
+-- 
+2.17.1
+
+Define a method name arch_scale_core_capacity which should
+return the capacity of the core. This method will be used in the future
+patches to determine if the spare capacity is left in the core to pack
+jitter tasks.
+
+For some architectures, core capacity does not increase much with the
+number of threads (or CPUs) in the core. For such cases, architecture
+specific calculations needs to be done to find core capacity.
+
+In addition to this, provide a default implementation for the scaling core
+capacity.
+
+ToDo: As per Peter's comments, if we are getting rid of SMT capacity then
+we need to find a workaround for limiting task packing. I'm working around
+that trying to find a solution for the same but would like to get community
+response first to have better view.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ kernel/sched/fair.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index b798fe7ff7cd..793e1172afc7 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -5964,6 +5964,25 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
+ 	return cpu;
+ }
+ 
++#ifdef CONFIG_SCHED_SMT
++
++#ifndef arch_scale_core_capacity
++static inline unsigned long arch_scale_core_capacity(int first_thread,
++						     unsigned long smt_cap)
++{
++	/* Default capacity of core is sum of cap of all the threads */
++	unsigned long ret = 0;
++	int sibling;
++
++	for_each_cpu(sibling, cpu_smt_mask(first_thread))
++		ret += cpu_rq(sibling)->cpu_capacity;
++
++	return ret;
++}
++#endif
++
++#endif
++
+ /*
+  * Try and locate an idle core/thread in the LLC cache domain.
+  */
+-- 
+2.17.1
+
+Tune arch_scale_core_capacity for powerpc architecture by scaling
+capacity w.r.t to the number of online SMT in the core such that for SMT-4,
+core capacity is 1.5x the capacity of sibling thread.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ arch/powerpc/include/asm/topology.h |  4 ++++
+ arch/powerpc/kernel/smp.c           | 33 +++++++++++++++++++++++++++++
+ 2 files changed, 37 insertions(+)
+
+diff --git a/arch/powerpc/include/asm/topology.h b/arch/powerpc/include/asm/topology.h
+index f85e2b01c3df..1c777ee67180 100644
+--- a/arch/powerpc/include/asm/topology.h
++++ b/arch/powerpc/include/asm/topology.h
+@@ -132,6 +132,10 @@ static inline void shared_proc_topology_init(void) {}
+ #define topology_sibling_cpumask(cpu)	(per_cpu(cpu_sibling_map, cpu))
+ #define topology_core_cpumask(cpu)	(per_cpu(cpu_core_map, cpu))
+ #define topology_core_id(cpu)		(cpu_to_core_id(cpu))
++#define arch_scale_core_capacity	powerpc_scale_core_capacity
++
++unsigned long powerpc_scale_core_capacity(int first_smt,
++					  unsigned long smt_cap);
+ 
+ int dlpar_cpu_readd(int cpu);
+ #endif
+diff --git a/arch/powerpc/kernel/smp.c b/arch/powerpc/kernel/smp.c
+index ea6adbf6a221..149a3fbf8ed3 100644
+--- a/arch/powerpc/kernel/smp.c
++++ b/arch/powerpc/kernel/smp.c
+@@ -1169,6 +1169,39 @@ static void remove_cpu_from_masks(int cpu)
+ }
+ #endif
+ 
++#ifdef CONFIG_SCHED_SMT
++/*
++ * Calculate capacity of a core based on the active threads in the core
++ * Scale the capacity of first SM-thread based on total number of
++ * active threads in the respective smt_mask.
++ *
++ * The scaling is done such that for
++ * SMT-4, core_capacity = 1.5x first_cpu_capacity
++ * and for SMT-8, core_capacity multiplication factor is 2x
++ *
++ * So, core_capacity multiplication factor = (1 + smt_mode*0.125)
++ *
++ * @first_cpu: First/any CPU id in the core
++ * @cap: Capacity of the first_cpu
++ */
++unsigned long powerpc_scale_core_capacity(int first_cpu,
++					  unsigned long cap)
++{
++	struct cpumask select_idles;
++	struct cpumask *cpus = &select_idles;
++	int cpu, smt_mode = 0;
++
++	cpumask_and(cpus, cpu_smt_mask(first_cpu), cpu_online_mask);
++
++	/* Find SMT mode from active SM-threads */
++	for_each_cpu(cpu, cpus)
++		smt_mode++;
++
++	/* Scale core capacity based on smt mode */
++	return smt_mode == 1 ? cap : ((cap * smt_mode) >> 3) + cap;
++}
++#endif
++
+ static inline void add_cpu_to_smallcore_masks(int cpu)
+ {
+ 	struct cpumask *this_l1_cache_map = per_cpu(cpu_l1_cache_map, cpu);
+-- 
+2.17.1
+
+Provide an powerpc architecture specific implementation for
+defining the turbo domain to make searching of the core to be bound within
+the NUMA.  This provides a way to decrease the searching time for specific
+architectures where we know the domain for the power budget.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ arch/powerpc/include/asm/topology.h | 3 +++
+ arch/powerpc/kernel/smp.c           | 5 +++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/arch/powerpc/include/asm/topology.h b/arch/powerpc/include/asm/topology.h
+index 1c777ee67180..410b94c9e1a2 100644
+--- a/arch/powerpc/include/asm/topology.h
++++ b/arch/powerpc/include/asm/topology.h
+@@ -133,10 +133,13 @@ static inline void shared_proc_topology_init(void) {}
+ #define topology_core_cpumask(cpu)	(per_cpu(cpu_core_map, cpu))
+ #define topology_core_id(cpu)		(cpu_to_core_id(cpu))
+ #define arch_scale_core_capacity	powerpc_scale_core_capacity
++#define arch_turbo_domain		powerpc_turbo_domain
+ 
+ unsigned long powerpc_scale_core_capacity(int first_smt,
+ 					  unsigned long smt_cap);
+ 
++struct cpumask *powerpc_turbo_domain(int cpu);
++
+ int dlpar_cpu_readd(int cpu);
+ #endif
+ #endif
+diff --git a/arch/powerpc/kernel/smp.c b/arch/powerpc/kernel/smp.c
+index 149a3fbf8ed3..856f7233190e 100644
+--- a/arch/powerpc/kernel/smp.c
++++ b/arch/powerpc/kernel/smp.c
+@@ -1200,6 +1200,11 @@ unsigned long powerpc_scale_core_capacity(int first_cpu,
+ 	/* Scale core capacity based on smt mode */
+ 	return smt_mode == 1 ? cap : ((cap * smt_mode) >> 3) + cap;
+ }
++
++inline struct cpumask *powerpc_turbo_domain(int cpu)
++{
++	return cpumask_of_node(cpu_to_node(cpu));
++}
+ #endif
+ 
+ static inline void add_cpu_to_smallcore_masks(int cpu)
+-- 
+2.17.1
+
+The algorithm finds the first non idle core in the system and tries to
+place a task in the least utilized CPU in the chosen core. To maintain
+cache hotness, work of finding non idle core starts from the prev_cpu,
+which also reduces task ping-pong behaviour inside of the core.
+
+This is defined with a new method named core_underutilized() which will
+determine if the core utilization is less than 12.5% of its capacity.
+Since core with low utilization should not be selected for packing, the
+margin of under-utilization is kept at 12.5% of core capacity.
+
+12.5% is an experimental number which identifies whether the core is
+considered to be idle or not.  For task packing, the algorithm should
+select the best core where the task can be accommodated such that it does
+not wake up an idle core. But the jitter tasks should not be placed on the
+core which is about to go idle. If the core has aggregated utilization of
+<12.5%, it may go idle soon and hence packing on such core should be
+ignored. The experiment showed that keeping this threshold to 12.5% gives
+better decision capability on not selecting the core which will idle out
+soon.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ kernel/sched/core.c |   3 ++
+ kernel/sched/fair.c | 108 +++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 110 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 60340fa18abb..fcfd0ab187ae 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -6402,6 +6402,7 @@ static struct kmem_cache *task_group_cache __read_mostly;
+ 
+ DECLARE_PER_CPU(cpumask_var_t, load_balance_mask);
+ DECLARE_PER_CPU(cpumask_var_t, select_idle_mask);
++DECLARE_PER_CPU(cpumask_var_t, turbo_sched_mask);
+ 
+ void __init sched_init(void)
+ {
+@@ -6442,6 +6443,8 @@ void __init sched_init(void)
+ 			cpumask_size(), GFP_KERNEL, cpu_to_node(i));
+ 		per_cpu(select_idle_mask, i) = (cpumask_var_t)kzalloc_node(
+ 			cpumask_size(), GFP_KERNEL, cpu_to_node(i));
++		per_cpu(turbo_sched_mask, i) = (cpumask_var_t)kzalloc_node(
++			cpumask_size(), GFP_KERNEL, cpu_to_node(i));
+ 	}
+ #endif /* CONFIG_CPUMASK_OFFSTACK */
+ 
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index 793e1172afc7..3ba2dc44cba4 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -5353,6 +5353,8 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
+ /* Working cpumask for: load_balance, load_balance_newidle. */
+ DEFINE_PER_CPU(cpumask_var_t, load_balance_mask);
+ DEFINE_PER_CPU(cpumask_var_t, select_idle_mask);
++/* A cpumask to find active cores in the system. */
++DEFINE_PER_CPU(cpumask_var_t, turbo_sched_mask);
+ 
+ #ifdef CONFIG_NO_HZ_COMMON
+ 
+@@ -5964,6 +5966,14 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
+ 	return cpu;
+ }
+ 
++static inline bool is_task_jitter(struct task_struct *p)
++{
++	if (p->flags & PF_CAN_BE_PACKED)
++		return true;
++
++	return false;
++}
++
+ #ifdef CONFIG_SCHED_SMT
+ 
+ #ifndef arch_scale_core_capacity
+@@ -5981,6 +5991,81 @@ static inline unsigned long arch_scale_core_capacity(int first_thread,
+ }
+ #endif
+ 
++/*
++ * Core is defined as under-utilized in case if the aggregated utilization of a
++ * all the CPUs in a core is less than 12.5%
++ */
++#define UNDERUTILIZED_THRESHOLD 3
++static inline bool core_underutilized(unsigned long core_util,
++				      unsigned long core_capacity)
++{
++	return core_util < (core_capacity >> UNDERUTILIZED_THRESHOLD);
++}
++
++/*
++ * Try to find a non idle core in the system  with spare capacity
++ * available for task packing, thereby keeping minimal cores active.
++ * Uses first fit algorithm to pack low util jitter tasks on active cores.
++ */
++static int select_non_idle_core(struct task_struct *p, int prev_cpu, int target)
++{
++	struct cpumask *cpus = this_cpu_cpumask_var_ptr(turbo_sched_mask);
++	int iter_cpu, sibling;
++
++	cpumask_and(cpus, cpu_online_mask, p->cpus_ptr);
++
++	for_each_cpu_wrap(iter_cpu, cpus, prev_cpu) {
++		unsigned long core_util = 0;
++		unsigned long core_cap = arch_scale_core_capacity(iter_cpu,
++				capacity_of(iter_cpu));
++		unsigned long est_util = 0, est_util_enqueued = 0;
++		unsigned long util_best_cpu = ULONG_MAX;
++		int best_cpu = iter_cpu;
++		struct cfs_rq *cfs_rq;
++
++		for_each_cpu(sibling, cpu_smt_mask(iter_cpu)) {
++			__cpumask_clear_cpu(sibling, cpus);
++			core_util += cpu_util(sibling);
++
++			/*
++			 * Keep track of least utilized CPU in the core
++			 */
++			if (cpu_util(sibling) < util_best_cpu) {
++				util_best_cpu = cpu_util(sibling);
++				best_cpu = sibling;
++			}
++		}
++
++		/*
++		 * Find if the selected task will fit into this core or not by
++		 * estimating the utilization of the core.
++		 */
++		if (!core_underutilized(core_util, core_cap)) {
++			cfs_rq = &cpu_rq(best_cpu)->cfs;
++			est_util =
++				READ_ONCE(cfs_rq->avg.util_avg) + task_util(p);
++			est_util_enqueued =
++				READ_ONCE(cfs_rq->avg.util_est.enqueued);
++			est_util_enqueued += _task_util_est(p);
++			est_util = max(est_util, est_util_enqueued);
++			est_util = core_util - util_best_cpu + est_util;
++
++			if (est_util < core_cap) {
++				/*
++				 * Try to bias towards prev_cpu to avoid task
++				 * ping-pong behaviour inside the core.
++				 */
++				if (cpumask_test_cpu(prev_cpu,
++						     cpu_smt_mask(iter_cpu)))
++					return prev_cpu;
++
++				return best_cpu;
++			}
++		}
++	}
++
++	return select_idle_sibling(p, prev_cpu, target);
++}
+ #endif
+ 
+ /*
+@@ -6437,6 +6522,23 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
+ 	return -1;
+ }
+ 
++#ifdef CONFIG_SCHED_SMT
++/*
++ * Select all jittersfor task packing
++ */
++static inline int turbosched_select_non_idle_core(struct task_struct *p,
++						  int prev_cpu, int target)
++{
++	return select_non_idle_core(p, prev_cpu, target);
++}
++#else
++static inline int turbosched_select_non_idle_core(struct task_struct *p,
++						  int prev_cpu, int target)
++{
++	return select_idle_sibling(p, prev_cpu, target);
++}
++#endif
++
+ /*
+  * select_task_rq_fair: Select target runqueue for the waking task in domains
+  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
+@@ -6502,7 +6604,11 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
+ 	} else if (sd_flag & SD_BALANCE_WAKE) { /* XXX always ? */
+ 		/* Fast path */
+ 
+-		new_cpu = select_idle_sibling(p, prev_cpu, new_cpu);
++		if (is_turbosched_enabled() && unlikely(is_task_jitter(p)))
++			new_cpu = turbosched_select_non_idle_core(p, prev_cpu,
++								  new_cpu);
++		else
++			new_cpu = select_idle_sibling(p, prev_cpu, new_cpu);
+ 
+ 		if (want_affine)
+ 			current->recent_used_cpu = cpu;
+-- 
+2.17.1
+
+Specify the method which returns sched domain to limit the
+search for a non idle core. By default, limit the search in LLC domain
+which usually includes all the cores across the system.
+
+The select_non_idle_core searches for the non idle cores across whole
+system. But in the systems with multiple NUMA domains, the Turbo frequency
+can be sustained within the NUMA domain without being affected from other
+NUMA. For such case, arch_turbo_domain can be tuned to change domain for
+non idle core search.
+
+Signed-off-by: Parth Shah <parth@linux.ibm.com>
+---
+ kernel/sched/fair.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index 3ba2dc44cba4..e09e7546abeb 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -6002,6 +6002,13 @@ static inline bool core_underutilized(unsigned long core_util,
+ 	return core_util < (core_capacity >> UNDERUTILIZED_THRESHOLD);
+ }
+ 
++#ifndef arch_turbo_domain
++static __always_inline struct cpumask *arch_turbo_domain(int cpu)
++{
++	return sched_domain_span(rcu_dereference(per_cpu(sd_llc, cpu)));
++}
++#endif
++
+ /*
+  * Try to find a non idle core in the system  with spare capacity
+  * available for task packing, thereby keeping minimal cores active.
+@@ -6012,7 +6019,8 @@ static int select_non_idle_core(struct task_struct *p, int prev_cpu, int target)
+ 	struct cpumask *cpus = this_cpu_cpumask_var_ptr(turbo_sched_mask);
+ 	int iter_cpu, sibling;
+ 
+-	cpumask_and(cpus, cpu_online_mask, p->cpus_ptr);
++	cpumask_and(cpus, cpu_online_mask, arch_turbo_domain(prev_cpu));
++	cpumask_and(cpus, cpus, p->cpus_ptr);
+ 
+ 	for_each_cpu_wrap(iter_cpu, cpus, prev_cpu) {
+ 		unsigned long core_util = 0;
+-- 
+2.17.1

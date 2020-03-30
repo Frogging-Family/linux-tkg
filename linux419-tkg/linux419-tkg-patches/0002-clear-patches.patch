@@ -1,0 +1,744 @@
+From 1dc7a20946596b24f669fe038a1ae31a28cf59a5 Mon Sep 17 00:00:00 2001
+From: Arjan van de Ven <arjan@linux.intel.com>
+Date: Mon, 14 Mar 2016 11:10:58 -0600
+Subject: [PATCH 105/126] pci pme wakeups
+
+Reduce wakeups for PME checks, which are a workaround for miswired
+boards (sadly, too many of them) in laptops.
+---
+ drivers/misc/vmw_balloon.c | 2 +-
+ drivers/pci/pci.c          | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/vmw_balloon.c b/drivers/misc/vmw_balloon.c
+index 1e688bfec567..e0a4f3eb0d8e 100644
+--- a/drivers/misc/vmw_balloon.c
++++ b/drivers/misc/vmw_balloon.c
+@@ -1142,7 +1142,7 @@ static void vmballoon_work(struct work_struct *work)
+ 	 * stopped while the system transitions to/from sleep/hibernation.
+ 	 */
+ 	queue_delayed_work(system_freezable_wq,
+-			   dwork, round_jiffies_relative(HZ));
++			   dwork, round_jiffies_relative(10*HZ));
+ }
+ 
+ /*
+diff --git a/drivers/pci/pci.c b/drivers/pci/pci.c
+index 6078dfc11b11..44f61288d508 100644
+--- a/drivers/pci/pci.c
++++ b/drivers/pci/pci.c
+@@ -58,7 +58,7 @@ struct pci_pme_device {
+ 	struct pci_dev *dev;
+ };
+ 
+-#define PME_TIMEOUT 1000 /* How long between PME checks */
++#define PME_TIMEOUT 4000 /* How long between PME checks */
+ 
+ static void pci_dev_d3_sleep(struct pci_dev *dev)
+ {
+-- 
+2.15.0
+
+From a9c1cca49b1a48660a25299db805fa480e8af6c0 Mon Sep 17 00:00:00 2001
+From: Arjan van de Ven <arjan@linux.intel.com>
+Date: Sat, 19 Mar 2016 21:32:19 -0400
+Subject: [PATCH 106/122] intel_idle: tweak cpuidle cstates
+
+Increase target_residency in cpuidle cstate
+
+Tune intel_idle to be a bit less agressive;
+Clear linux is cleaner in hygiene (wakupes) than the average linux,
+so we can afford changing these in a way that increases
+performance while keeping power efficiency
+---
+ drivers/idle/intel_idle.c | 44 +++++++++++++++++++--------------------
+ 1 file changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/idle/intel_idle.c b/drivers/idle/intel_idle.c
+index b2ccce5fb071..6d5002992ed3 100644
+--- a/drivers/idle/intel_idle.c
++++ b/drivers/idle/intel_idle.c
+@@ -466,7 +466,7 @@ static struct cpuidle_state hsw_cstates[] = {
+ 		.desc = "MWAIT 0x01",
+ 		.flags = MWAIT2flg(0x01),
+ 		.exit_latency = 10,
+-		.target_residency = 20,
++		.target_residency = 120,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -474,7 +474,7 @@ static struct cpuidle_state hsw_cstates[] = {
+ 		.desc = "MWAIT 0x10",
+ 		.flags = MWAIT2flg(0x10) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 33,
+-		.target_residency = 100,
++		.target_residency = 900,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -482,7 +482,7 @@ static struct cpuidle_state hsw_cstates[] = {
+ 		.desc = "MWAIT 0x20",
+ 		.flags = MWAIT2flg(0x20) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 133,
+-		.target_residency = 400,
++		.target_residency = 1000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -490,7 +490,7 @@ static struct cpuidle_state hsw_cstates[] = {
+ 		.desc = "MWAIT 0x32",
+ 		.flags = MWAIT2flg(0x32) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 166,
+-		.target_residency = 500,
++		.target_residency = 1500,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -498,7 +498,7 @@ static struct cpuidle_state hsw_cstates[] = {
+ 		.desc = "MWAIT 0x40",
+ 		.flags = MWAIT2flg(0x40) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 300,
+-		.target_residency = 900,
++		.target_residency = 2000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -506,7 +506,7 @@ static struct cpuidle_state hsw_cstates[] = {
+ 		.desc = "MWAIT 0x50",
+ 		.flags = MWAIT2flg(0x50) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 600,
+-		.target_residency = 1800,
++		.target_residency = 5000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -514,7 +514,7 @@ static struct cpuidle_state hsw_cstates[] = {
+ 		.desc = "MWAIT 0x60",
+ 		.flags = MWAIT2flg(0x60) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 2600,
+-		.target_residency = 7700,
++		.target_residency = 9000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -534,7 +534,7 @@ static struct cpuidle_state bdw_cstates[] = {
+ 		.desc = "MWAIT 0x01",
+ 		.flags = MWAIT2flg(0x01),
+ 		.exit_latency = 10,
+-		.target_residency = 20,
++		.target_residency = 120,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -542,7 +542,7 @@ static struct cpuidle_state bdw_cstates[] = {
+ 		.desc = "MWAIT 0x10",
+ 		.flags = MWAIT2flg(0x10) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 40,
+-		.target_residency = 100,
++		.target_residency = 1000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -550,7 +550,7 @@ static struct cpuidle_state bdw_cstates[] = {
+ 		.desc = "MWAIT 0x20",
+ 		.flags = MWAIT2flg(0x20) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 133,
+-		.target_residency = 400,
++		.target_residency = 1000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -558,7 +558,7 @@ static struct cpuidle_state bdw_cstates[] = {
+ 		.desc = "MWAIT 0x32",
+ 		.flags = MWAIT2flg(0x32) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 166,
+-		.target_residency = 500,
++		.target_residency = 2000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -566,7 +566,7 @@ static struct cpuidle_state bdw_cstates[] = {
+ 		.desc = "MWAIT 0x40",
+ 		.flags = MWAIT2flg(0x40) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 300,
+-		.target_residency = 900,
++		.target_residency = 4000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -574,7 +574,7 @@ static struct cpuidle_state bdw_cstates[] = {
+ 		.desc = "MWAIT 0x50",
+ 		.flags = MWAIT2flg(0x50) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 600,
+-		.target_residency = 1800,
++		.target_residency = 7000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -582,7 +582,7 @@ static struct cpuidle_state bdw_cstates[] = {
+ 		.desc = "MWAIT 0x60",
+ 		.flags = MWAIT2flg(0x60) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 2600,
+-		.target_residency = 7700,
++		.target_residency = 9000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -603,7 +603,7 @@ static struct cpuidle_state skl_cstates[] = {
+ 		.desc = "MWAIT 0x01",
+ 		.flags = MWAIT2flg(0x01),
+ 		.exit_latency = 10,
+-		.target_residency = 20,
++		.target_residency = 120,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -611,7 +611,7 @@ static struct cpuidle_state skl_cstates[] = {
+ 		.desc = "MWAIT 0x10",
+ 		.flags = MWAIT2flg(0x10) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 70,
+-		.target_residency = 100,
++		.target_residency = 1000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -619,7 +619,7 @@ static struct cpuidle_state skl_cstates[] = {
+ 		.desc = "MWAIT 0x20",
+ 		.flags = MWAIT2flg(0x20) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 85,
+-		.target_residency = 200,
++		.target_residency = 600,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -627,7 +627,7 @@ static struct cpuidle_state skl_cstates[] = {
+ 		.desc = "MWAIT 0x33",
+ 		.flags = MWAIT2flg(0x33) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 124,
+-		.target_residency = 800,
++		.target_residency = 3000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -635,7 +635,7 @@ static struct cpuidle_state skl_cstates[] = {
+ 		.desc = "MWAIT 0x40",
+ 		.flags = MWAIT2flg(0x40) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 200,
+-		.target_residency = 800,
++		.target_residency = 3200,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -643,7 +643,7 @@ static struct cpuidle_state skl_cstates[] = {
+ 		.desc = "MWAIT 0x50",
+ 		.flags = MWAIT2flg(0x50) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 480,
+-		.target_residency = 5000,
++		.target_residency = 9000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -651,7 +651,7 @@ static struct cpuidle_state skl_cstates[] = {
+ 		.desc = "MWAIT 0x60",
+ 		.flags = MWAIT2flg(0x60) | CPUIDLE_FLAG_TLB_FLUSHED,
+ 		.exit_latency = 890,
+-		.target_residency = 5000,
++		.target_residency = 9000,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+@@ -672,7 +672,7 @@ static struct cpuidle_state skx_cstates[] = {
+ 		.desc = "MWAIT 0x01",
+ 		.flags = MWAIT2flg(0x01),
+ 		.exit_latency = 10,
+-		.target_residency = 20,
++		.target_residency = 300,
+ 		.enter = &intel_idle,
+ 		.enter_s2idle = intel_idle_s2idle, },
+ 	{
+-- 
+2.19.1
+
+From 4f9458b5fa096c571d6d9895bb57ee777d66ead7 Mon Sep 17 00:00:00 2001
+From: Arjan van de Ven <arjan@linux.intel.com>
+Date: Wed, 11 Feb 2015 17:28:14 -0600
+Subject: [PATCH 108/122] smpboot: reuse timer calibration
+
+NO point recalibrating for known-constant tsc ...
+saves 200ms+ of boot time.
+---
+ arch/x86/kernel/tsc.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/arch/x86/kernel/tsc.c b/arch/x86/kernel/tsc.c
+index 6d5dc5dabfd7..a7f43ec15861 100644
+--- a/arch/x86/kernel/tsc.c
++++ b/arch/x86/kernel/tsc.c
+@@ -1503,6 +1503,9 @@ unsigned long calibrate_delay_is_known(void)
+ 	if (!constant_tsc || !mask)
+ 		return 0;
+ 
++	if (cpu != 0)
++		return cpu_data(0).loops_per_jiffy;
++
+ 	sibling = cpumask_any_but(mask, cpu);
+ 	if (sibling < nr_cpu_ids)
+ 		return cpu_data(sibling).loops_per_jiffy;
+-- 
+2.19.1
+
+From 40a7d922fd9b967d1cf0ce951a9dd3b0d6be1c59 Mon Sep 17 00:00:00 2001
+From: Arjan van de Ven <arjan@linux.intel.com>
+Date: Mon, 14 Mar 2016 11:06:46 -0600
+Subject: [PATCH 105/122] ksm-wakeups
+
+reduce wakeups in ksm by adding rounding (aligning) when the sleep times are 1 second or longer
+
+Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+---
+ kernel/watchdog.c | 2 +-
+ mm/ksm.c          | 8 ++++++--
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/kernel/watchdog.c b/kernel/watchdog.c
+index 977918d5d350..59cc347f18ae 100644
+--- a/kernel/watchdog.c
++++ b/kernel/watchdog.c
+@@ -41,7 +41,7 @@ unsigned long __read_mostly watchdog_enabled;
+ int __read_mostly watchdog_user_enabled = 1;
+ int __read_mostly nmi_watchdog_user_enabled = NMI_WATCHDOG_DEFAULT;
+ int __read_mostly soft_watchdog_user_enabled = 1;
+-int __read_mostly watchdog_thresh = 10;
++int __read_mostly watchdog_thresh = 40;
+ int __read_mostly nmi_watchdog_available;
+ 
+ struct cpumask watchdog_allowed_mask __read_mostly;
+diff --git a/mm/ksm.c b/mm/ksm.c
+index 5b0894b45ee5..1dde0103956b 100644
+--- a/mm/ksm.c
++++ b/mm/ksm.c
+@@ -2404,8 +2404,12 @@ static int ksm_scan_thread(void *nothing)
+ 		try_to_freeze();
+ 
+ 		if (ksmd_should_run()) {
+-			schedule_timeout_interruptible(
+-				msecs_to_jiffies(ksm_thread_sleep_millisecs));
++			if (ksm_thread_sleep_millisecs >= 1000)
++				schedule_timeout_interruptible(
++					msecs_to_jiffies(round_jiffies_relative(ksm_thread_sleep_millisecs)));
++			else
++				schedule_timeout_interruptible(
++					msecs_to_jiffies(ksm_thread_sleep_millisecs));
+ 		} else {
+ 			wait_event_freezable(ksm_thread_wait,
+ 				ksmd_should_run() || kthread_should_stop());
+-- 
+2.19.1
+
+From 2a66d6aefe53822bbf645c0481fadf49eeab8a75 Mon Sep 17 00:00:00 2001
+From: Arjan van de Ven <arjan@linux.intel.com>
+Date: Sun, 18 Feb 2018 23:35:41 +0000
+Subject: [PATCH 502/502] locking: rwsem: spin faster
+
+tweak rwsem owner spinning a bit
+---
+ kernel/locking/rwsem-xadd.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/locking/rwsem-xadd.c b/kernel/locking/rwsem-xadd.c
+index 3064c50e181e..040d9ee85ed9 100644
+--- a/kernel/locking/rwsem-xadd.c
++++ b/kernel/locking/rwsem-xadd.c
+@@ -382,6 +382,7 @@ static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem)
+ static noinline bool rwsem_spin_on_owner(struct rw_semaphore *sem)
+ {
+ 	struct task_struct *owner = READ_ONCE(sem->owner);
++	int i = 0;
+ 
+ 	if (!is_rwsem_owner_spinnable(owner))
+ 		return false;
+@@ -404,8 +405,8 @@ static noinline bool rwsem_spin_on_owner(struct rw_semaphore *sem)
+ 			rcu_read_unlock();
+ 			return false;
+ 		}
+-
+-		cpu_relax();
++		if (i++ > 1000)
++			cpu_relax();
+ 	}
+ 	rcu_read_unlock();
+ 
+-- 
+2.19.1
+
+From 407d400362e9b039c1af5969a26bda77427a4b63 Mon Sep 17 00:00:00 2001
+From: Arjan van de Ven <arjan@linux.intel.com>
+Date: Fri, 6 Jan 2017 15:34:09 +0000
+Subject: [PATCH 113/122] ipv4/tcp: allow the memory tuning for tcp to go a
+ little bigger than default
+
+---
+ net/ipv4/tcp.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/net/ipv4/tcp.c b/net/ipv4/tcp.c
+index bbd07736fb0f..3fa85880d03c 100644
+--- a/net/ipv4/tcp.c
++++ b/net/ipv4/tcp.c
+@@ -3886,8 +3886,8 @@ void __init tcp_init(void)
+ 	tcp_init_mem();
+ 	/* Set per-socket limits to no more than 1/128 the pressure threshold */
+ 	limit = nr_free_buffer_pages() << (PAGE_SHIFT - 7);
+-	max_wshare = min(4UL*1024*1024, limit);
+-	max_rshare = min(6UL*1024*1024, limit);
++	max_wshare = min(16UL*1024*1024, limit);
++	max_rshare = min(16UL*1024*1024, limit);
+ 
+ 	init_net.ipv4.sysctl_tcp_wmem[0] = SK_MEM_QUANTUM;
+ 	init_net.ipv4.sysctl_tcp_wmem[1] = 16*1024;
+-- 
+2.19.1 
+
+From 9edf98bfed6df2b06f9846b51267bec1075a8c8b Mon Sep 17 00:00:00 2001
+From: Arjan van de Ven <arjan@linux.intel.com>
+Date: Mon, 25 Jul 2016 06:44:34 -0500
+Subject: [PATCH 111/122] reduce e1000e boot time by tightening sleep ranges
+
+The e1000e driver is a great user of the usleep_range() API,
+and has any nice ranges that in principle help power management.
+
+However the ranges that are used only during system startup are
+very long (and can add easily 100 msec to the boot time) while
+the power savings of such long ranges is irrelevant due to the
+one-off, boot only, nature of these functions.
+
+This patch shrinks some of the longest ranges to be shorter
+(while still using a power friendly 1 msec range); this saves
+100msec+ of boot time on my BDW NUCs
+
+Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+---
+ .../net/ethernet/intel/e1000e/80003es2lan.c   |  2 +-
+ drivers/net/ethernet/intel/e1000e/82571.c     |  2 +-
+ drivers/net/ethernet/intel/e1000e/ethtool.c   | 14 ++++++-------
+ drivers/net/ethernet/intel/e1000e/ich8lan.c   | 20 +++++++++----------
+ drivers/net/ethernet/intel/e1000e/mac.c       |  2 +-
+ drivers/net/ethernet/intel/e1000e/netdev.c    | 14 ++++++-------
+ drivers/net/ethernet/intel/e1000e/nvm.c       |  2 +-
+ 7 files changed, 28 insertions(+), 28 deletions(-)
+
+diff --git a/drivers/net/ethernet/intel/e1000e/80003es2lan.c b/drivers/net/ethernet/intel/e1000e/80003es2lan.c
+index 257bd59bc9c6..94bce9823336 100644
+--- a/drivers/net/ethernet/intel/e1000e/80003es2lan.c
++++ b/drivers/net/ethernet/intel/e1000e/80003es2lan.c
+@@ -680,7 +680,7 @@ static s32 e1000_reset_hw_80003es2lan(struct e1000_hw *hw)
+ 	ew32(TCTL, E1000_TCTL_PSP);
+ 	e1e_flush();
+ 
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	ctrl = er32(CTRL);
+ 
+diff --git a/drivers/net/ethernet/intel/e1000e/82571.c b/drivers/net/ethernet/intel/e1000e/82571.c
+index b9309302c29e..2c1bab377b2a 100644
+--- a/drivers/net/ethernet/intel/e1000e/82571.c
++++ b/drivers/net/ethernet/intel/e1000e/82571.c
+@@ -959,7 +959,7 @@ static s32 e1000_reset_hw_82571(struct e1000_hw *hw)
+ 	ew32(TCTL, tctl);
+ 	e1e_flush();
+ 
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	/* Must acquire the MDIO ownership before MAC reset.
+ 	 * Ownership defaults to firmware after a reset.
+diff --git a/drivers/net/ethernet/intel/e1000e/ethtool.c b/drivers/net/ethernet/intel/e1000e/ethtool.c
+index 02ebf208f48b..08342698386d 100644
+--- a/drivers/net/ethernet/intel/e1000e/ethtool.c
++++ b/drivers/net/ethernet/intel/e1000e/ethtool.c
+@@ -1014,7 +1014,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
+ 	/* Disable all the interrupts */
+ 	ew32(IMC, 0xFFFFFFFF);
+ 	e1e_flush();
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	/* Test each interrupt */
+ 	for (i = 0; i < 10; i++) {
+@@ -1046,7 +1046,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
+ 			ew32(IMC, mask);
+ 			ew32(ICS, mask);
+ 			e1e_flush();
+-			usleep_range(10000, 20000);
++			usleep_range(10000, 11000);
+ 
+ 			if (adapter->test_icr & mask) {
+ 				*data = 3;
+@@ -1064,7 +1064,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
+ 		ew32(IMS, mask);
+ 		ew32(ICS, mask);
+ 		e1e_flush();
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 
+ 		if (!(adapter->test_icr & mask)) {
+ 			*data = 4;
+@@ -1082,7 +1082,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
+ 			ew32(IMC, ~mask & 0x00007FFF);
+ 			ew32(ICS, ~mask & 0x00007FFF);
+ 			e1e_flush();
+-			usleep_range(10000, 20000);
++			usleep_range(10000, 11000);
+ 
+ 			if (adapter->test_icr) {
+ 				*data = 5;
+@@ -1094,7 +1094,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
+ 	/* Disable all the interrupts */
+ 	ew32(IMC, 0xFFFFFFFF);
+ 	e1e_flush();
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	/* Unhook test interrupt handler */
+ 	free_irq(irq, netdev);
+@@ -1470,7 +1470,7 @@ static int e1000_set_82571_fiber_loopback(struct e1000_adapter *adapter)
+ 	 */
+ 	ew32(SCTL, E1000_SCTL_ENABLE_SERDES_LOOPBACK);
+ 	e1e_flush();
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	return 0;
+ }
+@@ -1584,7 +1584,7 @@ static void e1000_loopback_cleanup(struct e1000_adapter *adapter)
+ 		    hw->phy.media_type == e1000_media_type_internal_serdes) {
+ 			ew32(SCTL, E1000_SCTL_DISABLE_SERDES_LOOPBACK);
+ 			e1e_flush();
+-			usleep_range(10000, 20000);
++			usleep_range(10000, 11000);
+ 			break;
+ 		}
+ 		/* Fall Through */
+diff --git a/drivers/net/ethernet/intel/e1000e/ich8lan.c b/drivers/net/ethernet/intel/e1000e/ich8lan.c
+index cdae0efde8e6..395b05701480 100644
+--- a/drivers/net/ethernet/intel/e1000e/ich8lan.c
++++ b/drivers/net/ethernet/intel/e1000e/ich8lan.c
+@@ -271,7 +271,7 @@ static void e1000_toggle_lanphypc_pch_lpt(struct e1000_hw *hw)
+ 		u16 count = 20;
+ 
+ 		do {
+-			usleep_range(5000, 10000);
++			usleep_range(5000, 6000);
+ 		} while (!(er32(CTRL_EXT) & E1000_CTRL_EXT_LPCD) && count--);
+ 
+ 		msleep(30);
+@@ -405,7 +405,7 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
+ 	/* Ungate automatic PHY configuration on non-managed 82579 */
+ 	if ((hw->mac.type == e1000_pch2lan) &&
+ 	    !(fwsm & E1000_ICH_FWSM_FW_VALID)) {
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 		e1000_gate_hw_phy_config_ich8lan(hw, false);
+ 	}
+ 
+@@ -531,7 +531,7 @@ static s32 e1000_init_phy_params_ich8lan(struct e1000_hw *hw)
+ 	phy->id = 0;
+ 	while ((e1000_phy_unknown == e1000e_get_phy_type_from_id(phy->id)) &&
+ 	       (i++ < 100)) {
+-		usleep_range(1000, 2000);
++		usleep_range(1000, 1100);
+ 		ret_val = e1000e_get_phy_id(hw);
+ 		if (ret_val)
+ 			return ret_val;
+@@ -1244,7 +1244,7 @@ static s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force)
+ 				goto out;
+ 			}
+ 
+-			usleep_range(10000, 20000);
++			usleep_range(10000, 11000);
+ 		}
+ 		e_dbg("ULP_CONFIG_DONE cleared after %dmsec\n", i * 10);
+ 
+@@ -1999,7 +1999,7 @@ static s32 e1000_check_reset_block_ich8lan(struct e1000_hw *hw)
+ 
+ 	while ((blocked = !(er32(FWSM) & E1000_ICH_FWSM_RSPCIPHY)) &&
+ 	       (i++ < 30))
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 	return blocked ? E1000_BLK_PHY_RESET : 0;
+ }
+ 
+@@ -2818,7 +2818,7 @@ static s32 e1000_post_phy_reset_ich8lan(struct e1000_hw *hw)
+ 		return 0;
+ 
+ 	/* Allow time for h/w to get to quiescent state after reset */
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	/* Perform any necessary post-reset workarounds */
+ 	switch (hw->mac.type) {
+@@ -2854,7 +2854,7 @@ static s32 e1000_post_phy_reset_ich8lan(struct e1000_hw *hw)
+ 	if (hw->mac.type == e1000_pch2lan) {
+ 		/* Ungate automatic PHY configuration on non-managed 82579 */
+ 		if (!(er32(FWSM) & E1000_ICH_FWSM_FW_VALID)) {
+-			usleep_range(10000, 20000);
++			usleep_range(10000, 11000);
+ 			e1000_gate_hw_phy_config_ich8lan(hw, false);
+ 		}
+ 
+@@ -3875,7 +3875,7 @@ static s32 e1000_update_nvm_checksum_spt(struct e1000_hw *hw)
+ 	 */
+ 	if (!ret_val) {
+ 		nvm->ops.reload(hw);
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 	}
+ 
+ out:
+@@ -4026,7 +4026,7 @@ static s32 e1000_update_nvm_checksum_ich8lan(struct e1000_hw *hw)
+ 	 */
+ 	if (!ret_val) {
+ 		nvm->ops.reload(hw);
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 	}
+ 
+ out:
+@@ -4650,7 +4650,7 @@ static s32 e1000_reset_hw_ich8lan(struct e1000_hw *hw)
+ 	ew32(TCTL, E1000_TCTL_PSP);
+ 	e1e_flush();
+ 
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	/* Workaround for ICH8 bit corruption issue in FIFO memory */
+ 	if (hw->mac.type == e1000_ich8lan) {
+diff --git a/drivers/net/ethernet/intel/e1000e/mac.c b/drivers/net/ethernet/intel/e1000e/mac.c
+index 4abd55d646c5..e531976f8a67 100644
+--- a/drivers/net/ethernet/intel/e1000e/mac.c
++++ b/drivers/net/ethernet/intel/e1000e/mac.c
+@@ -797,7 +797,7 @@ static s32 e1000_poll_fiber_serdes_link_generic(struct e1000_hw *hw)
+ 	 * milliseconds even if the other end is doing it in SW).
+ 	 */
+ 	for (i = 0; i < FIBER_LINK_UP_LIMIT; i++) {
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 		status = er32(STATUS);
+ 		if (status & E1000_STATUS_LU)
+ 			break;
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index 3ba0c90e7055..e827ace6330f 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -3207,7 +3207,7 @@ static void e1000_configure_rx(struct e1000_adapter *adapter)
+ 	if (!(adapter->flags2 & FLAG2_NO_DISABLE_RX))
+ 		ew32(RCTL, rctl & ~E1000_RCTL_EN);
+ 	e1e_flush();
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	if (adapter->flags2 & FLAG2_DMA_BURST) {
+ 		/* set the writeback threshold (only takes effect if the RDTR
+@@ -4272,7 +4272,7 @@ void e1000e_down(struct e1000_adapter *adapter, bool reset)
+ 
+ 	/* flush both disables and wait for them to finish */
+ 	e1e_flush();
+-	usleep_range(10000, 20000);
++	usleep_range(10000, 11000);
+ 
+ 	e1000_irq_disable(adapter);
+ 
+@@ -4310,7 +4310,7 @@ void e1000e_reinit_locked(struct e1000_adapter *adapter)
+ {
+ 	might_sleep();
+ 	while (test_and_set_bit(__E1000_RESETTING, &adapter->state))
+-		usleep_range(1000, 2000);
++		usleep_range(1000, 1100);
+ 	e1000e_down(adapter, true);
+ 	e1000e_up(adapter);
+ 	clear_bit(__E1000_RESETTING, &adapter->state);
+@@ -4685,7 +4685,7 @@ int e1000e_close(struct net_device *netdev)
+ 	int count = E1000_CHECK_RESET_COUNT;
+ 
+ 	while (test_bit(__E1000_RESETTING, &adapter->state) && count--)
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 
+ 	WARN_ON(test_bit(__E1000_RESETTING, &adapter->state));
+ 
+@@ -6003,7 +6003,7 @@ static int e1000_change_mtu(struct net_device *netdev, int new_mtu)
+ 	}
+ 
+ 	while (test_and_set_bit(__E1000_RESETTING, &adapter->state))
+-		usleep_range(1000, 2000);
++		usleep_range(1000, 1100);
+ 	/* e1000e_down -> e1000e_reset dependent on max_frame_size & mtu */
+ 	adapter->max_frame_size = max_frame;
+ 	e_info("changing MTU from %d to %d\n", netdev->mtu, new_mtu);
+@@ -6283,7 +6283,7 @@ static int e1000e_pm_freeze(struct device *dev)
+ 		int count = E1000_CHECK_RESET_COUNT;
+ 
+ 		while (test_bit(__E1000_RESETTING, &adapter->state) && count--)
+-			usleep_range(10000, 20000);
++			usleep_range(10000, 11000);
+ 
+ 		WARN_ON(test_bit(__E1000_RESETTING, &adapter->state));
+ 
+@@ -6698,7 +6698,7 @@ static int e1000e_pm_runtime_suspend(struct device *dev)
+ 		int count = E1000_CHECK_RESET_COUNT;
+ 
+ 		while (test_bit(__E1000_RESETTING, &adapter->state) && count--)
+-			usleep_range(10000, 20000);
++			usleep_range(10000, 11000);
+ 
+ 		WARN_ON(test_bit(__E1000_RESETTING, &adapter->state));
+ 
+diff --git a/drivers/net/ethernet/intel/e1000e/nvm.c b/drivers/net/ethernet/intel/e1000e/nvm.c
+index 937f9af22d26..e609f4df86f4 100644
+--- a/drivers/net/ethernet/intel/e1000e/nvm.c
++++ b/drivers/net/ethernet/intel/e1000e/nvm.c
+@@ -392,7 +392,7 @@ s32 e1000e_write_nvm_spi(struct e1000_hw *hw, u16 offset, u16 words, u16 *data)
+ 				break;
+ 			}
+ 		}
+-		usleep_range(10000, 20000);
++		usleep_range(10000, 11000);
+ 		nvm->ops.release(hw);
+ 	}
+ 
+-- 
+2.19.1
+
+From d12c9238ca40801c53c82105227630fdfb182fc1 Mon Sep 17 00:00:00 2001
+From: Miguel Bernal Marin <miguel.bernal.marin@linux.intel.com>
+Date: Mon, 27 Mar 2017 16:01:56 -0600
+Subject: [PATCH 115/122] e1000e: increase pause and refresh time
+
+Suggested-by:  Tim Pepper <timothy.c.pepper@linux.intel.com>
+Signed-off-by: Miguel Bernal Marin <miguel.bernal.marin@linux.intel.com>
+---
+ drivers/net/ethernet/intel/e1000e/netdev.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/intel/e1000e/netdev.c b/drivers/net/ethernet/intel/e1000e/netdev.c
+index e827ace6330f..0ccd5013ce03 100644
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -4046,12 +4046,12 @@ void e1000e_reset(struct e1000_adapter *adapter)
+ 	case e1000_pch_lpt:
+ 	case e1000_pch_spt:
+ 	case e1000_pch_cnp:
+-		fc->refresh_time = 0x0400;
++		fc->refresh_time = 0xFFFF;
++		fc->pause_time = 0xFFFF;
+ 
+ 		if (adapter->netdev->mtu <= ETH_DATA_LEN) {
+ 			fc->high_water = 0x05C20;
+ 			fc->low_water = 0x05048;
+-			fc->pause_time = 0x0650;
+ 			break;
+ 		}
+ 
+-- 
+2.19.1

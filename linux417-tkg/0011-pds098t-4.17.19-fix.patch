@@ -1,0 +1,47 @@
+From 5c547d767a198ed9318b412f0d93d291f321a93c Mon Sep 17 00:00:00 2001
+From: Tk-Glitch <ti3nou@gmail.com>
+Date: Wed, 29 Aug 2018 08:03:16 +0200
+Subject: 4.17.19 commit 2caa5529cb44baf69e766707e1d30482e47391a4 changed kthread_parkme() behaviour. Fix PDS patch to conform to the changes.
+
+diff --git a/kernel/sched/pds.c b/kernel/sched/pds.c
+index 66f6b11..23cd990 100644
+--- a/kernel/sched/pds.c
++++ b/kernel/sched/pds.c
+@@ -2428,27 +2428,20 @@ static struct rq *finish_task_switch(struct task_struct *prev)
+ 		membarrier_mm_sync_core_before_usermode(mm);
+ 		mmdrop(mm);
+ 	}
+-	if (unlikely(prev_state & (TASK_DEAD|TASK_PARKED))) {
+-		switch (prev_state) {
+-		case TASK_DEAD:
+-			/*
+-			 * Remove function-return probe instances associated with this
+-			 * task and put them back on the free list.
+-			 */
+-			kprobe_flush_task(prev);
+-
+-			/* Task is done with its stack. */
+-			put_task_stack(prev);
++	if (unlikely(prev_state == TASK_DEAD)) {
++		/*
++		 * Remove function-return probe instances associated with this
++		 * task and put them back on the free list.
++		 */
++		kprobe_flush_task(prev);
+ 
+-			put_task_struct(prev);
+-			break;
++		/* Task is done with its stack. */
++		put_task_stack(prev);
+ 
+-		case TASK_PARKED:
+-			kthread_park_complete(prev);
+-			break;
+-		}
++		put_task_struct(prev);
+ 	}
+ 
++	tick_nohz_task_switch();
+ 	return rq;
+ }
+ 

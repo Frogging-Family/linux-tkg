@@ -25,8 +25,8 @@ plain '             `.-:///////:-.`'
 
 _where=$PWD # track basedir as different Arch based distros are moving srcdir around
 
-cp "$_where"/linux56-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-cp "$_where"/linux56-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+cp "$_where"/linux54-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+cp "$_where"/linux54-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
 
 source "$_where"/customization.cfg # load default configuration from file
 
@@ -52,50 +52,44 @@ if [ -e "$_where"/cpuschedset ]; then
 fi
 
 # CPU SCHED selector
-if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
-  plain "What CPU sched variant do you want to build/install?"
-  read -rp "`echo $'  > 1.PDS\n    2.MuQSS\n    3.BMQ\n    4.CFS\nchoice[1-4?]: '`" CONDITION;
-  if [ "$CONDITION" == "2" ]; then
-    echo "_cpusched=\"MuQSS\"" > "$_where"/cpuschedset
-  elif [ "$CONDITION" == "3" ]; then
-    echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
-  elif [ "$CONDITION" == "4" ]; then
+#if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
+#  plain "What CPU sched variant do you want to build/install?"
+#  read -rp "`echo $'  > 1.PDS\n    2.CFS\n    3.CFS+TurboSched (experimental)\nchoice[1-3?]: '`" CONDITION;
+#  if [ "$CONDITION" == "2" ]; then
     echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
-  else
-    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
-  fi
+#  elif [ "$CONDITION" == "3" ]; then
+#    echo "_cpusched=\"cfsturbo\"" > "$_where"/cpuschedset
+#  else
+#    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+#  fi
   if [ -n "$_custom_pkgbase" ]; then
     echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "$_where"/cpuschedset
   fi
-elif [ "$_cpusched" == "muqss" ] || [ "$_cpusched" == "MuQSS" ]; then
-  echo "_cpusched=\"MuQSS\"" > "$_where"/cpuschedset
-elif [ "$_cpusched" == "pds" ]; then
-  echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
-elif [ "$_cpusched" == "bmq" ]; then
-  echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
-else
-  echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
-fi
+#elif [ "$_cpusched" == "cfs" ]; then
+#  echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+#elif [ "$_cpusched" == "cfsturbo" ]; then
+#  echo "_cpusched=\"cfsturbo\"" > "$_where"/cpuschedset
+#elif [ "$_cpusched" == "pds" ]; then
+#  echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+#fi
 
 source "$_where"/cpuschedset
 
-_basever=56
+_basever=54
 if [ -n "$_custom_pkgbase" ]; then
   pkgbase="${_custom_pkgbase}"
 else
   pkgbase=linux"${_basever}"-tkg-"${_cpusched}"
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
-_basekernel=5.6
-_sub=rc7
+_basekernel=5.4
+_sub=rc8
 pkgver="${_basekernel}"."${_sub}"
 pkgrel=1
-pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
 license=('GPL2')
-makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
-optdepends=('schedtool')
+makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'elfutils' 'schedtool' 'patchutils' 'flex')
 if pacman -Qq ccache &> /dev/null; then
   msg2 'ccache was found and will be used'
   options=('!strip' 'ccache')
@@ -104,96 +98,83 @@ else
   options=('!strip')
 fi
 source=("https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
+        #"https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
         'config.x86_64' # stock Arch config
-        #'config_hardened.x86_64' # hardened Arch config
+        'linux54-tkg.preset' # standard config files for mkinitcpio ramdisk
+        '60-linux.hook'     # pacman hook for depmod
+        '90-linux.hook'     # pacman hook for initramfs regeneration
         # ARCH Patches
         0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
         # TkG
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
-        0004-glitched-ondemand-muqss.patch
-        0004-glitched-muqss.patch
-        0004-5.6-ck1.patch
-        0005-glitched-ondemand-pds.patch
-        0005-glitched-pds.patch
-        0005-v5.6_undead-pds099o.patch
-        0006-add-acs-overrides_iommu.patch
-        0007-v5.6-fsync.patch
-        #0008-5.6-bcachefs.patch
-        0009-glitched-ondemand-bmq.patch
-        0009-glitched-bmq.patch
-        0009-bmq_v5.6-r0.patch
+#        0003-v5.4_turbosched-v4.patch
+#        0005-glitched-pds.patch
+#        0005-v5.4_undead-pds099o.patch
+#        0006-add-acs-overrides_iommu.patch
+        0007-v5.4-fsync.patch
         0011-ZFS-fix.patch
-        #0012-linux-hardened.patch
-        0013-tp_smapi_ec.patch
 )
-sha256sums=('d18c846ef07a699561d3884a34f10941aed4e079c5f2a6fc151e9c54dd8d6373'
-            '1f2c39041b00ad8cddc3a17b589ccdcd4e9e4524bd47cf9f6292e2bbc105398b'
+sha256sums=('b310b110f06f297a617fedbd1c0bf2cfc07825c6ddbadb3aba7d8177184a0d4d'
+            '52345657652ef64a83f09e3b3fa8293d475e902e843ef071949dc1869862d7df'
+            'ad6344badc91ad0630caacde83f7f9b97276f80d26a20619a87952be65492c65'
+            'ae2e95db94ef7176207c690224169594d49445e04249d2499e9d2fbc117a0b21'
+            '75f99f5239e03238f88d1a834c50043ec32b1dc568f2cc291b07d04718483919'
             '31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
-            'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
-            'dd5236f4109193dc518cf6e0a490600ae613c24232011f59d4069ce48ece32bd'
+            '6b338201e5282f0c6e05ccc01f4d7c6b3ec57af12d768e40db8f095b7f3f6ea6'
+            '4b9daf276fd39dc72be5ed87f6c9b51b63b8887f453509e328b24c5d4ebe9a0f'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
-            'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
-            'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
-            'd0509062a9939cc3a59c86b34a77b9d428dcea344a53a84e2cddd3d48a21591d'
-            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
-            '7fd8e776209dac98627453fda754bdf9aff4a09f27cb0b3766d7983612eb3c74'
-            '5255ec9387d85a1e1f50b5d7f6ac9983111b31f6e437153b7fab49bb31fdf000'
-            '90917e09bb06fbed6853efe9e52f8c2ba4066fca44accdf7608222212561104a'
             '2d9260b80b43bbd605cf420d6bd53aa7262103dfd77196ba590ece5600b6dc0d'
-            'e27ad5ff23a81b5be73a642db5186b447f336956a427d1300e8ccc49abf0dd74'
-            '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
-            '1a647aa24074af0cc3a0ecbf8c720ab496be9fe1a62fab41c524eb6cc5dcccda'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '5fe8b22389d9df109f80fc4785908d1c32f1d469f5ef32fee613a0937965469e')
+            '39be7492e3288179c8d90e906cef6d1f4d1db9d787b1093325a786ead854edc3')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
-export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
+export KBUILD_BUILD_TIMESTAMP="@${SOURCE_DATE_EPOCH:-$(date +%s)}"
+
+# Community patches
+if [ -n "$_community_patches" ]; then
+  _community_patches=($_community_patches)
+  for _p in ${_community_patches[@]}; do
+    ln -s "$_where"/../community-patches/linux54-tkg/$_p "$_where"/
+  done
+fi
 
 user_patcher() {
 	# To patch the user because all your base are belong to us
-	local _patches=("$_where"/*."${_userpatch_ext}revert")
-	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
+	if [[ $(find "$_where" -name "*.${_userpatch_ext}patch") ]]; then
 	  if [ "$_user_patches_no_confirm" != "true" ]; then
-	    msg2 "Found ${#_patches[@]} 'to revert' userpatches for ${_userpatch_target}:"
-	    printf '%s\n' "${_patches[@]}"
-	    read -rp "Do you want to install it/them? - Be careful with that ;)"$'\n> N/y : ' _CONDITION;
+	  read -rp "At least one of your own ${_userpatch_target} patches were found (*.${_userpatch_ext}patch). Do you want to install it/them? - Be careful with that ;)`echo $'\n> N/y : '`" _CONDITION;
 	  fi
 	  if [ "$_CONDITION" == "y" ] || [ "$_user_patches_no_confirm" == "true" ]; then
-	    for _f in "${_patches[@]}"; do
-	      if [ -e "${_f}" ]; then
-	        msg2 "######################################################"
-	        msg2 ""
-	        msg2 "Reverting your own ${_userpatch_target} patch ${_f}"
-	        msg2 ""
-	        msg2 "######################################################"
-	        patch -Np1 -R < "${_f}"
-	        echo "Reverted your own patch ${_f}" >> "$_where"/last_build_config.log
-	      fi
+	    for _f in "$_where"/*.${_userpatch_ext}patch; do
+	    if [ -e "${_f}" ]; then
+	      msg2 "######################################################"
+	      msg2 ""
+	      msg2 "Applying your own ${_userpatch_target} patch ${_f}"
+	      msg2 ""
+	      msg2 "######################################################"
+	      patch -Np1 < "${_f}"
+	      echo "Applied your own patch ${_f}" >> "$_where"/last_build_config.log
+	    fi
 	    done
 	  fi
 	fi
-
-	_patches=("$_where"/*."${_userpatch_ext}patch")
-	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
+	if [[ $(find "$_where" -name "*.${_userpatch_ext}revert") ]]; then
 	  if [ "$_user_patches_no_confirm" != "true" ]; then
-	    msg2 "Found ${#_patches[@]} userpatches for ${_userpatch_target}:"
-	    printf '%s\n' "${_patches[@]}"
-	    read -rp "Do you want to install it/them? - Be careful with that ;)"$'\n> N/y : ' _CONDITION;
+	  read -rp "At least one of your own ${_userpatch_target} 'to revert' patches were found (*.${_userpatch_ext}revert). Do you want to install it/them? - Be careful with that ;)`echo $'\n> N/y : '`" _CONDITION;
 	  fi
 	  if [ "$_CONDITION" == "y" ] || [ "$_user_patches_no_confirm" == "true" ]; then
-	    for _f in "${_patches[@]}"; do
-	      if [ -e "${_f}" ]; then
-	        msg2 "######################################################"
-	        msg2 ""
-	        msg2 "Applying your own ${_userpatch_target} patch ${_f}"
-	        msg2 ""
-	        msg2 "######################################################"
-	        patch -Np1 < "${_f}"
-	        echo "Applied your own patch ${_f}" >> "$_where"/last_build_config.log
-	      fi
+	    for _f in "$_where"/*.${_userpatch_ext}revert; do
+	    if [ -e "${_f}" ]; then
+	      msg2 "######################################################"
+	      msg2 ""
+	      msg2 "Reverting your own ${_userpatch_target} patch ${_f}"
+	      msg2 ""
+	      msg2 "######################################################"
+	      patch -Np1 -R < "${_f}"
+	      echo "Reverted your own patch ${_f}" >> "$_where"/last_build_config.log
+	    fi
 	    done
 	  fi
 	fi
@@ -206,52 +187,33 @@ prepare() {
 
   cd "${srcdir}/linux-${_basekernel}-${_sub}"
 
-  msg2 "Setting version..."
-  scripts/setlocalversion --save-scmversion
-  echo "-$pkgrel-tkg-${_cpusched}" > localversion.10-pkgrel
-  echo "" > localversion.20-pkgname
-
   # add upstream patch
   #patch -p1 -i ../patch-"${pkgver}"
 
   # ARCH Patches
-  if [ "${_configfile}" == "config_hardened.x86_64" ] && [ "${_cpusched}" == "cfs" ]; then
-    msg2 "Using linux hardened patchset"
-    patch -Np1 -i ../0012-linux-hardened.patch
-  else
-    patch -Np1 -i ../0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-  fi
+  patch -Np1 -i ../0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
 
   # TkG
   patch -Np1 -i ../0002-clear-patches.patch
 
   patch -Np1 -i ../0003-glitched-base.patch
 
-  if [ "${_tp_smapi_ec}" != "false" ]; then
-    patch -Np1 -i ../0013-tp_smapi_ec.patch
-  fi
-
   if [ "${_cpusched}" == "MuQSS" ]; then
     # MuQSS
-    patch -Np1 -i ../0004-5.6-ck1.patch
-    if [ "${_aggressive_ondemand}" == "true" ]; then
-      patch -Np1 -i ../0004-glitched-ondemand-muqss.patch
-    fi
+    patch -Np1 -i ../0004-5.4-ck1.patch
     patch -Np1 -i ../0004-glitched-muqss.patch
   elif [ "${_cpusched}" == "pds" ]; then
     # PDS-mq
-    patch -Np1 -i ../0005-v5.6_undead-pds099o.patch
-    if [ "${_aggressive_ondemand}" == "true" ]; then
-      patch -Np1 -i ../0005-glitched-ondemand-pds.patch
-    fi
+    patch -Np1 -i ../0005-v5.4_undead-pds099o.patch
     patch -Np1 -i ../0005-glitched-pds.patch
   elif [ "${_cpusched}" == "bmq" ]; then
     # BMQ
-    patch -Np1 -i ../0009-bmq_v5.6-r0.patch
-    if [ "${_aggressive_ondemand}" == "true" ]; then
-      patch -Np1 -i ../0009-glitched-ondemand-bmq.patch
-    fi
-    patch -Np1 -i ../0009-glitched-bmq.patch
+    patch -Np1 -i ../0010-v5.4_bmq100.patch
+    patch -Np1 -i ../0010-glitched-bmq.patch
+  elif [ "${_cpusched}" == "cfsturbo" ]; then
+    # CFS+TurboSched
+    patch -Np1 -i ../0003-glitched-cfs.patch
+    patch -Np1 -i ../0003-v5.4_turbosched-v4.patch
   else
     patch -Np1 -i ../0003-glitched-cfs.patch
   fi
@@ -262,21 +224,19 @@ prepare() {
 
   cat "${srcdir}/${_configfile}" > ./.config
 
+  # LOCALVERSION
+  sed -i "s|CONFIG_LOCALVERSION=.*|CONFIG_LOCALVERSION=\"."${_sub}"-tkg-${_cpusched}\"|g" ./.config
+  sed -i "s|CONFIG_LOCALVERSION_AUTO=.*|CONFIG_LOCALVERSION_AUTO=n|" ./.config
+
+  # set extraversion to pkgrel
+  sed -ri "s|^(EXTRAVERSION =).*|\1 -${pkgrel}|" Makefile
+
   # Set some -tkg defaults
-  echo "# CONFIG_DYNAMIC_FAULT is not set" >> ./.config
   sed -i -e 's/CONFIG_DEFAULT_FQ_CODEL=y/# CONFIG_DEFAULT_FQ_CODEL is not set/' ./.config
   echo "CONFIG_DEFAULT_CAKE=y" >> ./.config
   echo "CONFIG_NR_TTY_DEVICES=63" >> ./.config
   echo "CONFIG_TP_SMAPI=m" >> ./.config
-  echo "# CONFIG_NTP_PPS is not set" >> ./.config
-  sed -i -e 's/CONFIG_CRYPTO_LZ4=m/CONFIG_CRYPTO_LZ4=y/' ./.config
-  sed -i -e 's/CONFIG_CRYPTO_LZ4HC=m/CONFIG_CRYPTO_LZ4HC=y/' ./.config
-  sed -i -e 's/CONFIG_LZ4_COMPRESS=m/CONFIG_LZ4_COMPRESS=y/' ./.config
-  sed -i -e 's/CONFIG_LZ4HC_COMPRESS=m/CONFIG_LZ4HC_COMPRESS=y/' ./.config
-  #sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
-  sed -i -e 's/# CONFIG_CMDLINE_BOOL is not set/CONFIG_CMDLINE_BOOL=y/' ./.config
-  echo "CONFIG_CMDLINE=\"${_custom_commandline}\"" >> ./.config
-  echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ./.config
+  echo "CONFIG_RAID6_USE_PREFER_GEN=y" >> ./.config
 
   # Inject cpuopts options
   echo "# CONFIG_MK8SSE3 is not set" >> ./.config
@@ -302,9 +262,6 @@ prepare() {
   echo "# CONFIG_MSKYLAKEX is not set" >> ./.config
   echo "# CONFIG_MCANNONLAKE is not set" >> ./.config
   echo "# CONFIG_MICELAKE is not set" >> ./.config
-  echo "# CONFIG_MGOLDMONT is not set" >> ./.config
-  echo "# CONFIG_MGOLDMONTPLUS is not set" >> ./.config
-  echo "# CONFIG_MCASCADELAKE is not set" >> ./.config
 
   # Disable some debugging
   if [ "${_debugdisable}" == "true" ]; then
@@ -332,6 +289,8 @@ prepare() {
     # Disable CFS
     sed -i -e 's/CONFIG_FAIR_GROUP_SCHED=y/# CONFIG_FAIR_GROUP_SCHED is not set/' ./.config
     sed -i -e 's/CONFIG_CFS_BANDWIDTH=y/# CONFIG_CFS_BANDWIDTH is not set/' ./.config
+    sed -i -e 's/CONFIG_CGROUP_CPUACCT=y/# CONFIG_CGROUP_CPUACCT is not set/' ./.config
+    sed -i -e 's/CONFIG_SCHED_AUTOGROUP=y/# CONFIG_SCHED_AUTOGROUP is not set/' ./.config
     # sched yield type
     if [ -n "$_sched_yield_type" ]; then
       CONDITION0="$_sched_yield_type"
@@ -372,8 +331,8 @@ prepare() {
       plain ""
       plain "MuQSS default: 6ms"
       plain "PDS default: 4ms"
-      plain "BMQ default: 2ms"
-      read -rp "`echo $'\n    > 0.Keep defaults\n      1.2ms\n      2.4ms\n      3.6ms\n      4.8ms\n    [0-4?]: '`" CONDITION1;
+      plain "BMQ default: 4ms"
+      read -rp "`echo $'\n    > 0.Keep defaults\n      1.2ms (worth a shot with MuQSS + yield_type 2)\n      2.4ms\n      3.6ms\n      4.8ms\n    [0-4?]: '`" CONDITION1;
     fi
     if [ "$CONDITION1" == "1" ]; then
       msg2 "Using 2ms rr_interval"
@@ -397,11 +356,11 @@ prepare() {
       elif [ "${_cpusched}" == "pds" ]; then
         sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/"${_cpusched}".c
       elif [ "${_cpusched}" == "bmq" ]; then
-        sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/"${_cpusched}".c
+        echo "CONFIG_SCHED_TIMESLICE=${_rrvalue}" >> ./.config
       fi
     else
       if [ "${_cpusched}" == "bmq" ]; then
-        sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (2 * 1000 * 1000);/" ./kernel/sched/"${_cpusched}".c
+        echo "CONFIG_SCHED_TIMESLICE=4" >> ./.config
       fi
     fi
   fi
@@ -415,14 +374,14 @@ prepare() {
 
   # compiler optimization level
   if [ "$_compileroptlevel" == "1" ]; then
-    echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+    echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ./.config
   elif [ "$_compileroptlevel" == "2" ]; then
     sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ./.config
-    echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> ./.config
+    echo "CONFIG_CC_OPTIMIZE_HARDER=y" >> ./.config
   elif [ "$_compileroptlevel" == "3" ]; then
     sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ./.config
     sed -i -e 's/# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set/CONFIG_CC_OPTIMIZE_FOR_SIZE=y/' ./.config
-    echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+    echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ./.config
   fi
 
   # cpu opt
@@ -488,12 +447,6 @@ prepare() {
     sed -i -e 's/# CONFIG_MCANNONLAKE is not set/CONFIG_MCANNONLAKE=y/' ./.config
   elif [ "$_processor_opt" == "icelake" ]; then
     sed -i -e 's/# CONFIG_MICELAKE is not set/CONFIG_MICELAKE=y/' ./.config
-  elif [ "$_processor_opt" == "goldmont" ]; then
-    sed -i -e 's/# CONFIG_MGOLDMONT is not set/CONFIG_MGOLDMONT=y/' ./.config
-  elif [ "$_processor_opt" == "goldmontplus" ]; then
-    sed -i -e 's/# CONFIG_MGOLDMONTPLUS is not set/CONFIG_MGOLDMONTPLUS=y/' ./.config
-  elif [ "$_processor_opt" == "cascadelake" ]; then
-    sed -i -e 's/# CONFIG_MCASCADELAKE is not set/CONFIG_MCASCADELAKE=y/' ./.config
   fi
 
   # irq threading
@@ -517,17 +470,15 @@ prepare() {
 
   # rq sharing
   if [ "$_runqueue_sharing" == "none" ]; then
-    echo -e "CONFIG_RQ_NONE=y\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
-  elif [ -z "$_runqueue_sharing" ] || [ "$_runqueue_sharing" == "smt" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\nCONFIG_RQ_SMT=y\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
+    echo -e "CONFIG_RQ_NONE=y\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
+  elif [ "$_runqueue_sharing" == "smt" ]; then
+    echo -e "# CONFIG_RQ_NONE is not set\nCONFIG_RQ_SMT=y\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
   elif [ "$_runqueue_sharing" == "mc" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\nCONFIG_RQ_MC=y\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
+    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\nCONFIG_RQ_MC=y\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
   elif [ "$_runqueue_sharing" == "smp" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\nCONFIG_RQ_SMP=y\n# CONFIG_RQ_ALL is not set" >> ./.config
+    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\nCONFIG_RQ_SMP=y\n# CONFIG_RQ_ALL is not set" >> ./.config
   elif [ "$_runqueue_sharing" == "all" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\nCONFIG_RQ_ALL=y" >> ./.config
-  elif [ "$_runqueue_sharing" == "mc-llc" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\nCONFIG_RQ_MC_LLC=y\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
+    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_SMP is not set\nCONFIG_RQ_ALL=y" >> ./.config
   fi
 
   # timer freq
@@ -562,29 +513,7 @@ prepare() {
       echo "# CONFIG_HZ_1000_NODEF is not set" >> ./.config
       echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
       echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-    elif [ "$_timer_freq" == "100" ]; then
-      sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=100/' ./.config
-      echo "# CONFIG_HZ_500 is not set" >> ./.config
-      echo "# CONFIG_HZ_750 is not set" >> ./.config
-      echo "# CONFIG_HZ_1000_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_750_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_500_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-      echo "CONFIG_HZ_100=y" >> ./.config
-      echo "CONFIG_HZ_100_NODEF=y" >> ./.config
     fi
-  elif [ "${_cpusched}" == "MuQSS" ] && [ -z "$_timer_freq" ]; then
-      sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=100/' ./.config
-      echo "# CONFIG_HZ_500 is not set" >> ./.config
-      echo "# CONFIG_HZ_750 is not set" >> ./.config
-      echo "# CONFIG_HZ_1000_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_750_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_500_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-      echo "CONFIG_HZ_100=y" >> ./.config
-      echo "CONFIG_HZ_100_NODEF=y" >> ./.config
   else
     sed -i -e 's/CONFIG_HZ_300=y/# CONFIG_HZ_300 is not set/' ./.config
     sed -i -e 's/CONFIG_HZ_300_NODEF=y/# CONFIG_HZ_300_NODEF is not set/' ./.config
@@ -597,11 +526,15 @@ prepare() {
 
   # default cpu gov
   if [ "$_default_cpu_gov" == "performance" ]; then
+    sed -i -e 's/CONFIG_X86_INTEL_PSTATE=y/# CONFIG_X86_INTEL_PSTATE is not set/' ./.config
     sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
     sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y/' ./.config
   elif [ "$_default_cpu_gov" == "ondemand" ]; then
+    sed -i -e 's/CONFIG_X86_INTEL_PSTATE=y/# CONFIG_X86_INTEL_PSTATE is not set/' ./.config
     sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
     sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y/' ./.config
+  elif [ "$_default_cpu_gov" == "schedutil" ]; then
+    sed -i -e 's/CONFIG_X86_INTEL_PSTATE=y/# CONFIG_X86_INTEL_PSTATE is not set/' ./.config
   fi
 
   # ACPI_CPUFREQ disablement
@@ -646,45 +579,21 @@ prepare() {
     plain ""
     plain "Use CattaRappa mode (Tickless/Dynticks) ?"
     plain "Can give higher performances in many cases but lower consistency on some hardware."
-    plain "Just tickless idle can perform better with some platforms (mostly AMD) or CPU schedulers (mostly MuQSS)."
-    if [ "${_cpusched}" == "MuQSS" ]; then
-      read -rp "`echo $'\n      0.No, use periodic ticks\n      1.Yes, full tickless baby!\n    > 2.Just tickless idle plz\n    [0-2?]: '`" CONDITION4;
-    else
-      read -rp "`echo $'\n      0.No, use periodic ticks\n    > 1.Yes, full tickless baby!\n      2.Just tickless idle plz\n    [0-2?]: '`" CONDITION4;
-    fi
+    plain "Just tickless idle can perform better on some platforms (mostly AMD based)."
+    read -rp "`echo $'\n      0.No, use periodic ticks\n    > 1.Yes, full tickless baby!\n      2.Just tickless idle plz\n    [0-2?]: '`" CONDITION4;
   fi
   if [ "$CONDITION4" == "0" ] || [ "$_tickless" == "0" ]; then
-    echo "# CONFIG_NO_HZ_FULL_NODEF is not set" >> ./.config
     sed -i -e 's/# CONFIG_HZ_PERIODIC is not set/CONFIG_HZ_PERIODIC=y/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_IDLE=y/# CONFIG_NO_HZ_IDLE is not set/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_FULL=y/# CONFIG_NO_HZ_FULL is not set/' ./.config
     sed -i -e 's/CONFIG_NO_HZ=y/# CONFIG_NO_HZ is not set/' ./.config
+    sed -i -e 's/CONFIG_RCU_BOOST=y/# CONFIG_RCU_BOOST is not set/' ./.config
     sed -i -e 's/CONFIG_NO_HZ_COMMON=y/# CONFIG_NO_HZ_COMMON is not set/' ./.config
   elif [ "$CONDITION4" == "2" ] || [ "$_tickless" == "2" ]; then
-    echo "# CONFIG_NO_HZ_FULL_NODEF is not set" >> ./.config
-    sed -i -e 's/CONFIG_HZ_PERIODIC=y/# CONFIG_HZ_PERIODIC is not set/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ_IDLE is not set/CONFIG_NO_HZ_IDLE=y/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_FULL=y/# CONFIG_NO_HZ_FULL is not set/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ is not set/CONFIG_NO_HZ=y/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ_COMMON is not set/CONFIG_NO_HZ_COMMON=y/' ./.config
-  else
-    if [ "${_cpusched}" == "MuQSS" ]; then
-      echo "# CONFIG_NO_HZ_FULL_NODEF is not set" >> ./.config
-      sed -i -e 's/CONFIG_HZ_PERIODIC=y/# CONFIG_HZ_PERIODIC is not set/' ./.config
       sed -i -e 's/# CONFIG_NO_HZ_IDLE is not set/CONFIG_NO_HZ_IDLE=y/' ./.config
       sed -i -e 's/CONFIG_NO_HZ_FULL=y/# CONFIG_NO_HZ_FULL is not set/' ./.config
-      sed -i -e 's/# CONFIG_NO_HZ is not set/CONFIG_NO_HZ=y/' ./.config
-      sed -i -e 's/# CONFIG_NO_HZ_COMMON is not set/CONFIG_NO_HZ_COMMON=y/' ./.config
-    else
-      echo "CONFIG_NO_HZ_FULL_NODEF=y" >> ./.config
-      sed -i -e 's/CONFIG_HZ_PERIODIC=y/# CONFIG_HZ_PERIODIC is not set/' ./.config
-      sed -i -e 's/CONFIG_NO_HZ_IDLE=y/# CONFIG_NO_HZ_IDLE is not set/' ./.config
-      sed -i -e 's/# CONFIG_NO_HZ_FULL is not set/CONFIG_NO_HZ_FULL=y/' ./.config
-      sed -i -e 's/# CONFIG_NO_HZ is not set/CONFIG_NO_HZ=y/' ./.config
-      sed -i -e 's/# CONFIG_NO_HZ_COMMON is not set/CONFIG_NO_HZ_COMMON=y/' ./.config
-      echo "CONFIG_CONTEXT_TRACKING=y" >> ./.config
-      echo "# CONFIG_CONTEXT_TRACKING_FORCE is not set" >> ./.config
-    fi
+      echo "# CONFIG_NO_HZ_FULL_NODEF is not set" >> ./.config
+      echo "CONFIG_TICK_CPU_ACCOUNTING=y" >> ./.config
+  else
+    echo "CONFIG_NO_HZ_FULL_NODEF=y" >> ./.config
   fi
 
   # voluntary preempt
@@ -712,32 +621,32 @@ prepare() {
   fi
 
   # acs override
-  if [ -z "$_acs_override" ]; then
-    plain ""
-    plain "Use ACS override patch?"
-    plain "https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Bypassing_the_IOMMU_groups_.28ACS_override_patch.29"
-    read -rp "`echo $'    > N/y : '`" CONDITION7;
-  fi
-  if [ "$CONDITION7" == "y" ] || [ "$_acs_override" == "true" ]; then
-    patch -Np1 -i ../0006-add-acs-overrides_iommu.patch
-  fi
+  #if [ -z "$_acs_override" ]; then
+  #  plain ""
+  #  plain "Use ACS override patch?"
+  #  plain "https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Bypassing_the_IOMMU_groups_.28ACS_override_patch.29"
+  #  read -rp "`echo $'    > N/y : '`" CONDITION7;
+  #fi
+  #if [ "$CONDITION7" == "y" ] || [ "$_acs_override" == "true" ]; then
+  #  patch -Np1 -i ../0006-add-acs-overrides_iommu.patch
+  #fi
 
   # bcachefs
 #  if [ -z "$_bcachefs" ]; then
-#     plain ""
-#     plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
-#     plain "https://bcachefs.org/"
-#     read -rp "`echo $'    > N/y : '`" CONDITION8;
-#   fi
-#   if [ "$CONDITION8" == "y" ] || [ "$_bcachefs" == "true" ]; then
-#     patch -Np1 -i ../0008-5.6-bcachefs.patch
-#     echo "CONFIG_BCACHEFS_FS=m" >> ./.config
-#     echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
-#     echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
-#     echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ./.config
-#     echo "# CONFIG_BCACHEFS_TESTS is not set" >> ./.config
-#     echo "# CONFIG_DEBUG_CLOSURES is not set" >> ./.config
-#   fi
+#    plain ""
+#    plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
+#    plain "https://bcachefs.org/"
+#    read -rp "`echo $'    > N/y : '`" CONDITION8;
+#  fi
+#  if [ "$CONDITION8" == "y" ] || [ "$_bcachefs" == "true" ]; then
+#    patch -Np1 -i ../0008-bcachefs.patch
+#    echo "CONFIG_BCACHEFS_FS=m" >> ./.config
+#    echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
+#    echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
+#    echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ./.config
+#    echo "# CONFIG_BCACHEFS_TESTS is not set" >> ./.config
+#    echo "# CONFIG_DEBUG_CLOSURES is not set" >> ./.config
+#  fi
 
   # fsync support
   if [ -z "$_fsync" ]; then
@@ -747,26 +656,18 @@ prepare() {
     read -rp "`echo $'    > N/y : '`" CONDITION9;
   fi
   if [ "$CONDITION9" == "y" ] || [ "$_fsync" == "true" ]; then
-    patch -Np1 -i ../0007-v5.6-fsync.patch
+    patch -Np1 -i ../0007-v5.4-fsync.patch
   fi
-
+  
   # ZFS fix
   if [ -z "$_zfsfix" ]; then
     plain ""
     plain "Add back missing symbol for AES-NI/AVX support on ZFS"
     plain "https://github.com/NixOS/nixpkgs/blob/master/pkgs/os-specific/linux/kernel/export_kernel_fpu_functions_5_3.patch"
-    read -rp "`echo $'    > N/y : '`" CONDITION11;
+    read -rp "`echo $'    > N/y : '`" CONDITIONZFS;
   fi
-  if [ "$CONDITION11" == "y" ] || [ "$_zfsfix" == "true" ]; then
+  if [ "$CONDITIONZFS" == "y" ] || [ "$_zfsfix" == "true" ]; then
     patch -Np1 -i ../0011-ZFS-fix.patch
-  fi
-
-  # Community patches
-  if [ -n "$_community_patches" ]; then
-    _community_patches=($_community_patches)
-    for _p in ${_community_patches[@]}; do
-      ln -s "$_where"/../../community-patches/linux56-tkg/$_p "$_where"/
-    done
   fi
 
   # userpatches
@@ -794,9 +695,9 @@ prepare() {
     plain "Speeds up compilation considerably. Requires root."
     plain "https://wiki.archlinux.org/index.php/Modprobed-db"
     plain "!!!! Make sure to have a well populated db !!!!"
-    read -rp "`echo $'    > N/y : '`" CONDITIONMPDB;
+    read -rp "`echo $'    > N/y : '`" CONDITION11;
   fi
-  if [ "$CONDITIONMPDB" == "y" ] || [ "$_modprobeddb" == "true" ]; then
+  if [ "$CONDITION11" == "y" ] || [ "$_modprobeddb" == "true" ]; then
     sudo modprobed-db recall
     make localmodconfig
   fi
@@ -810,9 +711,9 @@ prepare() {
     else
       for i in "${!fragments[@]}"; do
         while true; do
-          read -r -p 'Found config fragment '"${fragments[$i]#$_where/}"', apply it? [y/N] ' CONDITIONMPDB
-          CONDITIONMPDB="$(printf '%s' "$CONDITIONMPDB" | tr '[:upper:]' '[:lower:]')"
-          case "$CONDITIONMPDB" in
+          read -r -p 'Found config fragment '"${fragments[$i]#$_where/}"', apply it? [y/N] ' CONDITION11
+          CONDITION11="$(printf '%s' "$CONDITION11" | tr '[:upper:]' '[:lower:]')"
+          case "$CONDITION11" in
             y|yes)
               break;;
             n|no|'')
@@ -837,8 +738,8 @@ prepare() {
     plain "to configure the kernel before building it?"
     plain "If you do, make sure your terminal is currently"
     plain "at least 19 lines by 80 columns large or you'll get an error :D"
-    read -rp "`echo $'    > 0. nope\n      1. menuconfig\n      2. nconfig\n      choice[0-2?]: '`" CONDITIONMNC;
-    _menunconfig="$CONDITIONMNC"
+    read -rp "`echo $'    > 0. nope\n      1. menuconfig\n      2. nconfig\n      choice[0-2?]: '`" CONDITION12;
+    _menunconfig="$CONDITION12"
   fi
   if [ 1 = "$_menunconfig" ]; then
     cp .config .config.orig
@@ -853,9 +754,9 @@ prepare() {
   if [ 1 = "$_menunconfig" ] || [ 2 = "$_menunconfig" ]; then
     if [ -z "${_diffconfig}" ]; then
       while true; do
-        read -r -p 'Generate a config fragment from your changes? [y/N] ' CONDITIONF
-        CONDITIONF="$(printf '%s' "$CONDITIONF" | tr '[:upper:]' '[:lower:]')"
-        case "$CONDITIONF" in
+        read -r -p 'Generate a config fragment from your changes? [y/N] ' CONDITION13
+        CONDITION13="$(printf '%s' "$CONDITION13" | tr '[:upper:]' '[:lower:]')"
+        case "$CONDITION13" in
           y|yes)
             _diffconfig=true
             break;;
@@ -869,21 +770,16 @@ prepare() {
     fi
     if [ true = "$_diffconfig" ]; then
       if [ -z "$_diffconfig_name" ]; then
-        IFS= read -r -p 'Filename for the config fragment [leave empty to not generate fragment]: ' _diffconfig_name
+        IFS= read -r -p 'Filename for the config fragment [leave empty to abort]: ' _diffconfig_name
       fi
       if [ -z "$_diffconfig_name" ]; then
-        echo 'No file name given, not generating config fragment.'
-      else (
-        prev_pwd="${PWD:-$(pwd)}"
-        cd "$_where"
-        "${prev_pwd}/scripts/diffconfig" -m "${prev_pwd}/.config.orig" "${prev_pwd}/.config" > "$_diffconfig_name"
-      ) fi
+        echo 'No file name given, not saving config changes.'
+      else
+        ( cd "$_where"; "${srcdir}/linux-${_basekernel}/scripts/diffconfig" -m "${srcdir}/linux-${_basekernel}/.config.orig" "${srcdir}/linux-${_basekernel}/.config" > "$_diffconfig_name" )
+      fi
     fi
     rm .config.orig
   fi
-
-  make -s kernelrelease > version
-  msg2 "Prepared %s version %s" "$pkgbase" "$(<version)"
 }
 
 build() {
@@ -895,128 +791,137 @@ build() {
   fi
 
   if [ "$_force_all_threads" == "true" ]; then
-    _force_all_threads="-j$((`nproc`*2))"
+    _force_all_threads=-j$(nproc)
   else
-    _force_all_threads="${MAKEFLAGS}"
+    _force_all_threads=""
   fi
 
   # build!
-  _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 make ${_force_all_threads} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( make ${_force_all_threads} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+  _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 make $_force_all_threads LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
 }
 
 hackbase() {
-  pkgdesc="The $pkgdesc kernel and modules"
-  depends=('coreutils' 'kmod' 'initramfs')
+  pkgdesc="The ${pkgbase/linux/Linux} kernel and modules"
+  depends=('coreutils' 'linux-firmware' 'kmod' 'mkinitcpio>=0.7')
   optdepends=('linux-docs: Kernel hackers manual - HTML documentation that comes with the Linux kernel.'
               'crda: to set the correct wireless channels of your country.'
-              'linux-firmware: Firmware files for Linux'
               'modprobed-db: Keeps track of EVERY kernel module that has ever been probed. Useful for make localmodconfig.'
               'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
               'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
               'update-grub: Simple wrapper around grub-mkconfig.')
   provides=("linux=${pkgver}" "${pkgbase}")
+  backup=("etc/mkinitcpio.d/${pkgbase}.preset")
+  install=linux${_basever}-tkg.install
 
   cd "${srcdir}/linux-${_basekernel}-${_sub}"
 
   # get kernel version
-  local _kernver="$(<version)"
-  local modulesdir="$pkgdir/usr/lib/modules/$_kernver"
+  _kernver="$(make LOCALVERSION= kernelrelease)"
 
-  msg2 "Installing boot image..."
-  # systemd expects to find the kernel here to allow hibernation
-  # https://github.com/systemd/systemd/commit/edda44605f06a41fb86b7ab8128dcf99161d2344
-  install -Dm644 "$(make -s image_name)" "$modulesdir/vmlinuz"
+  mkdir -p "${pkgdir}"/{boot,usr/lib/modules}
+  make LOCALVERSION= INSTALL_MOD_PATH="${pkgdir}/usr" modules_install
+  cp arch/x86/boot/bzImage "${pkgdir}/boot/vmlinuz-${pkgbase}"
 
-  # Used by mkinitcpio to name the kernel
-  echo "$pkgbase" | install -Dm644 /dev/stdin "$modulesdir/pkgbase"
+  # make room for external modules
+  local _extramodules="extramodules-${_basekernel}-tkg-${_cpusched}"
+  ln -s "../${_extramodules}" "${pkgdir}/usr/lib/modules/${_kernver}/extramodules"
 
-  msg2 "Installing modules..."
-  make INSTALL_MOD_PATH="$pkgdir/usr" modules_install
+  # add real version for building modules and running depmod from hook
+  echo "${_kernver}" |
+    install -Dm644 /dev/stdin "${pkgdir}/usr/lib/modules/${_extramodules}/version"
 
   # remove build and source links
-  rm "$modulesdir"/{source,build}
+  rm "${pkgdir}"/usr/lib/modules/"${_kernver}"/{source,build}
 
-  msg2 "Fixing permissions..."
-  chmod -Rc u=rwX,go=rX "$pkgdir"
+  # now we call depmod...
+  depmod -b "${pkgdir}/usr" -F System.map "${_kernver}"
+
+  # add vmlinux
+  install -Dt "${pkgdir}/usr/lib/modules/${_kernver}/build" -m644 vmlinux
+
+  # sed expression for following substitutions
+  local _subst="
+    s|%PKGBASE%|${pkgbase}|g
+    s|%KERNVER%|${_kernver}|g
+    s|%EXTRAMODULES%|${_extramodules}|g
+  "
+
+  # hack to allow specifying an initially nonexisting install file
+  sed "${_subst}" "${startdir}/${install}" > "${startdir}/${install}.pkg"
+  true && install="${install}".pkg
+
+  # install mkinitcpio preset file
+  sed "${_subst}" "${srcdir}"/linux"${_basever}"-tkg.preset |
+    install -Dm644 /dev/stdin "${pkgdir}/etc/mkinitcpio.d/${pkgbase}.preset"
+
+  # install pacman hooks
+  sed "${_subst}" ${srcdir}/60-linux.hook |
+    install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/60-${pkgbase}.hook"
+  sed "${_subst}" ${srcdir}/90-linux.hook |
+    install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/90-${pkgbase}.hook"
 }
 
 hackheaders() {
-  pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
+  pkgdesc="Header files and scripts for building modules for ${pkgbase/linux/Linux} kernel"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
 
   cd "${srcdir}/linux-${_basekernel}-${_sub}"
-  local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
+  local _builddir="${pkgdir}/usr/lib/modules/${_kernver}/build"
 
-  msg2 "Installing build files..."
-  install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map \
-    localversion.* version vmlinux
-  install -Dt "$builddir/kernel" -m644 kernel/Makefile
-  install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
-  cp -t "$builddir" -a scripts
+  install -Dt "${_builddir}" -m644 Makefile .config Module.symvers
+  install -Dt "${_builddir}/kernel" -m644 kernel/Makefile
 
-  # add objtool for external module building and enabled VALIDATION_STACK option
-  install -Dt "$builddir/tools/objtool" tools/objtool/objtool
+  cp -t "${_builddir}" -a include scripts
 
-  # add xfs and shmem for aufs building
-  mkdir -p "$builddir"/{fs/xfs,mm}
+  install -Dt "${_builddir}/arch/x86" -m644 "arch/x86/Makefile"
+  install -Dt "${_builddir}/arch/x86/kernel" -m644 "arch/x86/kernel/asm-offsets.s"
 
-  msg2 "Installing headers..."
-  cp -t "$builddir" -a include
-  cp -t "$builddir/arch/x86" -a arch/x86/include
-  install -Dt "$builddir/arch/x86/kernel" -m644 arch/x86/kernel/asm-offsets.s
+  cp -t "${_builddir}/arch/x86" -a "arch/x86/include"
 
-  install -Dt "$builddir/drivers/md" -m644 drivers/md/*.h
-  install -Dt "$builddir/net/mac80211" -m644 net/mac80211/*.h
+  install -Dt "${_builddir}/drivers/md" -m644 drivers/md/*.h
+  install -Dt "${_builddir}/net/mac80211" -m644 net/mac80211/*.h
 
   # http://bugs.archlinux.org/task/13146
-  install -Dt "$builddir/drivers/media/i2c" -m644 drivers/media/i2c/msp3400-driver.h
+  install -Dt "${_builddir}/drivers/media/i2c" -m644 drivers/media/i2c/msp3400-driver.h
 
   # http://bugs.archlinux.org/task/20402
-  install -Dt "$builddir/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
-  install -Dt "$builddir/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
-  install -Dt "$builddir/drivers/media/tuners" -m644 drivers/media/tuners/*.h
+  install -Dt "${_builddir}/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
+  install -Dt "${_builddir}/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
+  install -Dt "${_builddir}/drivers/media/tuners" -m644 drivers/media/tuners/*.h
 
-  msg2 "Installing KConfig files..."
-  find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
+  # add xfs and shmem for aufs building
+  mkdir -p "${_builddir}"/{fs/xfs,mm}
 
-  msg2 "Removing unneeded architectures..."
-  local arch
-  for arch in "$builddir"/arch/*/; do
-    [[ $arch = */x86/ ]] && continue
-    echo "Removing $(basename "$arch")"
-    rm -r "$arch"
+  # copy in Kconfig files
+  find . -name Kconfig\* -exec install -Dm644 {} "${_builddir}/{}" \;
+
+  # add objtool for external module building and enabled VALIDATION_STACK option
+  install -Dt "${_builddir}/tools/objtool" tools/objtool/objtool
+
+  # remove unneeded architectures
+  local _arch
+  for _arch in "${_builddir}"/arch/*/; do
+    [[ ${_arch} == */x86/ ]] && continue
+    rm -r "${_arch}"
   done
 
-  msg2 "Removing documentation..."
-  rm -r "$builddir/Documentation"
+  # remove files already in linux-docs package
+  rm -r "${_builddir}/Documentation"
 
-  msg2 "Removing broken symlinks..."
-  find -L "$builddir" -type l -printf 'Removing %P\n' -delete
+  # Fix permissions
+  chmod -R u=rwX,go=rX "${_builddir}"
 
-  msg2 "Removing loose objects..."
-  find "$builddir" -type f -name '*.o' -printf 'Removing %P\n' -delete
-
-  msg2 "Stripping build tools..."
-  local file
-  while read -rd '' file; do
-    case "$(file -bi "$file")" in
-      application/x-sharedlib\;*)      # Libraries (.so)
-        strip -v $STRIP_SHARED "$file" ;;
-      application/x-archive\;*)        # Libraries (.a)
-        strip -v $STRIP_STATIC "$file" ;;
-      application/x-executable\;*)     # Binaries
-        strip -v $STRIP_BINARIES "$file" ;;
-      application/x-pie-executable\;*) # Relocatable binaries
-        strip -v $STRIP_SHARED "$file" ;;
+  # strip scripts directory
+  local _binary _strip
+  while read -rd '' _binary; do
+    case "$(file -bi "${_binary}")" in
+      *application/x-sharedlib*)  _strip="${STRIP_SHARED}"   ;; # Libraries (.so)
+      *application/x-archive*)    _strip="${STRIP_STATIC}"   ;; # Libraries (.a)
+      *application/x-executable*) _strip="${STRIP_BINARIES}" ;; # Binaries
+      *) continue ;;
     esac
-  done < <(find "$builddir" -type f -perm -u+x ! -name vmlinux -print0)
-
-  msg2 "Adding symlink..."
-  mkdir -p "$pkgdir/usr/src"
-  ln -sr "$builddir" "$pkgdir/usr/src/$pkgbase"
-
-  msg2 "Fixing permissions..."
-  chmod -Rc u=rwX,go=rX "$pkgdir"
+    /usr/bin/strip ${_strip} "${_binary}"
+  done < <(find "${_builddir}/scripts" -type f -perm -u+w -print0 2>/dev/null)
 
   if [ $_NUKR == "true" ]; then
     rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
@@ -1039,13 +944,11 @@ function exit_cleanup {
   
   # Remove temporarily copied files
   rm -rf "$_where"/*.patch
+  rm -rf "$_where"/*.hook
+  rm -rf "$_where"/*.install
+  rm -rf "$_where"/*.preset
   rm -rf "$_where"/*-profile.cfg
   rm -f "$_where"/config*
-
-  # Community patches removal in case of failure
-  for _p in ${_community_patches[@]}; do
-    rm -f "$_where"/$_p
-  done
 
   if [ $_NUKR == "true" ]; then
     rm -rf "$_where"/src/*
@@ -1053,6 +956,9 @@ function exit_cleanup {
     rm -rf "$srcdir"/linux-*
     rm -rf "$srcdir"/*.xz
     rm -rf "$srcdir"/*.patch
+    rm -rf "$srcdir"/*.hook
+    rm -rf "$srcdir"/*.install
+    rm -rf "$srcdir"/*.preset
     rm -rf "$srcdir"/*-profile.cfg
     rm -f "$srcdir"/config.x86_64
     rm -f "$srcdir"/customization.cfg

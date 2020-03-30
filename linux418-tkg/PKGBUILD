@@ -1,0 +1,389 @@
+# Based on the file created for Arch Linux by:
+# Tobias Powalowski <tpowa@archlinux.org>
+# Thomas Baechler <thomas@archlinux.org>
+
+# Contributor: Tk-Glitch <ti3nou at gmail dot com>
+
+where=$PWD # track basedir as different Arch based distros are moving srcdir around
+
+# CPU SCHED selector
+if [ ! -e $where/cpuschedset ]; then
+  plain "What CPU sched variant do you want to build/install?"
+  read -p "`echo $'  > 1.PDS\n    2.MUQSS\n    3.CFS\nchoice[1-3?]: '`" CONDITION;
+  if [ "$CONDITION" == "2" ]; then
+    echo "TkGExt=\"-tkg-muqss\"" > $where/cpuschedset
+  elif [ "$CONDITION" == "3" ]; then
+    echo "TkGExt=\"-tkg-cfs\"" > $where/cpuschedset
+  else
+    echo "TkGExt=\"-tkg-pds\"" > $where/cpuschedset
+  fi
+fi
+
+source $where/cpuschedset
+
+_basever=418
+pkgbase=linux${_basever}${TkGExt}
+pkgname=("${pkgbase}" "${pkgbase}-headers")
+_basekernel=4.18
+_sub=20
+pkgver=${_basekernel}.${_sub}
+pkgrel=35
+arch=('x86_64') # no i686 in here
+url="http://www.kernel.org/"
+license=('GPL2')
+makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'elfutils' 'schedtool' 'patchutils' 'flex')
+if [ $(pacman -Qs ccache | head -c1 | wc -c) -eq 1 ]; then
+  msg2 'ccache was found and will be used'
+  options=('!strip' 'ccache' 'makeflags')
+else
+  msg2 'ccache was not found and will not be used'
+  options=('!strip' 'makeflags')
+fi
+source=("https://www.kernel.org/pub/linux/kernel/v4.x/linux-${_basekernel}.tar.xz"
+        "https://www.kernel.org/pub/linux/kernel/v4.x/patch-${pkgver}.xz"
+        "aufs::git+https://github.com/sfjro/aufs4-standalone.git#branch=aufs${_basekernel}.11+"
+        'config.x86_64' # arch config with minor tweaks
+        'linux418-tkg.preset' # standard config files for mkinitcpio ramdisk
+        '60-linux.hook'     # pacman hook for depmod
+        '90-linux.hook'     # pacman hook for initramfs regeneration
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-pci-pme-wakeups.patch
+        0003-intel_idle-tweak-cpuidle-cstates.patch
+        0004-smpboot-reuse-timer-calibration.patch
+        0005-perf.patch
+        0006-glitched-base.patch
+        0007-glitched-muqss.patch
+        0007-patch-4.18-ck1
+        0008-glitched-pds.patch
+        0008-v4.18_pds099a.patch
+        0009-add-acs-overrides_iommu.patch
+)
+sha256sums=('19d8bcf49ef530cd4e364a45b4a22fa70714b70349c8100e7308488e26f1eaf1'
+            '4df7be05f173005ef38fc5ee7ec3260ee67a791794d5ab5533e62b7a520f6dd1'
+            'SKIP'
+            'e74f42259f4b5675c5b367cd2927d462a7874ea1fdacf3b0532580ea106547d3'
+            'ad6344badc91ad0630caacde83f7f9b97276f80d26a20619a87952be65492c65'
+            'ae2e95db94ef7176207c690224169594d49445e04249d2499e9d2fbc117a0b21'
+            '75f99f5239e03238f88d1a834c50043ec32b1dc568f2cc291b07d04718483919'
+            '37b86ca3de148a34258e3176dbf41488d9dbd19e93adbd22a062b3c41332ce85'
+            '83973dac77c6442530416c028373e01815541f694da5e7ed64b3fc8ff594268d'
+            '2e2b141d0d58d9f5aaec4c02c7a3582694dbc4f531ada83dd655f53af6214176'
+            '4b7aec763c90c0a96708d8fc58c50655599301504a0fd781016d9f1a22c1e3d9'
+            '4befb550510a99f0ec096ad8eb110b81633f592e5eb814d70f394ca96124eeca'
+            '342292f21fa89fd31f5e7cc01824e6c04d3364586ccc0ea7d9636ff69ee27120'
+            '231ab4ddc8d45ef6c238df1d8005fb00a90c4017fe514c361203b03c0478e586'
+            '15e4195621e8c66ee79714fd4753a7b757f524192ac1e9895389fcc70853ceb8'
+            'caa29c3ad491107e534de1556e72ed70fc1c1e4949f878047dbe83456ddb51cd'
+            'a760206039e1d155f2926f85bcbb2748577ece5748fb306faacd0a1f14a35881'
+            '8ab566ab93723bb1c372e8f62f8cd714e6a16fc414d703ba4d255f132cffadd8')
+
+prepare() {
+  rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
+
+  ln -s "${where}/cpuschedset" "${srcdir}" # workaround for non-pure Arch
+
+  # AUFS
+  cd "${srcdir}/aufs"
+  rm -v -f $(find . -type f -name '*.orig')
+  rm -rf "../tmp/linux-${_basekernel}"
+  mkdir -p "../tmp/linux-${_basekernel}"
+  cp -a fs "../tmp/linux-${_basekernel}"
+  cp -a include "../tmp/linux-${_basekernel}"
+  cp -a Documentation "../tmp/linux-${_basekernel}"
+  rm "../tmp/linux-${_basekernel}/include/uapi/linux/Kbuild"
+  cd "../tmp"
+  diff -Naur null linux-${_basekernel}  | filterdiff | \
+  sed -e 's|null\(/include/uapi/linux/Kbuild\)|linux-'"${_basekernel}"'-old\1|;s|^--- null.*|--- /dev/null|;\|linux-'"${_basekernel}"'/include/uapi/linux/Kbuild|,${\|@@ -0,0 +1 @@|,$d}' > aufs${_basekernel}.patch
+  mv *patch* "${srcdir}"
+  cd "${srcdir}/aufs"
+  mv *patch* "${srcdir}"
+  cd "${srcdir}"
+  rm -rf tmp aufs
+
+  cd "${srcdir}/linux-${_basekernel}"
+  
+  # add upstream patch
+  patch -p1 -i ../patch-${pkgver}
+
+  # ARCH Patches
+  patch -Np1 -i ../0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+
+  # AUFS Patches
+  patch -Np1 -i ../aufs${_basekernel}.patch
+  patch -Np1 -i ../aufs4-base.patch
+  patch -Np1 -i ../aufs4-kbuild.patch
+  patch -Np1 -i ../aufs4-loopback.patch
+  patch -Np1 -i ../aufs4-mmap.patch
+  patch -Np1 -i ../aufs4-standalone.patch
+  patch -Np1 -i ../tmpfs-idr.patch
+  patch -Np1 -i ../vfs-ino.patch
+
+  # TkG
+  patch -Np1 -i ../0002-pci-pme-wakeups.patch
+  patch -Np1 -i ../0003-intel_idle-tweak-cpuidle-cstates.patch
+  patch -Np1 -i ../0004-smpboot-reuse-timer-calibration.patch
+  patch -Np1 -i ../0005-perf.patch
+  
+  patch -Np1 -i ../0006-glitched-base.patch
+
+  if [ "${TkGExt}" == "-tkg-muqss" ]; then
+    # MuQSS
+    patch -Np1 -i ../0007-patch-4.18-ck1
+    patch -Np1 -i ../0007-glitched-muqss.patch
+  elif [ "${TkGExt}" == "-tkg-pds" ]; then
+    # PDS-mq
+    patch -Np1 -i ../0008-v4.18_pds099a.patch
+    patch -Np1 -i ../0008-glitched-pds.patch
+  fi
+
+  cat "${srcdir}/config.x86_64" > ./.config
+  
+  # LOCALVERSION
+  sed -i "s|CONFIG_LOCALVERSION=.*|CONFIG_LOCALVERSION=\"${TkGExt}\"|g" ./.config
+  sed -i "s|CONFIG_LOCALVERSION_AUTO=.*|CONFIG_LOCALVERSION_AUTO=n|" ./.config
+
+  # set extraversion to pkgrel
+  sed -ri "s|^(EXTRAVERSION =).*|\1 -${pkgrel}|" Makefile
+
+  if [ "${TkGExt}" == "-tkg-muqss" ]; then
+  # MuQSS default config
+  sed -i -e 's/CONFIG_INIT_ENV_ARG_LIMIT=32/CONFIG_SCHED_MUQSS=y\nCONFIG_INIT_ENV_ARG_LIMIT=32/' ./.config
+  elif [ "${TkGExt}" == "-tkg-pds" ]; then
+  # PDS default config
+  sed -i -e 's/CONFIG_INIT_ENV_ARG_LIMIT=32/CONFIG_SCHED_PDS=y\nCONFIG_INIT_ENV_ARG_LIMIT=32/' ./.config
+  else
+  # CFS default config
+  sed -i -e 's/# CONFIG_FAIR_GROUP_SCHED is not set/CONFIG_FAIR_GROUP_SCHED=y/' ./.config
+  sed -i -e 's/# CONFIG_CFS_BANDWIDTH is not set/CONFIG_CFS_BANDWIDTH=y/' ./.config
+  sed -i -e 's/# CONFIG_CGROUP_CPUACCT is not set/CONFIG_CGROUP_CPUACCT=y/' ./.config
+  sed -i -e 's/# CONFIG_SCHED_AUTOGROUP is not set/CONFIG_SCHED_AUTOGROUP=y/' ./.config
+  fi
+
+  plain ""
+  plain "Disable FUNCTION_TRACER/GRAPH_TRACER? Lowers overhead but limits debugging and analyzing of kernel functions."
+  read -p "`echo $'    > N/y : '`" CONDITION;
+  if [ "$CONDITION" == "y" ]; then
+  sed -i -e 's/CONFIG_FUNCTION_TRACER=y/# CONFIG_FUNCTION_TRACER is not set/' \
+      -i -e '/CONFIG_FUNCTION_GRAPH_TRACER=y/d' \
+      -i -e '/CONFIG_DYNAMIC_FTRACE=y/d' \
+      -i -e '/CONFIG_DYNAMIC_FTRACE_WITH_REGS=y/d' ./.config
+  fi
+
+  plain ""
+  plain "Disable NUMA? Lowers overhead, but breaks CUDA/NvEnc on Nvidia equipped systems if disabled."
+  plain "https://bbs.archlinux.org/viewtopic.php?id=239174"
+  read -p "`echo $'    > N/y : '`" CONDITION;
+  if [ "$CONDITION" == "y" ]; then
+  # disable NUMA since 99.9% of users do not have multiple CPUs but do have multiple cores in one CPU
+  sed -i -e 's/CONFIG_NUMA=y/# CONFIG_NUMA is not set/' \
+      -i -e '/CONFIG_AMD_NUMA=y/d' \
+      -i -e '/CONFIG_X86_64_ACPI_NUMA=y/d' \
+      -i -e '/CONFIG_NODES_SPAN_OTHER_NODES=y/d' \
+      -i -e '/# CONFIG_NUMA_EMU is not set/d' \
+      -i -e '/CONFIG_NODES_SHIFT=6/d' \
+      -i -e '/CONFIG_NEED_MULTIPLE_NODES=y/d' \
+      -i -e '/CONFIG_USE_PERCPU_NUMA_NODE_ID=y/d' \
+      -i -e '/CONFIG_ACPI_NUMA=y/d' ./.config
+  fi
+
+  plain ""
+  plain "Use ACS override patch?"
+  plain "https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Bypassing_the_IOMMU_groups_.28ACS_override_patch.29"
+  read -p "`echo $'    > N/y : '`" CONDITION;
+  if [ "$CONDITION" == "y" ]; then
+    patch -Np1 -i ../0009-add-acs-overrides_iommu.patch
+  fi
+
+  # don't run depmod on 'make install'. We'll do this ourselves in packaging
+  sed -i '2iexit 0' scripts/depmod.sh
+
+  # get kernel version
+  make prepare
+
+  plain ""
+  plain "Use modprobed db to clean config from unneeded modules? Speeds up compilation considerably."
+  plain "https://wiki.archlinux.org/index.php/Modprobed-db"
+  plain "!!!! Make sure to have a well populated db !!!!"
+  read -p "`echo $'    > N/y : '`" CONDITION;
+  if [ "$CONDITION" == "y" ]; then
+    make LSMOD=$HOME/.config/modprobed.db localmodconfig
+  fi
+
+  # load configuration
+  # Configure the kernel. Replace the line below with one of your choice.
+  #make menuconfig # CLI menu for configuration
+  #make nconfig # new CLI menu for configuration
+  #make xconfig # X-based configuration
+  #make oldconfig # using old config from previous kernel version
+  # ... or manually edit .config
+
+  # rewrite configuration
+  yes "" | make config >/dev/null
+}
+
+build() {
+  cd "${srcdir}/linux-${_basekernel}"
+
+  # build!
+  time schedtool -B -n 1 -e ionice -n 1 make ${MAKEFLAGS} LOCALVERSION= bzImage modules
+}
+
+hackbase() {
+  pkgdesc="The ${pkgbase/linux/Linux} kernel and modules"
+  depends=('coreutils' 'linux-firmware' 'kmod' 'mkinitcpio>=0.7')
+  optdepends=('linux-docs: Kernel hackers manual - HTML documentation that comes with the Linux kernel.'
+              'crda: to set the correct wireless channels of your country.'
+              'modprobed-db: Keeps track of EVERY kernel module that has ever been probed. Useful for make localmodconfig.'
+              'nvidia-dev-tkg: NVIDIA Vulkan Developer drivers for all installed kernels - non-dkms version.'
+              'nvidia-dev-dkms-tkg: NVIDIA Vulkan Developer drivers for all installed kernels - dkms version.'
+              'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
+              'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
+              'update-grub: Simple wrapper around grub-mkconfig.')
+  provides=("linux=${pkgver}" "${pkgbase}")
+  backup=("etc/mkinitcpio.d/${pkgbase}.preset")
+  install=linux${_basever}-tkg.install
+
+  cd "${srcdir}/linux-${_basekernel}"
+  
+  # get kernel version
+  _kernver="$(make LOCALVERSION= kernelrelease)"
+
+  mkdir -p "${pkgdir}"/{boot,usr/lib/modules}
+  make LOCALVERSION= INSTALL_MOD_PATH="${pkgdir}/usr" modules_install
+  cp arch/x86/boot/bzImage "${pkgdir}/boot/vmlinuz-${pkgbase}"
+  
+  # make room for external modules
+  local _extramodules="extramodules-${_basekernel}${TkGExt}"
+  ln -s "../${_extramodules}" "${pkgdir}/usr/lib/modules/${_kernver}/extramodules"
+
+  # add real version for building modules and running depmod from hook
+  echo "${_kernver}" |
+    install -Dm644 /dev/stdin "${pkgdir}/usr/lib/modules/${_extramodules}/version"
+
+  # remove build and source links
+  rm "${pkgdir}"/usr/lib/modules/${_kernver}/{source,build}
+
+  # now we call depmod...
+  depmod -b "${pkgdir}/usr" -F System.map "${_kernver}"
+
+  # add vmlinux
+  install -Dt "${pkgdir}/usr/lib/modules/${_kernver}/build" -m644 vmlinux
+
+  # sed expression for following substitutions
+  local _subst="
+    s|%PKGBASE%|${pkgbase}|g
+    s|%KERNVER%|${_kernver}|g
+    s|%EXTRAMODULES%|${_extramodules}|g
+  "
+
+  # hack to allow specifying an initially nonexisting install file
+  sed "${_subst}" "${startdir}/${install}" > "${startdir}/${install}.pkg"
+  true && install=${install}.pkg
+
+  # install mkinitcpio preset file
+  sed "${_subst}" ${srcdir}/linux${_basever}-tkg.preset |
+    install -Dm644 /dev/stdin "${pkgdir}/etc/mkinitcpio.d/${pkgbase}.preset"
+
+  # install pacman hooks
+  sed "${_subst}" ${srcdir}/60-linux.hook |
+    install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/60-${pkgbase}.hook"
+  sed "${_subst}" ${srcdir}/90-linux.hook |
+    install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/90-${pkgbase}.hook"
+}
+
+hackheaders() {
+  pkgdesc="Header files and scripts for building modules for ${pkgbase/linux/Linux} kernel"
+  provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
+
+  cd "${srcdir}/linux-${_basekernel}"
+  local _builddir="${pkgdir}/usr/lib/modules/${_kernver}/build"
+
+  install -Dt "${_builddir}" -m644 Makefile .config Module.symvers
+  install -Dt "${_builddir}/kernel" -m644 kernel/Makefile
+
+  mkdir "${_builddir}/.tmp_versions"
+
+  cp -t "${_builddir}" -a include scripts
+
+  install -Dt "${_builddir}/arch/x86" -m644 "arch/x86/Makefile"
+  install -Dt "${_builddir}/arch/x86/kernel" -m644 "arch/x86/kernel/asm-offsets.s"
+
+  cp -t "${_builddir}/arch/x86" -a "arch/x86/include"
+
+  install -Dt "${_builddir}/drivers/md" -m644 drivers/md/*.h
+  install -Dt "${_builddir}/net/mac80211" -m644 net/mac80211/*.h
+
+  # http://bugs.archlinux.org/task/13146
+  install -Dt "${_builddir}/drivers/media/i2c" -m644 drivers/media/i2c/msp3400-driver.h
+
+  # http://bugs.archlinux.org/task/20402
+  install -Dt "${_builddir}/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
+  install -Dt "${_builddir}/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
+  install -Dt "${_builddir}/drivers/media/tuners" -m644 drivers/media/tuners/*.h
+
+  # add xfs and shmem for aufs building
+  mkdir -p "${_builddir}"/{fs/xfs,mm}
+
+  # copy in Kconfig files
+  find . -name Kconfig\* -exec install -Dm644 {} "${_builddir}/{}" \;
+
+  # add objtool for external module building and enabled VALIDATION_STACK option
+  install -Dt "${_builddir}/tools/objtool" tools/objtool/objtool
+
+  # remove unneeded architectures
+  local _arch
+  for _arch in "${_builddir}"/arch/*/; do
+    [[ ${_arch} == */x86/ ]] && continue
+    rm -r "${_arch}"
+  done
+
+  # remove files already in linux-docs package
+  rm -r "${_builddir}/Documentation"
+
+  # Fix permissions
+  chmod -R u=rwX,go=rX "${_builddir}"
+
+  # strip scripts directory
+  local _binary _strip
+  while read -rd '' _binary; do
+    case "$(file -bi "${_binary}")" in
+      *application/x-sharedlib*)  _strip="${STRIP_SHARED}"   ;; # Libraries (.so)
+      *application/x-archive*)    _strip="${STRIP_STATIC}"   ;; # Libraries (.a)
+      *application/x-executable*) _strip="${STRIP_BINARIES}" ;; # Binaries
+      *) continue ;;
+    esac
+    /usr/bin/strip ${_strip} "${_binary}"
+  done < <(find "${_builddir}/scripts" -type f -perm -u+w -print0 2>/dev/null)
+
+  rm -rf $srcdir # Nuke the entire src folder so it'll get regenerated clean on next build
+  rm -v $where/cpuschedset # state tracker end
+}
+
+package_linux418-tkg-pds() {
+hackbase
+}
+
+package_linux418-tkg-muqss() {
+hackbase
+}
+
+package_linux418-tkg-cfs() {
+hackbase
+}
+
+package_linux418-tkg-pds-headers() {
+hackheaders
+}
+
+package_linux418-tkg-muqss-headers() {
+hackheaders
+}
+
+package_linux418-tkg-cfs-headers() {
+hackheaders
+}
+
+# Remove the state tracker on failed/stopped compilation
+trap "{ rm -f $where/cpuschedset; }" EXIT

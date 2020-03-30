@@ -1,0 +1,82 @@
+From 60570799d9016318d8aa3c6be31e406930df4163 Mon Sep 17 00:00:00 2001
+From: kuzetsa <kuzetsa@gmail.com>
+Date: Thu, 16 Aug 2018 18:31:14 -0400
+Subject: [PATCH] MuQSS.c needs irq_regs.h to use get_irq_regs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+fix(es) related to CVE-2018-{3615,3620,3646} are
+available in 4.14.63 so this fix is useful for
+anyone needing to use 4.14.x LTS branch...
+
+specifically:
+
+implicit declaration of function ‘get_irq_regs’
+
+(it's to resolve this build error on 4.14.63)
+---
+ kernel/sched/MuQSS.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/kernel/sched/MuQSS.c b/kernel/sched/MuQSS.c
+index 5dea2b0b3999b..2bc29b562b0c1 100644
+--- a/kernel/sched/MuQSS.c
++++ b/kernel/sched/MuQSS.c
+@@ -72,6 +72,14 @@
+ 
+ #include "MuQSS.h"
+ 
++/* needing to include irq_regs.h, "because reasons"...
++ * implicit declaration of function ‘get_irq_regs’;
++ * did you mean ‘get_ibs_caps’?
++ * [-Werror=implicit-function-declaration]
++ * ^ this is because autodetect is not flawless
++ */
++#include <asm/irq_regs.h>
++
+ #define rt_prio(prio)		unlikely((prio) < MAX_RT_PRIO)
+ #define rt_task(p)		rt_prio((p)->prio)
+ #define batch_task(p)		(unlikely((p)->policy == SCHED_BATCH))
+
+From 7e92ce967e23b0c7185d1c7f77b70298d6e15f58 Mon Sep 17 00:00:00 2001
+From: Steven Barrett <steven@liquorix.net>
+Date: Sat, 25 Aug 2018 15:19:09 -0500
+Subject: [PATCH] muqss: Remove specific TASK_PARKED code in MuQSS
+
+Per stable commit 2caa5529cb44baf69e766707e1d30482e47391a4,
+kthread_park_complete was removed and TASK_PARKED is no longer a special
+state.  Remove the corresponding code in MuQSS.
+---
+ kernel/sched/MuQSS.c | 10 +---------
+ 1 file changed, 1 insertion(+), 9 deletions(-)
+
+diff --git a/kernel/sched/MuQSS.c b/kernel/sched/MuQSS.c
+index 2bc29b562b0c1..b5a4052d28066 100644
+--- a/kernel/sched/MuQSS.c
++++ b/kernel/sched/MuQSS.c
+@@ -2682,9 +2682,7 @@ static void finish_task_switch(struct task_struct *prev)
+ 		membarrier_mm_sync_core_before_usermode(mm);
+ 		mmdrop(mm);
+ 	}
+-	if (unlikely(prev_state & (TASK_DEAD | TASK_PARKED))) {
+-		switch (prev_state) {
+-		case TASK_DEAD:
++	if (unlikely(prev_state == TASK_DEAD)) {
+ 			/*
+ 			 * Remove function-return probe instances associated with this
+ 			 * task and put them back on the free list.
+@@ -2695,12 +2693,6 @@ static void finish_task_switch(struct task_struct *prev)
+ 			put_task_stack(prev);
+ 
+ 			put_task_struct(prev);
+-			break;
+-
+-		case TASK_PARKED:
+-			kthread_park_complete(prev);
+-			break;
+-		}
+ 	}
+ }
+ 
+ 
