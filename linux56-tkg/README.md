@@ -35,3 +35,10 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 - **optional** overrides for missing ACS capabilities
 - **optional** ZFS fpu symbols
 - **optional** Fsync support (proton)
+
+
+```
+git clone https://github.com/Frogging-Family/linux-tkg.git
+cd linux-tkg/linux56-tkg
+makepkg -si
+```
