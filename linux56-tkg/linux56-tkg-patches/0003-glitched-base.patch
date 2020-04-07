@@ -1457,3 +1457,279 @@ index d2fa3e9ccd97c..bd10cb02fc0ff 100644
  	if (!strcmp(str, "force"))
  		force_load = 1;
  	if (!strcmp(str, "hwp_only"))
+
+From: Tk-Glitch <ti3nou@gmail.com>
+Date: Mon, 6 Apr 2020 7:20:12 +0100
+Subject: Import backported drm amd patchset based on
+https://patchwork.freedesktop.org/series/74931/#rev2
+
+Due to recent firmware changes, powerplay power limit
+isn't being applied/used. This patchset addresses
+the issue.
+
+diff --git a/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h b/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
+index 657a6f17e91f..323e7e61493b 100644
+--- a/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
++++ b/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
+@@ -570,6 +570,7 @@  struct pptable_funcs {
+ 	int (*override_pcie_parameters)(struct smu_context *smu);
+ 	uint32_t (*get_pptable_power_limit)(struct smu_context *smu);
+ 	int (*disable_umc_cdr_12gbps_workaround)(struct smu_context *smu);
++	int (*set_power_source)(struct smu_context *smu, enum smu_power_src_type power_src);
+ };
+ 
+ int smu_load_microcode(struct smu_context *smu);
+diff --git a/drivers/gpu/drm/amd/powerplay/smu_internal.h b/drivers/gpu/drm/amd/powerplay/smu_internal.h
+index 6900877de845..40c35bcc5a0a 100644
+--- a/drivers/gpu/drm/amd/powerplay/smu_internal.h
++++ b/drivers/gpu/drm/amd/powerplay/smu_internal.h
+@@ -211,4 +211,7 @@  static inline int smu_send_smc_msg(struct smu_context *smu, enum smu_message_typ
+ #define smu_disable_umc_cdr_12gbps_workaround(smu) \
+ 	((smu)->ppt_funcs->disable_umc_cdr_12gbps_workaround ? (smu)->ppt_funcs->disable_umc_cdr_12gbps_workaround((smu)) : 0)
+ 
++#define smu_set_power_source(smu, power_src) \
++	((smu)->ppt_funcs->set_power_source ? (smu)->ppt_funcs->set_power_source((smu), (power_src)) : 0)
++
+ #endif
+diff --git a/drivers/gpu/drm/amd/powerplay/inc/smu_v11_0.h b/drivers/gpu/drm/amd/powerplay/inc/smu_v11_0.h
+index 1c88219fe403..674e426ed59b 100644
+--- a/drivers/gpu/drm/amd/powerplay/inc/smu_v11_0.h
++++ b/drivers/gpu/drm/amd/powerplay/inc/smu_v11_0.h
+@@ -267,4 +267,7 @@  uint32_t smu_v11_0_get_max_power_limit(struct smu_context *smu);
+ int smu_v11_0_set_performance_level(struct smu_context *smu,
+ 				    enum amd_dpm_forced_level level);
+ 
++int smu_v11_0_set_power_source(struct smu_context *smu,
++			       enum smu_power_src_type power_src);
++
+ #endif
+diff --git a/drivers/gpu/drm/amd/powerplay/smu_v11_0.c b/drivers/gpu/drm/amd/powerplay/smu_v11_0.c
+index 4fd77c7cfc80..20174bed11ce 100644
+--- a/drivers/gpu/drm/amd/powerplay/smu_v11_0.c
++++ b/drivers/gpu/drm/amd/powerplay/smu_v11_0.c
+@@ -1939,3 +1939,17 @@  int smu_v11_0_set_performance_level(struct smu_context *smu,
+ 	return ret;
+ }
+ 
++int smu_v11_0_set_power_source(struct smu_context *smu,
++			       enum smu_power_src_type power_src)
++{
++	int pwr_source;
++
++	pwr_source = smu_power_get_index(smu, (uint32_t)power_src);
++	if (pwr_source < 0)
++		return -EINVAL;
++
++	return smu_send_smc_msg_with_param(smu,
++					SMU_MSG_NotifyPowerSource,
++					pwr_source);
++}
++
+diff --git a/drivers/gpu/drm/amd/powerplay/navi10_ppt.c b/drivers/gpu/drm/amd/powerplay/navi10_ppt.c
+index d66dfa7410b6..a23eaac28095 100644
+--- a/drivers/gpu/drm/amd/powerplay/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/powerplay/navi10_ppt.c
+@@ -2369,6 +2369,7 @@  static const struct pptable_funcs navi10_ppt_funcs = {
+ 	.get_pptable_power_limit = navi10_get_pptable_power_limit,
+ 	.run_btc = navi10_run_btc,
+ 	.disable_umc_cdr_12gbps_workaround = navi10_disable_umc_cdr_12gbps_workaround,
++	.set_power_source = smu_v11_0_set_power_source,
+ };
+ 
+ void navi10_set_ppt_funcs(struct smu_context *smu)
+diff --git a/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c b/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
+index f6d4b0ef46ad..2cfb911ab370 100644
+--- a/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
++++ b/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
+@@ -1154,6 +1154,21 @@  static int smu_smc_table_hw_init(struct smu_context *smu,
+ 				}
+ 			}
+ 		}
++
++		if (adev->asic_type >= CHIP_NAVI10 &&
++		    adev->asic_type <= CHIP_NAVI12) {
++			/*
++			 * For Navi1X, manually switch it to AC mode as PMFW
++			 * may boot it with DC mode.
++			 * TODO: should check whether we are indeed under AC
++			 * mode before doing this.
++			 */
++			ret = smu_set_power_source(smu, SMU_POWER_SOURCE_AC);
++			if (ret) {
++				pr_err("Failed to switch to AC mode!\n");
++				return ret;
++			}
++		}
+ 	}
+ 	if (adev->asic_type != CHIP_ARCTURUS) {
+ 		ret = smu_notify_display_change(smu);
+diff --git a/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c b/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
+index 2cfb911ab370..54d156bbc0f3 100644
+--- a/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
++++ b/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
+@@ -1155,15 +1155,15 @@  static int smu_smc_table_hw_init(struct smu_context *smu,
+ 			}
+ 		}
+ 
+-		if (adev->asic_type >= CHIP_NAVI10 &&
+-		    adev->asic_type <= CHIP_NAVI12) {
++		if (smu->ppt_funcs->set_power_source) {
+ 			/*
+ 			 * For Navi1X, manually switch it to AC mode as PMFW
+ 			 * may boot it with DC mode.
+-			 * TODO: should check whether we are indeed under AC
+-			 * mode before doing this.
+ 			 */
+-			ret = smu_set_power_source(smu, SMU_POWER_SOURCE_AC);
++			if (adev->pm.ac_power)
++				ret = smu_set_power_source(smu, SMU_POWER_SOURCE_AC);
++			else
++				ret = smu_set_power_source(smu, SMU_POWER_SOURCE_DC);
+ 			if (ret) {
+ 				pr_err("Failed to switch to AC mode!\n");
+ 				return ret;
+diff --git a/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h b/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
+index 323e7e61493b..18172dfec947 100644
+--- a/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
++++ b/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
+@@ -408,6 +408,7 @@  struct smu_context
+ 	uint32_t smc_if_version;
+ 
+ 	bool uploading_custom_pp_table;
++	bool dc_controlled_by_gpio;
+ };
+ 
+ struct i2c_adapter;
+diff --git a/drivers/gpu/drm/amd/powerplay/navi10_ppt.c b/drivers/gpu/drm/amd/powerplay/navi10_ppt.c
+index a23eaac28095..9c60b38ab53a 100644
+--- a/drivers/gpu/drm/amd/powerplay/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/powerplay/navi10_ppt.c
+@@ -347,7 +347,6 @@  navi10_get_allowed_feature_mask(struct smu_context *smu,
+ 				| FEATURE_MASK(FEATURE_DS_DCEFCLK_BIT)
+ 				| FEATURE_MASK(FEATURE_FW_DSTATE_BIT)
+ 				| FEATURE_MASK(FEATURE_BACO_BIT)
+-				| FEATURE_MASK(FEATURE_ACDC_BIT)
+ 				| FEATURE_MASK(FEATURE_GFX_SS_BIT)
+ 				| FEATURE_MASK(FEATURE_APCC_DFLL_BIT)
+ 				| FEATURE_MASK(FEATURE_FW_CTF_BIT)
+@@ -391,6 +390,9 @@  navi10_get_allowed_feature_mask(struct smu_context *smu,
+ 	if (smu->adev->pg_flags & AMD_PG_SUPPORT_JPEG)
+ 		*(uint64_t *)feature_mask |= FEATURE_MASK(FEATURE_JPEG_PG_BIT);
+ 
++	if (smu->dc_controlled_by_gpio)
++		*(uint64_t *)feature_mask |= FEATURE_MASK(FEATURE_ACDC_BIT);
++
+ 	/* disable DPM UCLK and DS SOCCLK on navi10 A0 secure board */
+ 	if (is_asic_secure(smu)) {
+ 		/* only for navi10 A0 */
+@@ -525,6 +527,9 @@  static int navi10_store_powerplay_table(struct smu_context *smu)
+ 
+ 	table_context->thermal_controller_type = powerplay_table->thermal_controller_type;
+ 
++	if (powerplay_table->platform_caps & SMU_11_0_PP_PLATFORM_CAP_HARDWAREDC)
++		smu->dc_controlled_by_gpio = true;
++
+ 	mutex_lock(&smu_baco->mutex);
+ 	if (powerplay_table->platform_caps & SMU_11_0_PP_PLATFORM_CAP_BACO ||
+ 	    powerplay_table->platform_caps & SMU_11_0_PP_PLATFORM_CAP_MACO)
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_pm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_pm.c
+index bc3cf04a1a94..f197f1be0969 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_pm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_pm.c
+@@ -92,6 +92,9 @@  void amdgpu_pm_acpi_event_handler(struct amdgpu_device *adev)
+ 		if (adev->powerplay.pp_funcs->enable_bapm)
+ 			amdgpu_dpm_enable_bapm(adev, adev->pm.ac_power);
+ 		mutex_unlock(&adev->pm.mutex);
++
++		if (is_support_sw_smu(adev))
++			smu_set_ac_dc(&adev->smu);
+ 	}
+ }
+ 
+diff --git a/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c b/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
+index 54d156bbc0f3..6f4015f87781 100644
+--- a/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
++++ b/drivers/gpu/drm/amd/powerplay/amdgpu_smu.c
+@@ -2087,6 +2087,29 @@  int smu_set_watermarks_for_clock_ranges(struct smu_context *smu,
+ 	return 0;
+ }
+ 
++int smu_set_ac_dc(struct smu_context *smu)
++{
++	int ret = 0;
++
++	/* controlled by firmware */
++	if (smu->dc_controlled_by_gpio)
++		return 0;
++
++	mutex_lock(&smu->mutex);
++	if (smu->ppt_funcs->set_power_source) {
++		if (smu->adev->pm.ac_power)
++			ret = smu_set_power_source(smu, SMU_POWER_SOURCE_AC);
++		else
++			ret = smu_set_power_source(smu, SMU_POWER_SOURCE_DC);
++		if (ret)
++			pr_err("Failed to switch to %s mode!\n",
++			       smu->adev->pm.ac_power ? "AC" : "DC");
++	}
++	mutex_unlock(&smu->mutex);
++
++	return ret;
++}
++
+ const struct amd_ip_funcs smu_ip_funcs = {
+ 	.name = "smu",
+ 	.early_init = smu_early_init,
+diff --git a/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h b/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
+index 18172dfec947..ae2c318dd6fa 100644
+--- a/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
++++ b/drivers/gpu/drm/amd/powerplay/inc/amdgpu_smu.h
+@@ -720,6 +720,7 @@  int smu_get_dpm_level_range(struct smu_context *smu, enum smu_clk_type clk_type,
+ enum amd_dpm_forced_level smu_get_performance_level(struct smu_context *smu);
+ int smu_force_performance_level(struct smu_context *smu, enum amd_dpm_forced_level level);
+ int smu_set_display_count(struct smu_context *smu, uint32_t count);
++int smu_set_ac_dc(struct smu_context *smu);
+ bool smu_clk_dpm_is_enabled(struct smu_context *smu, enum smu_clk_type clk_type);
+ const char *smu_get_message_name(struct smu_context *smu, enum smu_message_type type);
+ const char *smu_get_feature_name(struct smu_context *smu, enum smu_feature_mask feature);
+
+diff --git a/drivers/gpu/drm/amd/powerplay/smu_v11_0.c b/drivers/gpu/drm/amd/powerplay/smu_v11_0.c
+index 20174bed11ce..d19e1d0d56c0 100644
+--- a/drivers/gpu/drm/amd/powerplay/smu_v11_0.c
++++ b/drivers/gpu/drm/amd/powerplay/smu_v11_0.c
+@@ -1525,6 +1525,12 @@  int smu_v11_0_set_xgmi_pstate(struct smu_context *smu,
+ 	return ret;
+ }
+ 
++static int smu_v11_0_ack_ac_dc_interrupt(struct smu_context *smu)
++{
++	return smu_send_smc_msg(smu,
++				SMU_MSG_ReenableAcDcInterrupt);
++}
++
+ #define THM_11_0__SRCID__THM_DIG_THERM_L2H		0		/* ASIC_TEMP > CG_THERMAL_INT.DIG_THERM_INTH  */
+ #define THM_11_0__SRCID__THM_DIG_THERM_H2L		1		/* ASIC_TEMP < CG_THERMAL_INT.DIG_THERM_INTL  */
+ 
+@@ -1558,6 +1565,9 @@  static int smu_v11_0_irq_process(struct amdgpu_device *adev,
+ 		break;
+ 
+ 		}
++	} else if (client_id == SOC15_IH_CLIENTID_MP1) {
++		if (src_id == 0xfe)
++			smu_v11_0_ack_ac_dc_interrupt(&adev->smu);
+ 	}
+ 
+ 	return 0;
+@@ -1597,6 +1607,12 @@  int smu_v11_0_register_irq_handler(struct smu_context *smu)
+ 	if (ret)
+ 		return ret;
+ 
++	ret = amdgpu_irq_add_id(adev, SOC15_IH_CLIENTID_MP1,
++				0xfe,
++				irq_src);
++	if (ret)
++		return ret;
++
+ 	return ret;
+ }
+ 
