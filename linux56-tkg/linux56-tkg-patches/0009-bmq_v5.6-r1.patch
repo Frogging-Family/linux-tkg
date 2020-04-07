@@ -172,43 +172,6 @@ index f18d5067cd0f..fe489fc01c73 100644
  /*
   * Frequency of the spu scheduler tick.  By default we do one SPU scheduler
   * tick for every 10 CPU scheduler ticks.
-diff --git a/drivers/cpufreq/cpufreq_conservative.c b/drivers/cpufreq/cpufreq_conservative.c
-index 737ff3b9c2c0..b5bc5a1b6de7 100644
---- a/drivers/cpufreq/cpufreq_conservative.c
-+++ b/drivers/cpufreq/cpufreq_conservative.c
-@@ -28,8 +28,8 @@ struct cs_dbs_tuners {
- };
- 
- /* Conservative governor macros */
--#define DEF_FREQUENCY_UP_THRESHOLD		(80)
--#define DEF_FREQUENCY_DOWN_THRESHOLD		(20)
-+#define DEF_FREQUENCY_UP_THRESHOLD		(63)
-+#define DEF_FREQUENCY_DOWN_THRESHOLD		(26)
- #define DEF_FREQUENCY_STEP			(5)
- #define DEF_SAMPLING_DOWN_FACTOR		(1)
- #define MAX_SAMPLING_DOWN_FACTOR		(10)
-diff --git a/drivers/cpufreq/cpufreq_ondemand.c b/drivers/cpufreq/cpufreq_ondemand.c
-index 82a4d37ddecb..1130e0f5db72 100644
---- a/drivers/cpufreq/cpufreq_ondemand.c
-+++ b/drivers/cpufreq/cpufreq_ondemand.c
-@@ -18,7 +18,7 @@
- #include "cpufreq_ondemand.h"
- 
- /* On-demand governor macros */
--#define DEF_FREQUENCY_UP_THRESHOLD		(80)
-+#define DEF_FREQUENCY_UP_THRESHOLD		(63)
- #define DEF_SAMPLING_DOWN_FACTOR		(1)
- #define MAX_SAMPLING_DOWN_FACTOR		(100000)
- #define MICRO_FREQUENCY_UP_THRESHOLD		(95)
-@@ -127,7 +127,7 @@ static void dbs_freq_increase(struct cpufreq_policy *policy, unsigned int freq)
- }
- 
- /*
-- * Every sampling_rate, we check, if current idle time is less than 20%
-+ * Every sampling_rate, we check, if current idle time is less than 37%
-  * (default), then we try to increase frequency. Else, we adjust the frequency
-  * proportional to load.
-  */
 diff --git a/fs/proc/base.c b/fs/proc/base.c
 index c7c64272b0fa..3994241745ae 100644
 --- a/fs/proc/base.c
@@ -235,19 +198,6 @@ index 8874f681b056..59eb72bf7d5f 100644
  	[RLIMIT_RTPRIO]		= { 0, 0 },				\
  	[RLIMIT_RTTIME]		= {  RLIM_INFINITY,  RLIM_INFINITY },	\
  }
-diff --git a/include/linux/jiffies.h b/include/linux/jiffies.h
-index e3279ef24d28..4e08b64c56b0 100644
---- a/include/linux/jiffies.h
-+++ b/include/linux/jiffies.h
-@@ -171,7 +171,7 @@ static inline u64 get_jiffies_64(void)
-  * Have the 32 bit jiffies value wrap 5 minutes after boot
-  * so jiffies wrap bugs show up earlier.
-  */
--#define INITIAL_JIFFIES ((unsigned long)(unsigned int) (-300*HZ))
-+#define INITIAL_JIFFIES ((unsigned long)(unsigned int) (-10*HZ))
- 
- /*
-  * Change timeval to jiffies, trying to avoid the
 diff --git a/include/linux/sched.h b/include/linux/sched.h
 index 04278493bf15..7b5838418378 100644
 --- a/include/linux/sched.h
@@ -621,10 +571,10 @@ index 21fb5a5662b5..ac31239aa51a 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/bmq.c b/kernel/sched/bmq.c
 new file mode 100644
-index 000000000000..58657044d58c
+index 000000000000..e6d6fc98bead
 --- /dev/null
 +++ b/kernel/sched/bmq.c
-@@ -0,0 +1,6005 @@
+@@ -0,0 +1,5982 @@
 +/*
 + *  kernel/sched/bmq.c
 + *
@@ -697,7 +647,7 @@ index 000000000000..58657044d58c
 +
 +static inline void print_scheduler_version(void)
 +{
-+	printk(KERN_INFO "bmq: BMQ CPU Scheduler 5.6-r0 by Alfred Chen.\n");
++	printk(KERN_INFO "bmq: BMQ CPU Scheduler 5.6-r1 by Alfred Chen.\n");
 +}
 +
 +/**
@@ -774,17 +724,9 @@ index 000000000000..58657044d58c
 +static cpumask_t sched_sg_idle_mask ____cacheline_aligned_in_smp;
 +static cpumask_t sched_rq_watermark[bmq_BITS] ____cacheline_aligned_in_smp;
 +
-+#if (bmq_BITS <= BITS_PER_LONG)
-+#define bmq_find_first_bit(bm)		__ffs((bm[0]))
-+#define bmq_find_next_bit(bm, start)	__ffs(BITMAP_FIRST_WORD_MASK(start) & bm[0])
-+#else
-+#define bmq_find_first_bit(bm)		find_first_bit((bm), bmq_BITS)
-+#define bmq_find_next_bit(bm, start)	find_next_bit(bm, bmq_BITS, start)
-+#endif
-+
 +static inline void update_sched_rq_watermark(struct rq *rq)
 +{
-+	unsigned long watermark = bmq_find_first_bit(rq->queue.bitmap);
++	unsigned long watermark = find_first_bit(rq->queue.bitmap, bmq_BITS);
 +	unsigned long last_wm = rq->watermark;
 +	unsigned long i;
 +	int cpu;
@@ -825,7 +767,7 @@ index 000000000000..58657044d58c
 +
 +static inline int task_sched_prio(struct task_struct *p)
 +{
-+	return (p->prio < MAX_RT_PRIO)? 0:p->prio - MAX_RT_PRIO + p->boost_prio + 1;
++	return (p->prio < MAX_RT_PRIO)? p->prio : p->prio + p->boost_prio;
 +}
 +
 +static inline void bmq_init(struct bmq *q)
@@ -844,27 +786,12 @@ index 000000000000..58657044d58c
 +	set_bit(IDLE_TASK_SCHED_PRIO, q->bitmap);
 +}
 +
-+static inline void bmq_add_task(struct task_struct *p, struct bmq *q, int idx)
-+{
-+	struct list_head *n;
-+
-+	if (likely(idx)) {
-+		list_add_tail(&p->bmq_node, &q->heads[idx]);
-+		return;
-+	}
-+
-+	list_for_each(n, &q->heads[idx])
-+		if (list_entry(n, struct task_struct, bmq_node)->prio > p->prio)
-+			break;
-+	__list_add(&p->bmq_node, n->prev, n);
-+}
-+
 +/*
 + * This routine used in bmq scheduler only which assume the idle task in the bmq
 + */
 +static inline struct task_struct *rq_first_bmq_task(struct rq *rq)
 +{
-+	unsigned long idx = bmq_find_first_bit(rq->queue.bitmap);
++	unsigned long idx = find_first_bit(rq->queue.bitmap, bmq_BITS);
 +	const struct list_head *head = &rq->queue.heads[idx];
 +
 +	return list_first_entry(head, struct task_struct, bmq_node);
@@ -877,7 +804,7 @@ index 000000000000..58657044d58c
 +	struct list_head *head = &rq->queue.heads[idx];
 +
 +	if (list_is_last(&p->bmq_node, head)) {
-+		idx = bmq_find_next_bit(rq->queue.bitmap, idx + 1);
++		idx = find_next_bit(rq->queue.bitmap, bmq_BITS, idx + 1);
 +		head = &rq->queue.heads[idx];
 +
 +		return list_first_entry(head, struct task_struct, bmq_node);
@@ -1162,7 +1089,7 @@ index 000000000000..58657044d58c
 +		  task_cpu(p), cpu_of(rq));
 +
 +	p->bmq_idx = task_sched_prio(p);
-+	bmq_add_task(p, &rq->queue, p->bmq_idx);
++	list_add_tail(&p->bmq_node, &rq->queue.heads[p->bmq_idx]);
 +	set_bit(p->bmq_idx, rq->queue.bitmap);
 +	update_sched_rq_watermark(rq);
 +	++rq->nr_running;
@@ -1194,7 +1121,7 @@ index 000000000000..58657044d58c
 +		  cpu_of(rq), task_cpu(p));
 +
 +	list_del(&p->bmq_node);
-+	bmq_add_task(p, &rq->queue, idx);
++	list_add_tail(&p->bmq_node, &rq->queue.heads[idx]);
 +	if (idx != p->bmq_idx) {
 +		if (list_empty(&rq->queue.heads[p->bmq_idx]))
 +			clear_bit(p->bmq_idx, rq->queue.bitmap);
@@ -6181,10 +6108,10 @@ index 000000000000..58657044d58c
 +			       cpu, (chk++)->bits[0]);
 +
 +		per_cpu(sched_cpu_affinity_end_mask, cpu) = chk;
-+		printk(KERN_INFO "bmq: cpu#%d llc_id = %d, llc_mask idx = %ld\n",
++		printk(KERN_INFO "bmq: cpu#%d llc_id = %d, llc_mask idx = %d\n",
 +		       cpu, per_cpu(sd_llc_id, cpu),
-+		       per_cpu(sched_cpu_llc_mask, cpu) -
-+		       &(per_cpu(sched_cpu_affinity_masks, cpu)[0]));
++		       (int) (per_cpu(sched_cpu_llc_mask, cpu) -
++			      &(per_cpu(sched_cpu_affinity_masks, cpu)[0])));
 +	}
 +}
 +#endif
@@ -6669,7 +6596,7 @@ index 000000000000..375a1a805d86
 +{}
 diff --git a/kernel/sched/bmq_sched.h b/kernel/sched/bmq_sched.h
 new file mode 100644
-index 000000000000..6fc8ae438c32
+index 000000000000..fca42b270620
 --- /dev/null
 +++ b/kernel/sched/bmq_sched.h
 @@ -0,0 +1,510 @@
@@ -6743,8 +6670,8 @@ index 000000000000..6fc8ae438c32
 +#define WF_MIGRATED	0x04		/* internal use, task got migrated */
 +
 +/* bits:
-+ * RT, Low prio adj range, nice width, high prio adj range, cpu idle task */
-+#define bmq_BITS		(NICE_WIDTH + 2 * MAX_PRIORITY_ADJ + 2)
++ * RT(0-99), Low prio adj range, nice width, high prio adj range, cpu idle task */
++#define bmq_BITS	(MAX_RT_PRIO + NICE_WIDTH + 2 * MAX_PRIORITY_ADJ + 1)
 +#define IDLE_TASK_SCHED_PRIO	(bmq_BITS - 1)
 +
 +struct bmq {
