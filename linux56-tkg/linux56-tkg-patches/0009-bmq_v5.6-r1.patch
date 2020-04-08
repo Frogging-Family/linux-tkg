@@ -7565,3 +7565,79 @@ index b5e3496cf803..545be2c4f07c 100644
  	};
  	struct wakeup_test_data *x = data;
  
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index 911b30506c83336a94a2748a321060ab11e8f9a7..f38d1343e2bfeb728637be4959120a7b37351b1a 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -2484,6 +2484,19 @@ static inline void membarrier_switch_mm(struct rq *rq,
+ }
+ #endif
+ 
++#ifdef CONFIG_SMP
++static inline bool is_per_cpu_kthread(struct task_struct *p)
++{
++	if (!(p->flags & PF_KTHREAD))
++		return false;
++
++	if (p->nr_cpus_allowed != 1)
++		return false;
++
++	return true;
++}
++#endif
++
+ static inline int task_running_nice(struct task_struct *p)
+ {
+ 	return (task_nice(p) > 0);
+diff --git a/kernel/sched/bmq.c b/kernel/sched/bmq.c
+index e6d6fc98bead621f0ea7bfaf885b66af523413c1..fed5e132f2af67007f70851527a401b8f0f79cd1 100644
+--- a/kernel/sched/bmq.c
++++ b/kernel/sched/bmq.c
+@@ -5499,14 +5499,12 @@ static void sched_init_topology_cpumask_early(void)
+ 	}
+ }
+ 
+-#define TOPOLOGY_CPUMASK(name, func) \
+-	if (cpumask_and(chk, chk, func(cpu))) {					\
+-		per_cpu(sched_cpu_llc_mask, cpu) = chk;				\
+-		per_cpu(sd_llc_id, cpu) = cpumask_first(func(cpu));		\
+-		printk(KERN_INFO "bmq: cpu#%d affinity mask - "#name" 0x%08lx",	\
++#define TOPOLOGY_CPUMASK(name, mask, last) \
++	if (cpumask_and(chk, chk, mask))					\
++		printk(KERN_INFO "bmq: cpu#%02d affinity mask: 0x%08lx - "#name,\
+ 		       cpu, (chk++)->bits[0]);					\
+-	}									\
+-	cpumask_complement(chk, func(cpu))
++	if (!last)								\
++		cpumask_complement(chk, mask)
+ 
+ static void sched_init_topology_cpumask(void)
+ {
+@@ -5518,20 +5516,18 @@ static void sched_init_topology_cpumask(void)
+ 
+ 		cpumask_complement(chk, cpumask_of(cpu));
+ #ifdef CONFIG_SCHED_SMT
+-		TOPOLOGY_CPUMASK(smt, topology_sibling_cpumask);
+-#endif
+-#ifdef CONFIG_SCHED_MC
+-		TOPOLOGY_CPUMASK(coregroup, cpu_coregroup_mask);
++		TOPOLOGY_CPUMASK(smt, topology_sibling_cpumask(cpu), false);
+ #endif
++		per_cpu(sd_llc_id, cpu) = cpumask_first(cpu_coregroup_mask(cpu));
++		per_cpu(sched_cpu_llc_mask, cpu) = chk;
++		TOPOLOGY_CPUMASK(coregroup, cpu_coregroup_mask(cpu), false);
+ 
+-		TOPOLOGY_CPUMASK(core, topology_core_cpumask);
++		TOPOLOGY_CPUMASK(core, topology_core_cpumask(cpu), false);
+ 
+-		if (cpumask_and(chk, chk, cpu_online_mask))
+-			printk(KERN_INFO "bmq: cpu#%d affinity mask - others 0x%08lx",
+-			       cpu, (chk++)->bits[0]);
++		TOPOLOGY_CPUMASK(others, cpu_online_mask, true);
+ 
+ 		per_cpu(sched_cpu_affinity_end_mask, cpu) = chk;
+-		printk(KERN_INFO "bmq: cpu#%d llc_id = %d, llc_mask idx = %d\n",
++		printk(KERN_INFO "bmq: cpu#%02d llc_id = %d, llc_mask idx = %d\n",
+ 		       cpu, per_cpu(sd_llc_id, cpu),
+ 		       (int) (per_cpu(sched_cpu_llc_mask, cpu) -
+ 			      &(per_cpu(sched_cpu_affinity_masks, cpu)[0])));
