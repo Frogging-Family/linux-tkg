@@ -1,0 +1,2416 @@
+diff --git a/drivers/input/mouse/synaptics.c b/drivers/input/mouse/synaptics.c
+index 55d33500d55e..744e84228a1f 100644
+--- a/drivers/input/mouse/synaptics.c
++++ b/drivers/input/mouse/synaptics.c
+@@ -1338,7 +1338,9 @@ static int set_input_params(struct psmouse *psmouse,
+ 		if (psmouse_matches_pnp_id(psmouse, topbuttonpad_pnp_ids) &&
+ 		    !SYN_CAP_EXT_BUTTONS_STICK(info->ext_cap_10))
+ 			__set_bit(INPUT_PROP_TOPBUTTONPAD, dev->propbit);
+-	}
++	} else if (SYN_CAP_CLICKPAD2BTN(info->ext_cap_0c) ||
++		   SYN_CAP_CLICKPAD2BTN2(info->ext_cap_0c))
++		__set_bit(INPUT_PROP_BUTTONPAD, dev->propbit);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/input/mouse/synaptics.h b/drivers/input/mouse/synaptics.h
+index fc00e005c611..4cfbeec3ae4c 100644
+--- a/drivers/input/mouse/synaptics.h
++++ b/drivers/input/mouse/synaptics.h
+@@ -86,6 +86,7 @@
+  */
+ #define SYN_CAP_CLICKPAD(ex0c)		((ex0c) & BIT(20)) /* 1-button ClickPad */
+ #define SYN_CAP_CLICKPAD2BTN(ex0c)	((ex0c) & BIT(8))  /* 2-button ClickPad */
++#define SYN_CAP_CLICKPAD2BTN2(ex0c)	((ex0c) & BIT(21)) /* 2-button ClickPad */
+ #define SYN_CAP_MAX_DIMENSIONS(ex0c)	((ex0c) & BIT(17))
+ #define SYN_CAP_MIN_DIMENSIONS(ex0c)	((ex0c) & BIT(13))
+ #define SYN_CAP_ADV_GESTURE(ex0c)	((ex0c) & BIT(19))
+diff --git a/drivers/macintosh/Kconfig b/drivers/macintosh/Kconfig
+index 97a420c11eed..c8621e9b2e4a 100644
+--- a/drivers/macintosh/Kconfig
++++ b/drivers/macintosh/Kconfig
+@@ -159,6 +159,13 @@ config INPUT_ADBHID
+ 
+ 	  If unsure, say Y.
+ 
++config ADB_TRACKPAD_ABSOLUTE
++	bool "Enable absolute mode for adb trackpads"
++	depends on INPUT_ADBHID
++	help
++	  Enable absolute mode in adb-base trackpads. This feature adds
++	  compatibility with synaptics Xorg / Xfree drivers.
++
+ config MAC_EMUMOUSEBTN
+ 	tristate "Support for mouse button 2+3 emulation"
+ 	depends on SYSCTL && INPUT
+diff --git a/drivers/macintosh/adbhid.c b/drivers/macintosh/adbhid.c
+index a261892c03b3..a85192de840c 100644
+--- a/drivers/macintosh/adbhid.c
++++ b/drivers/macintosh/adbhid.c
+@@ -262,6 +262,15 @@ static struct adb_ids buttons_ids;
+ #define ADBMOUSE_MS_A3		8	/* Mouse systems A3 trackball (handler 3) */
+ #define ADBMOUSE_MACALLY2	9	/* MacAlly 2-button mouse */
+ 
++#ifdef CONFIG_ADB_TRACKPAD_ABSOLUTE
++#define	ABS_XMIN	310
++#define	ABS_XMAX	1700
++#define	ABS_YMIN	200
++#define	ABS_YMAX	1000
++#define	ABS_ZMIN	0
++#define	ABS_ZMAX	55
++#endif
++
+ static void
+ adbhid_keyboard_input(unsigned char *data, int nb, int apoll)
+ {
+@@ -405,6 +414,9 @@ static void
+ adbhid_mouse_input(unsigned char *data, int nb, int autopoll)
+ {
+ 	int id = (data[0] >> 4) & 0x0f;
++#ifdef CONFIG_ADB_TRACKPAD_ABSOLUTE
++	int btn = 0; int x_axis = 0; int y_axis = 0; int z_axis = 0;
++#endif
+ 
+ 	if (!adbhid[id]) {
+ 		pr_err("ADB HID on ID %d not yet registered\n", id);
+@@ -436,6 +448,17 @@ adbhid_mouse_input(unsigned char *data, int nb, int autopoll)
+ 	      high bits of y-axis motion.  XY is additional
+ 	      high bits of x-axis motion.
+ 
++    For ADB Absolute motion protocol the data array will contain the
++    following values:
++
++		BITS    COMMENTS
++    data[0] = dddd 1100 ADB command: Talk, register 0, for device dddd.
++    data[1] = byyy yyyy Left button and y-axis motion.
++    data[2] = bxxx xxxx Second button and x-axis motion.
++    data[3] = 1yyy 1xxx Half bits of y-axis and x-axis motion.
++    data[4] = 1yyy 1xxx Higher bits of y-axis and x-axis motion.
++    data[5] = 1zzz 1zzz Higher and lower bits of z-pressure.
++
+     MacAlly 2-button mouse protocol.
+ 
+     For MacAlly 2-button mouse protocol the data array will contain the
+@@ -458,8 +481,17 @@ adbhid_mouse_input(unsigned char *data, int nb, int autopoll)
+ 	switch (adbhid[id]->mouse_kind)
+ 	{
+ 	    case ADBMOUSE_TRACKPAD:
++#ifdef CONFIG_ADB_TRACKPAD_ABSOLUTE
++		x_axis = (data[2] & 0x7f) | ((data[3] & 0x07) << 7) |
++			((data[4] & 0x07) << 10);
++		y_axis = (data[1] & 0x7f) | ((data[3] & 0x70) << 3) |
++			((data[4] & 0x70) << 6);
++		z_axis = (data[5] & 0x07) | ((data[5] & 0x70) >> 1);
++		btn = (!(data[1] >> 7)) & 1;
++#else
+ 		data[1] = (data[1] & 0x7f) | ((data[1] & data[2]) & 0x80);
+ 		data[2] = data[2] | 0x80;
++#endif
+ 		break;
+ 	    case ADBMOUSE_MICROSPEED:
+ 		data[1] = (data[1] & 0x7f) | ((data[3] & 0x01) << 7);
+@@ -485,17 +517,39 @@ adbhid_mouse_input(unsigned char *data, int nb, int autopoll)
+                 break;
+ 	}
+ 
+-	input_report_key(adbhid[id]->input, BTN_LEFT,   !((data[1] >> 7) & 1));
+-	input_report_key(adbhid[id]->input, BTN_MIDDLE, !((data[2] >> 7) & 1));
++#ifdef CONFIG_ADB_TRACKPAD_ABSOLUTE
++	if ( adbhid[id]->mouse_kind == ADBMOUSE_TRACKPAD ) {
+ 
+-	if (nb >= 4 && adbhid[id]->mouse_kind != ADBMOUSE_TRACKPAD)
+-		input_report_key(adbhid[id]->input, BTN_RIGHT,  !((data[3] >> 7) & 1));
++		if(z_axis > 30) input_report_key(adbhid[id]->input, BTN_TOUCH, 1);
++		if(z_axis < 25) input_report_key(adbhid[id]->input, BTN_TOUCH, 0);
+ 
+-	input_report_rel(adbhid[id]->input, REL_X,
+-			 ((data[2]&0x7f) < 64 ? (data[2]&0x7f) : (data[2]&0x7f)-128 ));
+-	input_report_rel(adbhid[id]->input, REL_Y,
+-			 ((data[1]&0x7f) < 64 ? (data[1]&0x7f) : (data[1]&0x7f)-128 ));
++		if(z_axis > 0){
++			input_report_abs(adbhid[id]->input, ABS_X, x_axis);
++			input_report_abs(adbhid[id]->input, ABS_Y, y_axis);
++			input_report_key(adbhid[id]->input, BTN_TOOL_FINGER, 1);
++			input_report_key(adbhid[id]->input, ABS_TOOL_WIDTH, 5);
++		} else {
++			input_report_key(adbhid[id]->input, BTN_TOOL_FINGER, 0);
++			input_report_key(adbhid[id]->input, ABS_TOOL_WIDTH, 0);
++		}
++
++		input_report_abs(adbhid[id]->input, ABS_PRESSURE, z_axis);
++		input_report_key(adbhid[id]->input, BTN_LEFT, btn);
++	} else {
++#endif
++		input_report_key(adbhid[id]->input, BTN_LEFT,   !((data[1] >> 7) & 1));
++		input_report_key(adbhid[id]->input, BTN_MIDDLE, !((data[2] >> 7) & 1));
++
++		if (nb >= 4 && adbhid[id]->mouse_kind != ADBMOUSE_TRACKPAD)
++			input_report_key(adbhid[id]->input, BTN_RIGHT,  !((data[3] >> 7) & 1));
+ 
++		input_report_rel(adbhid[id]->input, REL_X,
++				((data[2]&0x7f) < 64 ? (data[2]&0x7f) : (data[2]&0x7f)-128 ));
++		input_report_rel(adbhid[id]->input, REL_Y,
++				((data[1]&0x7f) < 64 ? (data[1]&0x7f) : (data[1]&0x7f)-128 ));
++#ifdef CONFIG_ADB_TRACKPAD_ABSOLUTE
++	}
++#endif
+ 	input_sync(adbhid[id]->input);
+ }
+ 
+@@ -849,6 +903,15 @@ adbhid_input_register(int id, int default_id, int original_handler_id,
+ 		input_dev->keybit[BIT_WORD(BTN_MOUSE)] = BIT_MASK(BTN_LEFT) |
+ 			BIT_MASK(BTN_MIDDLE) | BIT_MASK(BTN_RIGHT);
+ 		input_dev->relbit[0] = BIT_MASK(REL_X) | BIT_MASK(REL_Y);
++#ifdef CONFIG_ADB_TRACKPAD_ABSOLUTE
++                set_bit(EV_ABS, input_dev->evbit);
++		input_set_abs_params(input_dev, ABS_X, ABS_XMIN, ABS_XMAX, 0, 0);
++		input_set_abs_params(input_dev, ABS_Y, ABS_YMIN, ABS_YMAX, 0, 0);
++		input_set_abs_params(input_dev, ABS_PRESSURE, ABS_ZMIN, ABS_ZMAX, 0, 0);
++		set_bit(BTN_TOUCH, input_dev->keybit);
++		set_bit(BTN_TOOL_FINGER, input_dev->keybit);
++		set_bit(ABS_TOOL_WIDTH, input_dev->absbit);
++#endif
+ 		break;
+ 
+ 	case ADB_MISC:
+@@ -1132,7 +1195,11 @@ init_trackpad(int id)
+ 	            r1_buffer[3],
+ 	            r1_buffer[4],
+ 	            r1_buffer[5],
++#ifdef CONFIG_ADB_TRACKPAD_ABSOLUTE
++		    0x00, /* Enable absolute mode */
++#else
+ 	            0x03, /*r1_buffer[6],*/
++#endif
+ 	            r1_buffer[7]);
+ 
+ 	    /* Without this flush, the trackpad may be locked up */
+diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
+index ac4d48830415..b272132ac742 100644
+--- a/drivers/platform/x86/Kconfig
++++ b/drivers/platform/x86/Kconfig
+@@ -573,9 +573,28 @@ config THINKPAD_ACPI_HOTKEY_POLL
+ 	  If you are not sure, say Y here.  The driver enables polling only if
+ 	  it is strictly necessary to do so.
+ 
++config THINKPAD_EC
++	tristate
++	---help---
++	  This is a low-level driver for accessing the ThinkPad H8S embedded
++	  controller over the LPC bus (not to be confused with the ACPI Embedded
++	  Controller interface).
++
++config TP_SMAPI
++	tristate "ThinkPad SMAPI Support"
++	select THINKPAD_EC
++	default n
++	help
++	  This adds SMAPI support on Lenovo/IBM ThinkPads, for features such
++	  as battery charging control. For more information about this driver
++	  see <http://www.thinkwiki.org/wiki/tp_smapi>.
++
++	  If you have a Lenovo/IBM ThinkPad laptop, say Y or M here.
++
+ config SENSORS_HDAPS
+ 	tristate "Thinkpad Hard Drive Active Protection System (hdaps)"
+ 	depends on INPUT
++	select THINKPAD_EC
+ 	help
+ 	  This driver provides support for the IBM Hard Drive Active Protection
+ 	  System (hdaps), which provides an accelerometer and other misc. data.
+diff --git a/drivers/platform/x86/Makefile b/drivers/platform/x86/Makefile
+index 2ba6cb795338..399f8b88646f 100644
+--- a/drivers/platform/x86/Makefile
++++ b/drivers/platform/x86/Makefile
+@@ -65,6 +65,8 @@ obj-$(CONFIG_IBM_RTL)		+= ibm_rtl.o
+ obj-$(CONFIG_IDEAPAD_LAPTOP)	+= ideapad-laptop.o
+ obj-$(CONFIG_SENSORS_HDAPS)	+= hdaps.o
+ obj-$(CONFIG_THINKPAD_ACPI)	+= thinkpad_acpi.o
++obj-$(CONFIG_THINKPAD_EC)	+= thinkpad_ec.o
++obj-$(CONFIG_TP_SMAPI)		+= tp_smapi.o
+ 
+ # Intel
+ obj-$(CONFIG_INTEL_ATOMISP2_PM)		+= intel_atomisp2_pm.o
+diff --git a/drivers/platform/x86/thinkpad_ec.c b/drivers/platform/x86/thinkpad_ec.c
+new file mode 100644
+index 000000000000..597614bc17e6
+--- /dev/null
++++ b/drivers/platform/x86/thinkpad_ec.c
+@@ -0,0 +1,513 @@
++/*
++ *  thinkpad_ec.c - ThinkPad embedded controller LPC3 functions
++ *
++ *  The embedded controller on ThinkPad laptops has a non-standard interface,
++ *  where LPC channel 3 of the H8S EC chip is hooked up to IO ports
++ *  0x1600-0x161F and implements (a special case of) the H8S LPC protocol.
++ *  The EC LPC interface provides various system management services (currently
++ *  known: battery information and accelerometer readouts). This driver
++ *  provides access and mutual exclusion for the EC interface.
++*
++ *  The LPC protocol and terminology are documented here:
++ *  "H8S/2104B Group Hardware Manual",
++ *  http://documentation.renesas.com/eng/products/mpumcu/rej09b0300_2140bhm.pdf
++ *
++ *  Copyright (C) 2006-2007 Shem Multinymous <multinymous@gmail.com>
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/dmi.h>
++#include <linux/ioport.h>
++#include <linux/delay.h>
++#include <linux/thinkpad_ec.h>
++#include <linux/jiffies.h>
++#include <asm/io.h>
++
++#include <linux/version.h>
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,26)
++	#include <asm/semaphore.h>
++#else
++	#include <linux/semaphore.h>
++#endif
++
++#define TP_VERSION "0.42"
++
++MODULE_AUTHOR("Shem Multinymous");
++MODULE_DESCRIPTION("ThinkPad embedded controller hardware access");
++MODULE_VERSION(TP_VERSION);
++MODULE_LICENSE("GPL");
++
++/* IO ports used by embedded controller LPC channel 3: */
++#define TPC_BASE_PORT 0x1600
++#define TPC_NUM_PORTS 0x20
++#define TPC_STR3_PORT 0x1604  /* Reads H8S EC register STR3 */
++#define TPC_TWR0_PORT  0x1610 /* Mapped to H8S EC register TWR0MW/SW  */
++#define TPC_TWR15_PORT 0x161F /* Mapped to H8S EC register TWR15. */
++  /* (and port TPC_TWR0_PORT+i is mapped to H8S reg TWRi for 0<i<16) */
++
++/* H8S STR3 status flags (see "H8S/2104B Group Hardware Manual" p.549) */
++#define H8S_STR3_IBF3B 0x80  /* Bidi. Data Register Input Buffer Full */
++#define H8S_STR3_OBF3B 0x40  /* Bidi. Data Register Output Buffer Full */
++#define H8S_STR3_MWMF  0x20  /* Master Write Mode Flag */
++#define H8S_STR3_SWMF  0x10  /* Slave Write Mode Flag */
++#define H8S_STR3_MASK  0xF0  /* All bits we care about in STR3 */
++
++/* Timeouts and retries */
++#define TPC_READ_RETRIES     150
++#define TPC_READ_NDELAY      500
++#define TPC_REQUEST_RETRIES 1000
++#define TPC_REQUEST_NDELAY    10
++#define TPC_PREFETCH_TIMEOUT   (HZ/10)  /* invalidate prefetch after 0.1sec */
++
++/* A few macros for printk()ing: */
++#define MSG_FMT(fmt, args...) \
++  "thinkpad_ec: %s: " fmt "\n", __func__, ## args
++#define REQ_FMT(msg, code) \
++  MSG_FMT("%s: (0x%02x:0x%02x)->0x%02x", \
++	  msg, args->val[0x0], args->val[0xF], code)
++
++/* State of request prefetching: */
++static u8 prefetch_arg0, prefetch_argF;           /* Args of last prefetch */
++static u64 prefetch_jiffies;                      /* time of prefetch, or: */
++#define TPC_PREFETCH_NONE   INITIAL_JIFFIES       /*   No prefetch */
++#define TPC_PREFETCH_JUNK   (INITIAL_JIFFIES+1)   /*   Ignore prefetch */
++
++/* Locking: */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37)
++static DECLARE_MUTEX(thinkpad_ec_mutex);
++#else
++static DEFINE_SEMAPHORE(thinkpad_ec_mutex);
++#endif
++
++/* Kludge in case the ACPI DSDT reserves the ports we need. */
++static bool force_io;    /* Willing to do IO to ports we couldn't reserve? */
++static int reserved_io; /* Successfully reserved the ports? */
++module_param_named(force_io, force_io, bool, 0600);
++MODULE_PARM_DESC(force_io, "Force IO even if region already reserved (0=off, 1=on)");
++
++/**
++ * thinkpad_ec_lock - get lock on the ThinkPad EC
++ *
++ * Get exclusive lock for accesing the ThinkPad embedded controller LPC3
++ * interface. Returns 0 iff lock acquired.
++ */
++int thinkpad_ec_lock(void)
++{
++	int ret;
++	ret = down_interruptible(&thinkpad_ec_mutex);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(thinkpad_ec_lock);
++
++/**
++ * thinkpad_ec_try_lock - try getting lock on the ThinkPad EC
++ *
++ * Try getting an exclusive lock for accesing the ThinkPad embedded
++ * controller LPC3. Returns immediately if lock is not available; neither
++ * blocks nor sleeps. Returns 0 iff lock acquired .
++ */
++int thinkpad_ec_try_lock(void)
++{
++	return down_trylock(&thinkpad_ec_mutex);
++}
++EXPORT_SYMBOL_GPL(thinkpad_ec_try_lock);
++
++/**
++ * thinkpad_ec_unlock - release lock on ThinkPad EC
++ *
++ * Release a previously acquired exclusive lock on the ThinkPad ebmedded
++ * controller LPC3 interface.
++ */
++void thinkpad_ec_unlock(void)
++{
++	up(&thinkpad_ec_mutex);
++}
++EXPORT_SYMBOL_GPL(thinkpad_ec_unlock);
++
++/**
++ * thinkpad_ec_request_row - tell embedded controller to prepare a row
++ * @args Input register arguments
++ *
++ * Requests a data row by writing to H8S LPC registers TRW0 through TWR15 (or
++ * a subset thereof) following the protocol prescribed by the "H8S/2104B Group
++ * Hardware Manual". Does sanity checks via status register STR3.
++ */
++static int thinkpad_ec_request_row(const struct thinkpad_ec_row *args)
++{
++	u8 str3;
++	int i;
++
++	/* EC protocol requires write to TWR0 (function code): */
++	if (!(args->mask & 0x0001)) {
++		printk(KERN_ERR MSG_FMT("bad args->mask=0x%02x", args->mask));
++		return -EINVAL;
++	}
++
++	/* Check initial STR3 status: */
++	str3 = inb(TPC_STR3_PORT) & H8S_STR3_MASK;
++	if (str3 & H8S_STR3_OBF3B) { /* data already pending */
++		inb(TPC_TWR15_PORT); /* marks end of previous transaction */
++		if (prefetch_jiffies == TPC_PREFETCH_NONE)
++			printk(KERN_WARNING REQ_FMT(
++			       "EC has result from unrequested transaction",
++			       str3));
++		return -EBUSY; /* EC will be ready in a few usecs */
++	} else if (str3 == H8S_STR3_SWMF) { /* busy with previous request */
++		if (prefetch_jiffies == TPC_PREFETCH_NONE)
++			printk(KERN_WARNING REQ_FMT(
++			       "EC is busy with unrequested transaction",
++			       str3));
++		return -EBUSY; /* data will be pending in a few usecs */
++	} else if (str3 != 0x00) { /* unexpected status? */
++		printk(KERN_WARNING REQ_FMT("unexpected initial STR3", str3));
++		return -EIO;
++	}
++
++	/* Send TWR0MW: */
++	outb(args->val[0], TPC_TWR0_PORT);
++	str3 = inb(TPC_STR3_PORT) & H8S_STR3_MASK;
++	if (str3 != H8S_STR3_MWMF) { /* not accepted? */
++		printk(KERN_WARNING REQ_FMT("arg0 rejected", str3));
++		return -EIO;
++	}
++
++	/* Send TWR1 through TWR14: */
++	for (i = 1; i < TP_CONTROLLER_ROW_LEN-1; i++)
++		if ((args->mask>>i)&1)
++			outb(args->val[i], TPC_TWR0_PORT+i);
++
++	/* Send TWR15 (default to 0x01). This marks end of command. */
++	outb((args->mask & 0x8000) ? args->val[0xF] : 0x01, TPC_TWR15_PORT);
++
++	/* Wait until EC starts writing its reply (~60ns on average).
++	 * Releasing locks before this happens may cause an EC hang
++	 * due to firmware bug!
++	 */
++	for (i = 0; i < TPC_REQUEST_RETRIES; i++) {
++		str3 = inb(TPC_STR3_PORT) & H8S_STR3_MASK;
++		if (str3 & H8S_STR3_SWMF) /* EC started replying */
++			return 0;
++		else if (!(str3 & ~(H8S_STR3_IBF3B|H8S_STR3_MWMF)))
++			/* Normal progress (the EC hasn't seen the request
++			 * yet, or is processing it). Wait it out. */
++			ndelay(TPC_REQUEST_NDELAY);
++		else { /* weird EC status */
++			printk(KERN_WARNING
++			       REQ_FMT("bad end STR3", str3));
++			return -EIO;
++		}
++	}
++	printk(KERN_WARNING REQ_FMT("EC is mysteriously silent", str3));
++	return -EIO;
++}
++
++/**
++ * thinkpad_ec_read_data - read pre-requested row-data from EC
++ * @args Input register arguments of pre-requested rows
++ * @data Output register values
++ *
++ * Reads current row data from the controller, assuming it's already
++ * requested. Follows the H8S spec for register access and status checks.
++ */
++static int thinkpad_ec_read_data(const struct thinkpad_ec_row *args,
++				 struct thinkpad_ec_row *data)
++{
++	int i;
++	u8 str3 = inb(TPC_STR3_PORT) & H8S_STR3_MASK;
++	/* Once we make a request, STR3 assumes the sequence of values listed
++	 * in the following 'if' as it reads the request and writes its data.
++	 * It takes about a few dozen nanosecs total, with very high variance.
++	 */
++	if (str3 == (H8S_STR3_IBF3B|H8S_STR3_MWMF) ||
++	    str3 == 0x00 ||  /* the 0x00 is indistinguishable from idle EC! */
++	    str3 == H8S_STR3_SWMF)
++		return -EBUSY; /* not ready yet */
++	/* Finally, the EC signals output buffer full: */
++	if (str3 != (H8S_STR3_OBF3B|H8S_STR3_SWMF)) {
++		printk(KERN_WARNING
++		       REQ_FMT("bad initial STR3", str3));
++		return -EIO;
++	}
++
++	/* Read first byte (signals start of read transactions): */
++	data->val[0] = inb(TPC_TWR0_PORT);
++	/* Optionally read 14 more bytes: */
++	for (i = 1; i < TP_CONTROLLER_ROW_LEN-1; i++)
++		if ((data->mask >> i)&1)
++			data->val[i] = inb(TPC_TWR0_PORT+i);
++	/* Read last byte from 0x161F (signals end of read transaction): */
++	data->val[0xF] = inb(TPC_TWR15_PORT);
++
++	/* Readout still pending? */
++	str3 = inb(TPC_STR3_PORT) & H8S_STR3_MASK;
++	if (str3 & H8S_STR3_OBF3B)
++		printk(KERN_WARNING
++		       REQ_FMT("OBF3B=1 after read", str3));
++	/* If port 0x161F returns 0x80 too often, the EC may lock up. Warn: */
++	if (data->val[0xF] == 0x80)
++		printk(KERN_WARNING
++		       REQ_FMT("0x161F reports error", data->val[0xF]));
++	return 0;
++}
++
++/**
++ * thinkpad_ec_is_row_fetched - is the given row currently prefetched?
++ *
++ * To keep things simple we compare only the first and last args;
++ * this suffices for all known cases.
++ */
++static int thinkpad_ec_is_row_fetched(const struct thinkpad_ec_row *args)
++{
++	return (prefetch_jiffies != TPC_PREFETCH_NONE) &&
++	       (prefetch_jiffies != TPC_PREFETCH_JUNK) &&
++	       (prefetch_arg0 == args->val[0]) &&
++	       (prefetch_argF == args->val[0xF]) &&
++	       (get_jiffies_64() < prefetch_jiffies + TPC_PREFETCH_TIMEOUT);
++}
++
++/**
++ * thinkpad_ec_read_row - request and read data from ThinkPad EC
++ * @args Input register arguments
++ * @data Output register values
++ *
++ * Read a data row from the ThinkPad embedded controller LPC3 interface.
++ * Does fetching and retrying if needed. The row is specified by an
++ * array of 16 bytes, some of which may be undefined (but the first is
++ * mandatory). These bytes are given in @args->val[], where @args->val[i] is
++ * used iff (@args->mask>>i)&1). The resulting row data is stored in
++ * @data->val[], but is only guaranteed to be valid for indices corresponding
++ * to set bit in @data->mask. That is, if @data->mask&(1<<i)==0 then
++ * @data->val[i] is undefined.
++ *
++ * Returns -EBUSY on transient error and -EIO on abnormal condition.
++ * Caller must hold controller lock.
++ */
++int thinkpad_ec_read_row(const struct thinkpad_ec_row *args,
++			 struct thinkpad_ec_row *data)
++{
++	int retries, ret;
++
++	if (thinkpad_ec_is_row_fetched(args))
++		goto read_row; /* already requested */
++
++	/* Request the row */
++	for (retries = 0; retries < TPC_READ_RETRIES; ++retries) {
++		ret = thinkpad_ec_request_row(args);
++		if (!ret)
++			goto read_row;
++		if (ret != -EBUSY)
++			break;
++		ndelay(TPC_READ_NDELAY);
++	}
++	printk(KERN_ERR REQ_FMT("failed requesting row", ret));
++	goto out;
++
++read_row:
++	/* Read the row's data */
++	for (retries = 0; retries < TPC_READ_RETRIES; ++retries) {
++		ret = thinkpad_ec_read_data(args, data);
++		if (!ret)
++			goto out;
++		if (ret != -EBUSY)
++			break;
++		ndelay(TPC_READ_NDELAY);
++	}
++
++	printk(KERN_ERR REQ_FMT("failed waiting for data", ret));
++
++out:
++	prefetch_jiffies = TPC_PREFETCH_JUNK;
++	return ret;
++}
++EXPORT_SYMBOL_GPL(thinkpad_ec_read_row);
++
++/**
++ * thinkpad_ec_try_read_row - try reading prefetched data from ThinkPad EC
++ * @args Input register arguments
++ * @data Output register values
++ *
++ * Try reading a data row from the ThinkPad embedded controller LPC3
++ * interface, if this raw was recently prefetched using
++ * thinkpad_ec_prefetch_row(). Does not fetch, retry or block.
++ * The parameters have the same meaning as in thinkpad_ec_read_row().
++ *
++ * Returns -EBUSY is data not ready and -ENODATA if row not prefetched.
++ * Caller must hold controller lock.
++ */
++int thinkpad_ec_try_read_row(const struct thinkpad_ec_row *args,
++			     struct thinkpad_ec_row *data)
++{
++	int ret;
++	if (!thinkpad_ec_is_row_fetched(args)) {
++		ret = -ENODATA;
++	} else {
++		ret = thinkpad_ec_read_data(args, data);
++		if (!ret)
++			prefetch_jiffies = TPC_PREFETCH_NONE; /* eaten up */
++	}
++	return ret;
++}
++EXPORT_SYMBOL_GPL(thinkpad_ec_try_read_row);
++
++/**
++ * thinkpad_ec_prefetch_row - prefetch data from ThinkPad EC
++ * @args Input register arguments
++ *
++ * Prefetch a data row from the ThinkPad embedded controller LCP3
++ * interface. A subsequent call to thinkpad_ec_read_row() with the
++ * same arguments will be faster, and a subsequent call to
++ * thinkpad_ec_try_read_row() stands a good chance of succeeding if
++ * done neither too soon nor too late. See
++ * thinkpad_ec_read_row() for the meaning of @args.
++ *
++ * Returns -EBUSY on transient error and -EIO on abnormal condition.
++ * Caller must hold controller lock.
++ */
++int thinkpad_ec_prefetch_row(const struct thinkpad_ec_row *args)
++{
++	int ret;
++	ret = thinkpad_ec_request_row(args);
++	if (ret) {
++		prefetch_jiffies = TPC_PREFETCH_JUNK;
++	} else {
++		prefetch_jiffies = get_jiffies_64();
++		prefetch_arg0 = args->val[0x0];
++		prefetch_argF = args->val[0xF];
++	}
++	return ret;
++}
++EXPORT_SYMBOL_GPL(thinkpad_ec_prefetch_row);
++
++/**
++ * thinkpad_ec_invalidate - invalidate prefetched ThinkPad EC data
++ *
++ * Invalidate the data prefetched via thinkpad_ec_prefetch_row() from the
++ * ThinkPad embedded controller LPC3 interface.
++ * Must be called before unlocking by any code that accesses the controller
++ * ports directly.
++ */
++void thinkpad_ec_invalidate(void)
++{
++	prefetch_jiffies = TPC_PREFETCH_JUNK;
++}
++EXPORT_SYMBOL_GPL(thinkpad_ec_invalidate);
++
++
++/*** Checking for EC hardware ***/
++
++/**
++ * thinkpad_ec_test - verify the EC is present and follows protocol
++ *
++ * Ensure the EC LPC3 channel really works on this machine by making
++ * an EC request and seeing if the EC follows the documented H8S protocol.
++ * The requested row just reads battery status, so it should be harmless to
++ * access it (on a correct EC).
++ * This test writes to IO ports, so execute only after checking DMI.
++ */
++static int __init thinkpad_ec_test(void)
++{
++	int ret;
++	const struct thinkpad_ec_row args = /* battery 0 basic status */
++	  { .mask = 0x8001, .val = {0x01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0x00} };
++	struct thinkpad_ec_row data = { .mask = 0x0000 };
++	ret = thinkpad_ec_lock();
++	if (ret)
++		return ret;
++	ret = thinkpad_ec_read_row(&args, &data);
++	thinkpad_ec_unlock();
++	return ret;
++}
++
++/* Search all DMI device names of a given type for a substring */
++static int __init dmi_find_substring(int type, const char *substr)
++{
++	const struct dmi_device *dev = NULL;
++	while ((dev = dmi_find_device(type, NULL, dev))) {
++		if (strstr(dev->name, substr))
++			return 1;
++	}
++	return 0;
++}
++
++#define TP_DMI_MATCH(vendor,model)	{		\
++	.ident = vendor " " model,			\
++	.matches = {					\
++		DMI_MATCH(DMI_BOARD_VENDOR, vendor),	\
++		DMI_MATCH(DMI_PRODUCT_VERSION, model)	\
++	}						\
++}
++
++/* Check DMI for existence of ThinkPad embedded controller */
++static int __init check_dmi_for_ec(void)
++{
++	/* A few old models that have a good EC but don't report it in DMI */
++	struct dmi_system_id tp_whitelist[] = {
++		TP_DMI_MATCH("IBM", "ThinkPad A30"),
++		TP_DMI_MATCH("IBM", "ThinkPad T23"),
++		TP_DMI_MATCH("IBM", "ThinkPad X24"),
++		TP_DMI_MATCH("LENOVO", "ThinkPad"),
++		{ .ident = NULL }
++	};
++	return dmi_find_substring(DMI_DEV_TYPE_OEM_STRING,
++				  "IBM ThinkPad Embedded Controller") ||
++	       dmi_check_system(tp_whitelist);
++}
++
++/*** Init and cleanup ***/
++
++static int __init thinkpad_ec_init(void)
++{
++	if (!check_dmi_for_ec()) {
++		printk(KERN_WARNING
++		       "thinkpad_ec: no ThinkPad embedded controller!\n");
++		return -ENODEV;
++	}
++
++	if (request_region(TPC_BASE_PORT, TPC_NUM_PORTS, "thinkpad_ec")) {
++		reserved_io = 1;
++	} else {
++		printk(KERN_ERR "thinkpad_ec: cannot claim IO ports %#x-%#x... ",
++		       TPC_BASE_PORT,
++		       TPC_BASE_PORT + TPC_NUM_PORTS - 1);
++		if (force_io) {
++			printk("forcing use of unreserved IO ports.\n");
++		} else {
++			printk("consider using force_io=1.\n");
++			return -ENXIO;
++		}
++	}
++	prefetch_jiffies = TPC_PREFETCH_JUNK;
++	if (thinkpad_ec_test()) {
++		printk(KERN_ERR "thinkpad_ec: initial ec test failed\n");
++		if (reserved_io)
++			release_region(TPC_BASE_PORT, TPC_NUM_PORTS);
++		return -ENXIO;
++	}
++	printk(KERN_INFO "thinkpad_ec: thinkpad_ec " TP_VERSION " loaded.\n");
++	return 0;
++}
++
++static void __exit thinkpad_ec_exit(void)
++{
++	if (reserved_io)
++		release_region(TPC_BASE_PORT, TPC_NUM_PORTS);
++	printk(KERN_INFO "thinkpad_ec: unloaded.\n");
++}
++
++module_init(thinkpad_ec_init);
++module_exit(thinkpad_ec_exit);
+diff --git a/drivers/platform/x86/tp_smapi.c b/drivers/platform/x86/tp_smapi.c
+new file mode 100644
+index 000000000000..209cb6487e24
+--- /dev/null
++++ b/drivers/platform/x86/tp_smapi.c
+@@ -0,0 +1,1493 @@
++/*
++ *  tp_smapi.c - ThinkPad SMAPI support
++ *
++ *  This driver exposes some features of the System Management Application
++ *  Program Interface (SMAPI) BIOS found on ThinkPad laptops. It works on
++ *  models in which the SMAPI BIOS runs in SMM and is invoked by writing
++ *  to the APM control port 0xB2.
++ *  It also exposes battery status information, obtained from the ThinkPad
++ *  embedded controller (via the thinkpad_ec module).
++ *  Ancient ThinkPad models use a different interface, supported by the
++ *  "thinkpad" module from "tpctl".
++ *
++ *  Many of the battery status values obtained from the EC simply mirror
++ *  values provided by the battery's Smart Battery System (SBS) interface, so
++ *  their meaning is defined by the Smart Battery Data Specification (see
++ *  http://sbs-forum.org/specs/sbdat110.pdf). References to this SBS spec
++ *  are given in the code where relevant.
++ *
++ *  Copyright (C) 2006 Shem Multinymous <multinymous@gmail.com>.
++ *  SMAPI access code based on the mwave driver by Mike Sullivan.
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/types.h>
++#include <linux/proc_fs.h>
++#include <linux/mc146818rtc.h>	/* CMOS defines */
++#include <linux/delay.h>
++#include <linux/version.h>
++#include <linux/thinkpad_ec.h>
++#include <linux/platform_device.h>
++#include <asm/uaccess.h>
++#include <asm/io.h>
++
++#define TP_VERSION "0.42"
++#define TP_DESC "ThinkPad SMAPI Support"
++#define TP_DIR "smapi"
++
++MODULE_AUTHOR("Shem Multinymous");
++MODULE_DESCRIPTION(TP_DESC);
++MODULE_VERSION(TP_VERSION);
++MODULE_LICENSE("GPL");
++
++static struct platform_device *pdev;
++
++static int tp_debug;
++module_param_named(debug, tp_debug, int, 0600);
++MODULE_PARM_DESC(debug, "Debug level (0=off, 1=on)");
++
++/* A few macros for printk()ing: */
++#define TPRINTK(level, fmt, args...) \
++  dev_printk(level, &(pdev->dev), "%s: " fmt "\n", __func__, ## args)
++#define DPRINTK(fmt, args...) \
++  do { if (tp_debug) TPRINTK(KERN_DEBUG, fmt, ## args); } while (0)
++
++/*********************************************************************
++ * SMAPI interface
++ */
++
++/* SMAPI functions (register BX when making the SMM call). */
++#define SMAPI_GET_INHIBIT_CHARGE                0x2114
++#define SMAPI_SET_INHIBIT_CHARGE                0x2115
++#define SMAPI_GET_THRESH_START                  0x2116
++#define SMAPI_SET_THRESH_START                  0x2117
++#define SMAPI_GET_FORCE_DISCHARGE               0x2118
++#define SMAPI_SET_FORCE_DISCHARGE               0x2119
++#define SMAPI_GET_THRESH_STOP                   0x211a
++#define SMAPI_SET_THRESH_STOP                   0x211b
++
++/* SMAPI error codes (see ThinkPad 770 Technical Reference Manual p.83 at
++ http://www-307.ibm.com/pc/support/site.wss/document.do?lndocid=PFAN-3TUQQD */
++#define SMAPI_RETCODE_EOF 0xff
++static struct { u8 rc; char *msg; int ret; } smapi_retcode[] =
++{
++	{0x00, "OK", 0},
++	{0x53, "SMAPI function is not available", -ENXIO},
++	{0x81, "Invalid parameter", -EINVAL},
++	{0x86, "Function is not supported by SMAPI BIOS", -EOPNOTSUPP},
++	{0x90, "System error", -EIO},
++	{0x91, "System is invalid", -EIO},
++	{0x92, "System is busy, -EBUSY"},
++	{0xa0, "Device error (disk read error)", -EIO},
++	{0xa1, "Device is busy", -EBUSY},
++	{0xa2, "Device is not attached", -ENXIO},
++	{0xa3, "Device is disbled", -EIO},
++	{0xa4, "Request parameter is out of range", -EINVAL},
++	{0xa5, "Request parameter is not accepted", -EINVAL},
++	{0xa6, "Transient error", -EBUSY}, /* ? */
++	{SMAPI_RETCODE_EOF, "Unknown error code", -EIO}
++};
++
++
++#define SMAPI_MAX_RETRIES 10
++#define SMAPI_PORT2 0x4F           /* fixed port, meaning unclear */
++static unsigned short smapi_port;  /* APM control port, normally 0xB2 */
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37)
++static DECLARE_MUTEX(smapi_mutex);
++#else
++static DEFINE_SEMAPHORE(smapi_mutex);
++#endif
++
++/**
++ * find_smapi_port - read SMAPI port from NVRAM
++ */
++static int __init find_smapi_port(void)
++{
++	u16 smapi_id = 0;
++	unsigned short port = 0;
++	unsigned long flags;
++
++	spin_lock_irqsave(&rtc_lock, flags);
++	smapi_id = CMOS_READ(0x7C);
++	smapi_id |= (CMOS_READ(0x7D) << 8);
++	spin_unlock_irqrestore(&rtc_lock, flags);
++
++	if (smapi_id != 0x5349) {
++		printk(KERN_ERR "SMAPI not supported (ID=0x%x)\n", smapi_id);
++		return -ENXIO;
++	}
++	spin_lock_irqsave(&rtc_lock, flags);
++	port = CMOS_READ(0x7E);
++	port |= (CMOS_READ(0x7F) << 8);
++	spin_unlock_irqrestore(&rtc_lock, flags);
++	if (port == 0) {
++		printk(KERN_ERR "unable to read SMAPI port number\n");
++		return -ENXIO;
++	}
++	return port;
++}
++
++/**
++ * smapi_request - make a SMAPI call
++ * @inEBX, @inECX, @inEDI, @inESI: input registers
++ * @outEBX, @outECX, @outEDX, @outEDI, @outESI: outputs registers
++ * @msg: textual error message
++ * Invokes the SMAPI SMBIOS with the given input and outpu args.
++ * All outputs are optional (can be %NULL).
++ * Returns 0 when successful, and a negative errno constant
++ * (see smapi_retcode above) upon failure.
++ */
++static int smapi_request(u32 inEBX, u32 inECX,
++			 u32 inEDI, u32 inESI,
++			 u32 *outEBX, u32 *outECX, u32 *outEDX,
++			 u32 *outEDI, u32 *outESI, const char **msg)
++{
++	int ret = 0;
++	int i;
++	int retries;
++	u8 rc;
++	/* Must use local vars for output regs, due to reg pressure. */
++	u32 tmpEAX, tmpEBX, tmpECX, tmpEDX, tmpEDI, tmpESI;
++
++	for (retries = 0; retries < SMAPI_MAX_RETRIES; ++retries) {
++		DPRINTK("req_in: BX=%x CX=%x DI=%x SI=%x",
++			inEBX, inECX, inEDI, inESI);
++
++		/* SMAPI's SMBIOS call and thinkpad_ec end up using use
++		 * different interfaces to the same chip, so play it safe. */
++		ret = thinkpad_ec_lock();
++		if (ret)
++			return ret;
++
++		__asm__ __volatile__(
++			"movl  $0x00005380,%%eax\n\t"
++			"movl  %6,%%ebx\n\t"
++			"movl  %7,%%ecx\n\t"
++			"movl  %8,%%edi\n\t"
++			"movl  %9,%%esi\n\t"
++			"xorl  %%edx,%%edx\n\t"
++			"movw  %10,%%dx\n\t"
++			"out   %%al,%%dx\n\t"  /* trigger SMI to SMBIOS */
++			"out   %%al,$0x4F\n\t"
++			"movl  %%eax,%0\n\t"
++			"movl  %%ebx,%1\n\t"
++			"movl  %%ecx,%2\n\t"
++			"movl  %%edx,%3\n\t"
++			"movl  %%edi,%4\n\t"
++			"movl  %%esi,%5\n\t"
++			:"=m"(tmpEAX),
++			 "=m"(tmpEBX),
++			 "=m"(tmpECX),
++			 "=m"(tmpEDX),
++			 "=m"(tmpEDI),
++			 "=m"(tmpESI)
++			:"m"(inEBX), "m"(inECX), "m"(inEDI), "m"(inESI),
++			 "m"((u16)smapi_port)
++			:"%eax", "%ebx", "%ecx", "%edx", "%edi",
++			 "%esi");
++
++		thinkpad_ec_invalidate();
++		thinkpad_ec_unlock();
++
++		/* Don't let the next SMAPI access happen too quickly,
++		 * may case problems. (We're hold smapi_mutex).       */
++		msleep(50);
++
++		if (outEBX) *outEBX = tmpEBX;
++		if (outECX) *outECX = tmpECX;
++		if (outEDX) *outEDX = tmpEDX;
++		if (outESI) *outESI = tmpESI;
++		if (outEDI) *outEDI = tmpEDI;
++
++		/* Look up error code */
++		rc = (tmpEAX>>8)&0xFF;
++		for (i = 0; smapi_retcode[i].rc != SMAPI_RETCODE_EOF &&
++			    smapi_retcode[i].rc != rc; ++i) {}
++		ret = smapi_retcode[i].ret;
++		if (msg)
++			*msg = smapi_retcode[i].msg;
++
++		DPRINTK("req_out: AX=%x BX=%x CX=%x DX=%x DI=%x SI=%x r=%d",
++			 tmpEAX, tmpEBX, tmpECX, tmpEDX, tmpEDI, tmpESI, ret);
++		if (ret)
++			TPRINTK(KERN_NOTICE, "SMAPI error: %s (func=%x)",
++				smapi_retcode[i].msg, inEBX);
++
++		if (ret != -EBUSY)
++			return ret;
++	}
++	return ret;
++}
++
++/* Convenience wrapper: discard output arguments */
++static int smapi_write(u32 inEBX, u32 inECX,
++		       u32 inEDI, u32 inESI, const char **msg)
++{
++	return smapi_request(inEBX, inECX, inEDI, inESI,
++			     NULL, NULL, NULL, NULL, NULL, msg);
++}
++
++
++/*********************************************************************
++ * Specific SMAPI services
++ * All of these functions return 0 upon success, and a negative errno
++ * constant (see smapi_retcode) on failure.
++ */
++
++enum thresh_type {
++	THRESH_STOP  = 0, /* the code assumes this is 0 for brevity */
++	THRESH_START
++};
++#define THRESH_NAME(which) ((which == THRESH_START) ? "start" : "stop")
++
++/**
++ * __get_real_thresh - read battery charge start/stop threshold from SMAPI
++ * @bat:    battery number (0 or 1)
++ * @which:  THRESH_START or THRESH_STOP
++ * @thresh: 1..99, 0=default 1..99, 0=default (pass this as-is to SMAPI)
++ * @outEDI: some additional state that needs to be preserved, meaning unknown
++ * @outESI: some additional state that needs to be preserved, meaning unknown
++ */
++static int __get_real_thresh(int bat, enum thresh_type which, int *thresh,
++			     u32 *outEDI, u32 *outESI)
++{
++	u32 ebx = (which == THRESH_START) ? SMAPI_GET_THRESH_START
++					  : SMAPI_GET_THRESH_STOP;
++	u32 ecx = (bat+1)<<8;
++	const char *msg;
++	int ret = smapi_request(ebx, ecx, 0, 0, NULL,
++				&ecx, NULL, outEDI, outESI, &msg);
++	if (ret) {
++		TPRINTK(KERN_NOTICE, "cannot get %s_thresh of bat=%d: %s",
++			THRESH_NAME(which), bat, msg);
++		return ret;
++	}
++	if (!(ecx&0x00000100)) {
++		TPRINTK(KERN_NOTICE, "cannot get %s_thresh of bat=%d: ecx=0%x",
++			THRESH_NAME(which), bat, ecx);
++		return -EIO;
++	}
++	if (thresh)
++		*thresh = ecx&0xFF;
++	return 0;
++}
++
++/**
++ * get_real_thresh - read battery charge start/stop threshold from SMAPI
++ * @bat:    battery number (0 or 1)
++ * @which:  THRESH_START or THRESH_STOP
++ * @thresh: 1..99, 0=default (passes as-is to SMAPI)
++ */
++static int get_real_thresh(int bat, enum thresh_type which, int *thresh)
++{
++	return __get_real_thresh(bat, which, thresh, NULL, NULL);
++}
++
++/**
++ * set_real_thresh - write battery start/top charge threshold to SMAPI
++ * @bat:    battery number (0 or 1)
++ * @which:  THRESH_START or THRESH_STOP
++ * @thresh: 1..99, 0=default (passes as-is to SMAPI)
++ */
++static int set_real_thresh(int bat, enum thresh_type which, int thresh)
++{
++	u32 ebx = (which == THRESH_START) ? SMAPI_SET_THRESH_START
++					  : SMAPI_SET_THRESH_STOP;
++	u32 ecx = ((bat+1)<<8) + thresh;
++	u32 getDI, getSI;
++	const char *msg;
++	int ret;
++
++	/* verify read before writing */
++	ret = __get_real_thresh(bat, which, NULL, &getDI, &getSI);
++	if (ret)
++		return ret;
++
++	ret = smapi_write(ebx, ecx, getDI, getSI, &msg);
++	if (ret)
++		TPRINTK(KERN_NOTICE, "set %s to %d for bat=%d failed: %s",
++			THRESH_NAME(which), thresh, bat, msg);
++	else
++		TPRINTK(KERN_INFO, "set %s to %d for bat=%d",
++			THRESH_NAME(which), thresh, bat);
++	return ret;
++}
++
++/**
++ * __get_inhibit_charge_minutes - get inhibit charge period from SMAPI
++ * @bat:     battery number (0 or 1)
++ * @minutes: period in minutes (1..65535 minutes, 0=disabled)
++ * @outECX: some additional state that needs to be preserved, meaning unknown
++ * Note that @minutes is the originally set value, it does not count down.
++ */
++static int __get_inhibit_charge_minutes(int bat, int *minutes, u32 *outECX)
++{
++	u32 ecx = (bat+1)<<8;
++	u32 esi;
++	const char *msg;
++	int ret = smapi_request(SMAPI_GET_INHIBIT_CHARGE, ecx, 0, 0,
++				NULL, &ecx, NULL, NULL, &esi, &msg);
++	if (ret) {
++		TPRINTK(KERN_NOTICE, "failed for bat=%d: %s", bat, msg);
++		return ret;
++	}
++	if (!(ecx&0x0100)) {
++		TPRINTK(KERN_NOTICE, "bad ecx=0x%x for bat=%d", ecx, bat);
++		return -EIO;
++	}
++	if (minutes)
++		*minutes = (ecx&0x0001)?esi:0;
++	if (outECX)
++		*outECX = ecx;
++	return 0;
++}
++
++/**
++ * get_inhibit_charge_minutes - get inhibit charge period from SMAPI
++ * @bat:     battery number (0 or 1)
++ * @minutes: period in minutes (1..65535 minutes, 0=disabled)
++ * Note that @minutes is the originally set value, it does not count down.
++ */
++static int get_inhibit_charge_minutes(int bat, int *minutes)
++{
++	return __get_inhibit_charge_minutes(bat, minutes, NULL);
++}
++
++/**
++ * set_inhibit_charge_minutes - write inhibit charge period to SMAPI
++ * @bat:     battery number (0 or 1)
++ * @minutes: period in minutes (1..65535 minutes, 0=disabled)
++ */
++static int set_inhibit_charge_minutes(int bat, int minutes)
++{
++	u32 ecx;
++	const char *msg;
++	int ret;
++
++	/* verify read before writing */
++	ret = __get_inhibit_charge_minutes(bat, NULL, &ecx);
++	if (ret)
++		return ret;
++
++	ecx = ((bat+1)<<8) | (ecx&0x00FE) | (minutes > 0 ? 0x0001 : 0x0000);
++	if (minutes > 0xFFFF)
++		minutes = 0xFFFF;
++	ret = smapi_write(SMAPI_SET_INHIBIT_CHARGE, ecx, 0, minutes, &msg);
++	if (ret)
++		TPRINTK(KERN_NOTICE,
++			"set to %d failed for bat=%d: %s", minutes, bat, msg);
++	else
++		TPRINTK(KERN_INFO, "set to %d for bat=%d\n", minutes, bat);
++	return ret;
++}
++
++
++/**
++ * get_force_discharge - get status of forced discharging from SMAPI
++ * @bat:     battery number (0 or 1)
++ * @enabled: 1 if forced discharged is enabled, 0 if not
++ */
++static int get_force_discharge(int bat, int *enabled)
++{
++	u32 ecx = (bat+1)<<8;
++	const char *msg;
++	int ret = smapi_request(SMAPI_GET_FORCE_DISCHARGE, ecx, 0, 0,
++				NULL, &ecx, NULL, NULL, NULL, &msg);
++	if (ret) {
++		TPRINTK(KERN_NOTICE, "failed for bat=%d: %s", bat, msg);
++		return ret;
++	}
++	*enabled = (!(ecx&0x00000100) && (ecx&0x00000001))?1:0;
++	return 0;
++}
++
++/**
++ * set_force_discharge - write status of forced discharging to SMAPI
++ * @bat:     battery number (0 or 1)
++ * @enabled: 1 if forced discharged is enabled, 0 if not
++ */
++static int set_force_discharge(int bat, int enabled)
++{
++	u32 ecx = (bat+1)<<8;
++	const char *msg;
++	int ret = smapi_request(SMAPI_GET_FORCE_DISCHARGE, ecx, 0, 0,
++				NULL, &ecx, NULL, NULL, NULL, &msg);
++	if (ret) {
++		TPRINTK(KERN_NOTICE, "get failed for bat=%d: %s", bat, msg);
++		return ret;
++	}
++	if (ecx&0x00000100) {
++		TPRINTK(KERN_NOTICE, "cannot force discharge bat=%d", bat);
++		return -EIO;
++	}
++
++	ecx = ((bat+1)<<8) | (ecx&0x000000FA) | (enabled?0x00000001:0);
++	ret = smapi_write(SMAPI_SET_FORCE_DISCHARGE, ecx, 0, 0, &msg);
++	if (ret)
++		TPRINTK(KERN_NOTICE, "set to %d failed for bat=%d: %s",
++			enabled, bat, msg);
++	else
++		TPRINTK(KERN_INFO, "set to %d for bat=%d", enabled, bat);
++	return ret;
++}
++
++
++/*********************************************************************
++ * Wrappers to threshold-related SMAPI functions, which handle default
++ * thresholds and related quirks.
++ */
++
++/* Minimum, default and minimum difference for battery charging thresholds: */
++#define MIN_THRESH_DELTA      4  /* Min delta between start and stop thresh */
++#define MIN_THRESH_START      2
++#define MAX_THRESH_START      (100-MIN_THRESH_DELTA)
++#define MIN_THRESH_STOP       (MIN_THRESH_START + MIN_THRESH_DELTA)
++#define MAX_THRESH_STOP       100
++#define DEFAULT_THRESH_START  MAX_THRESH_START
++#define DEFAULT_THRESH_STOP   MAX_THRESH_STOP
++
++/* The GUI of IBM's Battery Maximizer seems to show a start threshold that
++ * is 1 more than the value we set/get via SMAPI. Since the threshold is
++ * maintained across reboot, this can be confusing. So we kludge our
++ * interface for interoperability: */
++#define BATMAX_FIX   1
++
++/* Get charge start/stop threshold (1..100),
++ * substituting default values if needed and applying BATMAT_FIX. */
++static int get_thresh(int bat, enum thresh_type which, int *thresh)
++{
++	int ret = get_real_thresh(bat, which, thresh);
++	if (ret)
++		return ret;
++	if (*thresh == 0)
++		*thresh = (which == THRESH_START) ? DEFAULT_THRESH_START
++						  : DEFAULT_THRESH_STOP;
++	else if (which == THRESH_START)
++		*thresh += BATMAX_FIX;
++	return 0;
++}
++
++
++/* Set charge start/stop threshold (1..100),
++ * substituting default values if needed and applying BATMAT_FIX. */
++static int set_thresh(int bat, enum thresh_type which, int thresh)
++{
++	if (which == THRESH_STOP && thresh == DEFAULT_THRESH_STOP)
++		thresh = 0; /* 100 is out of range, but default means 100 */
++	if (which == THRESH_START)
++		thresh -= BATMAX_FIX;
++	return set_real_thresh(bat, which, thresh);
++}
++
++/*********************************************************************
++ * ThinkPad embedded controller readout and basic functions
++ */
++
++/**
++ * read_tp_ec_row - read data row from the ThinkPad embedded controller
++ * @arg0: EC command code
++ * @bat: battery number, 0 or 1
++ * @j: the byte value to be used for "junk" (unused) input/outputs
++ * @dataval: result vector
++ */
++static int read_tp_ec_row(u8 arg0, int bat, u8 j, u8 *dataval)
++{
++	int ret;
++	const struct thinkpad_ec_row args = { .mask = 0xFFFF,
++		.val = {arg0, j,j,j,j,j,j,j,j,j,j,j,j,j,j, (u8)bat} };
++	struct thinkpad_ec_row data = { .mask = 0xFFFF };
++
++	ret = thinkpad_ec_lock();
++	if (ret)
++		return ret;
++	ret = thinkpad_ec_read_row(&args, &data);
++	thinkpad_ec_unlock();
++	memcpy(dataval, &data.val, TP_CONTROLLER_ROW_LEN);
++	return ret;
++}
++
++/**
++ * power_device_present - check for presence of battery or AC power
++ * @bat: 0 for battery 0, 1 for battery 1, otherwise AC power
++ * Returns 1 if present, 0 if not present, negative if error.
++ */
++static int power_device_present(int bat)
++{
++	u8 row[TP_CONTROLLER_ROW_LEN];
++	u8 test;
++	int ret = read_tp_ec_row(1, bat, 0, row);
++	if (ret)
++		return ret;
++	switch (bat) {
++	case 0:  test = 0x40; break; /* battery 0 */
++	case 1:  test = 0x20; break; /* battery 1 */
++	default: test = 0x80;        /* AC power */
++	}
++	return (row[0] & test) ? 1 : 0;
++}
++
++/**
++ * bat_has_status - check if battery can report detailed status
++ * @bat: 0 for battery 0, 1 for battery 1
++ * Returns 1 if yes, 0 if no, negative if error.
++ */
++static int bat_has_status(int bat)
++{
++	u8 row[TP_CONTROLLER_ROW_LEN];
++	int ret = read_tp_ec_row(1, bat, 0, row);
++	if (ret)
++		return ret;
++	if ((row[0] & (bat?0x20:0x40)) == 0) /* no battery */
++		return 0;
++	if ((row[1] & (0x60)) == 0) /* no status */
++		return 0;
++	return 1;
++}
++
++/**
++ * get_tp_ec_bat_16 - read a 16-bit value from EC battery status data
++ * @arg0: first argument to EC
++ * @off: offset in row returned from EC
++ * @bat: battery (0 or 1)
++ * @val: the 16-bit value obtained
++ * Returns nonzero on error.
++ */
++static int get_tp_ec_bat_16(u8 arg0, int offset, int bat, u16 *val)
++{
++	u8 row[TP_CONTROLLER_ROW_LEN];
++	int ret;
++	if (bat_has_status(bat) != 1)
++		return -ENXIO;
++	ret = read_tp_ec_row(arg0, bat, 0, row);
++	if (ret)
++		return ret;
++	*val = *(u16 *)(row+offset);
++	return 0;
++}
++
++/*********************************************************************
++ * sysfs attributes for batteries -
++ * definitions and helper functions
++ */
++
++/* A custom device attribute struct which holds a battery number */
++struct bat_device_attribute {
++	struct device_attribute dev_attr;
++	int bat;
++};
++
++/**
++ * attr_get_bat - get the battery to which the attribute belongs
++ */
++static int attr_get_bat(struct device_attribute *attr)
++{
++	return container_of(attr, struct bat_device_attribute, dev_attr)->bat;
++}
++
++/**
++ * show_tp_ec_bat_u16 - show an unsigned 16-bit battery attribute
++ * @arg0: specified 1st argument of EC raw to read
++ * @offset: byte offset in EC raw data
++ * @mul: correction factor to multiply by
++ * @na_msg: string to output is value not available (0xFFFFFFFF)
++ * @attr: battery attribute
++ * @buf: output buffer
++ * The 16-bit value is read from the EC, treated as unsigned,
++ * transformed as x->mul*x, and printed to the buffer.
++ * If the value is 0xFFFFFFFF and na_msg!=%NULL, na_msg is printed instead.
++ */
++static ssize_t show_tp_ec_bat_u16(u8 arg0, int offset, int mul,
++			      const char *na_msg,
++			      struct device_attribute *attr, char *buf)
++{
++	u16 val;
++	int ret = get_tp_ec_bat_16(arg0, offset, attr_get_bat(attr), &val);
++	if (ret)
++		return ret;
++	if (na_msg && val == 0xFFFF)
++		return sprintf(buf, "%s\n", na_msg);
++	else
++		return sprintf(buf, "%u\n", mul*(unsigned int)val);
++}
++
++/**
++ * show_tp_ec_bat_s16 - show an signed 16-bit battery attribute
++ * @arg0: specified 1st argument of EC raw to read
++ * @offset: byte offset in EC raw data
++ * @mul: correction factor to multiply by
++ * @add: correction term to add after multiplication
++ * @attr: battery attribute
++ * @buf: output buffer
++ * The 16-bit value is read from the EC, treated as signed,
++ * transformed as x->mul*x+add, and printed to the buffer.
++ */
++static ssize_t show_tp_ec_bat_s16(u8 arg0, int offset, int mul, int add,
++			      struct device_attribute *attr, char *buf)
++{
++	u16 val;
++	int ret = get_tp_ec_bat_16(arg0, offset, attr_get_bat(attr), &val);
++	if (ret)
++		return ret;
++	return sprintf(buf, "%d\n", mul*(s16)val+add);
++}
++
++/**
++ * show_tp_ec_bat_str - show a string from EC battery status data
++ * @arg0: specified 1st argument of EC raw to read
++ * @offset: byte offset in EC raw data
++ * @maxlen: maximum string length
++ * @attr: battery attribute
++ * @buf: output buffer
++ */
++static ssize_t show_tp_ec_bat_str(u8 arg0, int offset, int maxlen,
++			      struct device_attribute *attr, char *buf)
++{
++	int bat = attr_get_bat(attr);
++	u8 row[TP_CONTROLLER_ROW_LEN];
++	int ret;
++	if (bat_has_status(bat) != 1)
++		return -ENXIO;
++	ret = read_tp_ec_row(arg0, bat, 0, row);
++	if (ret)
++		return ret;
++	strncpy(buf, (char *)row+offset, maxlen);
++	buf[maxlen] = 0;
++	strcat(buf, "\n");
++	return strlen(buf);
++}
++
++/**
++ * show_tp_ec_bat_power - show a power readout from EC battery status data
++ * @arg0: specified 1st argument of EC raw to read
++ * @offV: byte offset of voltage in EC raw data
++ * @offI: byte offset of current in EC raw data
++ * @attr: battery attribute
++ * @buf: output buffer
++ * Computes the power as current*voltage from the two given readout offsets.
++ */
++static ssize_t show_tp_ec_bat_power(u8 arg0, int offV, int offI,
++				struct device_attribute *attr, char *buf)
++{
++	u8 row[TP_CONTROLLER_ROW_LEN];
++	int milliamp, millivolt, ret;
++	int bat = attr_get_bat(attr);
++	if (bat_has_status(bat) != 1)
++		return -ENXIO;
++	ret = read_tp_ec_row(1, bat, 0, row);
++	if (ret)
++		return ret;
++	millivolt = *(u16 *)(row+offV);
++	milliamp = *(s16 *)(row+offI);
++	return sprintf(buf, "%d\n", milliamp*millivolt/1000); /* units: mW */
++}
++
++/**
++ * show_tp_ec_bat_date - decode and show a date from EC battery status data
++ * @arg0: specified 1st argument of EC raw to read
++ * @offset: byte offset in EC raw data
++ * @attr: battery attribute
++ * @buf: output buffer
++ */
++static ssize_t show_tp_ec_bat_date(u8 arg0, int offset,
++			       struct device_attribute *attr, char *buf)
++{
++	u8 row[TP_CONTROLLER_ROW_LEN];
++	u16 v;
++	int ret;
++	int day, month, year;
++	int bat = attr_get_bat(attr);
++	if (bat_has_status(bat) != 1)
++		return -ENXIO;
++	ret = read_tp_ec_row(arg0, bat, 0, row);
++	if (ret)
++		return ret;
++
++	/* Decode bit-packed: v = day | (month<<5) | ((year-1980)<<9) */
++	v = *(u16 *)(row+offset);
++	day = v & 0x1F;
++	month = (v >> 5) & 0xF;
++	year = (v >> 9) + 1980;
++
++	return sprintf(buf, "%04d-%02d-%02d\n", year, month, day);
++}
++
++
++/*********************************************************************
++ * sysfs attribute I/O for batteries -
++ * the actual attribute show/store functions
++ */
++
++static ssize_t show_battery_start_charge_thresh(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int thresh;
++	int bat = attr_get_bat(attr);
++	int ret = get_thresh(bat, THRESH_START, &thresh);
++	if (ret)
++		return ret;
++	return sprintf(buf, "%d\n", thresh);  /* units: percent */
++}
++
++static ssize_t show_battery_stop_charge_thresh(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int thresh;
++	int bat = attr_get_bat(attr);
++	int ret = get_thresh(bat, THRESH_STOP, &thresh);
++	if (ret)
++		return ret;
++	return sprintf(buf, "%d\n", thresh);  /* units: percent */
++}
++
++/**
++ * store_battery_start_charge_thresh - store battery_start_charge_thresh attr
++ * Since this is a kernel<->user interface, we ensure a valid state for
++ * the hardware. We do this by clamping the requested threshold to the
++ * valid range and, if necessary, moving the other threshold so that
++ * it's MIN_THRESH_DELTA away from this one.
++ */
++static ssize_t store_battery_start_charge_thresh(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t count)
++{
++	int thresh, other_thresh, ret;
++	int bat = attr_get_bat(attr);
++
++	if (sscanf(buf, "%d", &thresh) != 1 || thresh < 1 || thresh > 100)
++		return -EINVAL;
++
++	if (thresh < MIN_THRESH_START) /* clamp up to MIN_THRESH_START */
++		thresh = MIN_THRESH_START;
++	if (thresh > MAX_THRESH_START) /* clamp down to MAX_THRESH_START */
++		thresh = MAX_THRESH_START;
++
++	down(&smapi_mutex);
++	ret = get_thresh(bat, THRESH_STOP, &other_thresh);
++	if (ret != -EOPNOTSUPP && ret != -ENXIO) {
++		if (ret) /* other threshold is set? */
++			goto out;
++		ret = get_real_thresh(bat, THRESH_START, NULL);
++		if (ret) /* this threshold is set? */
++			goto out;
++		if (other_thresh < thresh+MIN_THRESH_DELTA) {
++			/* move other thresh to keep it above this one */
++			ret = set_thresh(bat, THRESH_STOP,
++					 thresh+MIN_THRESH_DELTA);
++			if (ret)
++				goto out;
++		}
++	}
++	ret = set_thresh(bat, THRESH_START, thresh);
++out:
++	up(&smapi_mutex);
++	return count;
++
++}
++
++/**
++ * store_battery_stop_charge_thresh - store battery_stop_charge_thresh attr
++ * Since this is a kernel<->user interface, we ensure a valid state for
++ * the hardware. We do this by clamping the requested threshold to the
++ * valid range and, if necessary, moving the other threshold so that
++ * it's MIN_THRESH_DELTA away from this one.
++ */
++static ssize_t store_battery_stop_charge_thresh(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t count)
++{
++	int thresh, other_thresh, ret;
++	int bat = attr_get_bat(attr);
++
++	if (sscanf(buf, "%d", &thresh) != 1 || thresh < 1 || thresh > 100)
++		return -EINVAL;
++
++	if (thresh < MIN_THRESH_STOP) /* clamp up to MIN_THRESH_STOP */
++		thresh = MIN_THRESH_STOP;
++
++	down(&smapi_mutex);
++	ret = get_thresh(bat, THRESH_START, &other_thresh);
++	if (ret != -EOPNOTSUPP && ret != -ENXIO) { /* other threshold exists? */
++		if (ret)
++			goto out;
++		/* this threshold exists? */
++		ret = get_real_thresh(bat, THRESH_STOP, NULL);
++		if (ret)
++			goto out;
++		if (other_thresh >= thresh-MIN_THRESH_DELTA) {
++			 /* move other thresh to be below this one */
++			ret = set_thresh(bat, THRESH_START,
++					 thresh-MIN_THRESH_DELTA);
++			if (ret)
++				goto out;
++		}
++	}
++	ret = set_thresh(bat, THRESH_STOP, thresh);
++out:
++	up(&smapi_mutex);
++	return count;
++}
++
++static ssize_t show_battery_inhibit_charge_minutes(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int minutes;
++	int bat = attr_get_bat(attr);
++	int ret = get_inhibit_charge_minutes(bat, &minutes);
++	if (ret)
++		return ret;
++	return sprintf(buf, "%d\n", minutes);  /* units: minutes */
++}
++
++static ssize_t store_battery_inhibit_charge_minutes(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	int ret;
++	int minutes;
++	int bat = attr_get_bat(attr);
++	if (sscanf(buf, "%d", &minutes) != 1 || minutes < 0) {
++		TPRINTK(KERN_ERR, "inhibit_charge_minutes: "
++			      "must be a non-negative integer");
++		return -EINVAL;
++	}
++	ret = set_inhibit_charge_minutes(bat, minutes);
++	if (ret)
++		return ret;
++	return count;
++}
++
++static ssize_t show_battery_force_discharge(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int enabled;
++	int bat = attr_get_bat(attr);
++	int ret = get_force_discharge(bat, &enabled);
++	if (ret)
++		return ret;
++	return sprintf(buf, "%d\n", enabled);  /* type: boolean */
++}
++
++static ssize_t store_battery_force_discharge(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t count)
++{
++	int ret;
++	int enabled;
++	int bat = attr_get_bat(attr);
++	if (sscanf(buf, "%d", &enabled) != 1 || enabled < 0 || enabled > 1)
++		return -EINVAL;
++	ret = set_force_discharge(bat, enabled);
++	if (ret)
++		return ret;
++	return count;
++}
++
++static ssize_t show_battery_installed(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	int bat = attr_get_bat(attr);
++	int ret = power_device_present(bat);
++	if (ret < 0)
++		return ret;
++	return sprintf(buf, "%d\n", ret); /* type: boolean */
++}
++
++static ssize_t show_battery_state(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	u8 row[TP_CONTROLLER_ROW_LEN];
++	const char *txt;
++	int ret;
++	int bat = attr_get_bat(attr);
++	if (bat_has_status(bat) != 1)
++		return sprintf(buf, "none\n");
++	ret = read_tp_ec_row(1, bat, 0, row);
++	if (ret)
++		return ret;
++	switch (row[1] & 0xf0) {
++	case 0xc0: txt = "idle"; break;
++	case 0xd0: txt = "discharging"; break;
++	case 0xe0: txt = "charging"; break;
++	default:   return sprintf(buf, "unknown (0x%x)\n", row[1]);
++	}
++	return sprintf(buf, "%s\n", txt);  /* type: string from fixed set */
++}
++
++static ssize_t show_battery_manufacturer(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* type: string. SBS spec v1.1 p34: ManufacturerName() */
++	return show_tp_ec_bat_str(4, 2, TP_CONTROLLER_ROW_LEN-2, attr, buf);
++}
++
++static ssize_t show_battery_model(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* type: string. SBS spec v1.1 p34: DeviceName() */
++	return show_tp_ec_bat_str(5, 2, TP_CONTROLLER_ROW_LEN-2, attr, buf);
++}
++
++static ssize_t show_battery_barcoding(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* type: string */
++	return show_tp_ec_bat_str(7, 2, TP_CONTROLLER_ROW_LEN-2, attr, buf);
++}
++
++static ssize_t show_battery_chemistry(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* type: string. SBS spec v1.1 p34-35: DeviceChemistry() */
++	return show_tp_ec_bat_str(6, 2, 5, attr, buf);
++}
++
++static ssize_t show_battery_voltage(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mV. SBS spec v1.1 p24: Voltage() */
++	return show_tp_ec_bat_u16(1, 6, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_design_voltage(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mV. SBS spec v1.1 p32: DesignVoltage() */
++	return show_tp_ec_bat_u16(3, 4, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_charging_max_voltage(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mV. SBS spec v1.1 p37,39: ChargingVoltage() */
++	return show_tp_ec_bat_u16(9, 8, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_group0_voltage(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mV */
++	return show_tp_ec_bat_u16(0xA, 12, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_group1_voltage(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mV */
++	return show_tp_ec_bat_u16(0xA, 10, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_group2_voltage(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mV */
++	return show_tp_ec_bat_u16(0xA, 8, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_group3_voltage(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mV */
++	return show_tp_ec_bat_u16(0xA, 6, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_current_now(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mA. SBS spec v1.1 p24: Current() */
++	return show_tp_ec_bat_s16(1, 8, 1, 0, attr, buf);
++}
++
++static ssize_t show_battery_current_avg(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mA. SBS spec v1.1 p24: AverageCurrent() */
++	return show_tp_ec_bat_s16(1, 10, 1, 0, attr, buf);
++}
++
++static ssize_t show_battery_charging_max_current(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mA. SBS spec v1.1 p36,38: ChargingCurrent() */
++	return show_tp_ec_bat_s16(9, 6, 1, 0, attr, buf);
++}
++
++static ssize_t show_battery_power_now(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mW. SBS spec v1.1: Voltage()*Current() */
++	return show_tp_ec_bat_power(1, 6, 8, attr, buf);
++}
++
++static ssize_t show_battery_power_avg(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mW. SBS spec v1.1: Voltage()*AverageCurrent() */
++	return show_tp_ec_bat_power(1, 6, 10, attr, buf);
++}
++
++static ssize_t show_battery_remaining_percent(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: percent. SBS spec v1.1 p25: RelativeStateOfCharge() */
++	return show_tp_ec_bat_u16(1, 12, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_remaining_percent_error(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: percent. SBS spec v1.1 p25: MaxError() */
++	return show_tp_ec_bat_u16(9, 4, 1, NULL, attr, buf);
++}
++
++static ssize_t show_battery_remaining_charging_time(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: minutes. SBS spec v1.1 p27: AverageTimeToFull() */
++	return show_tp_ec_bat_u16(2, 8, 1, "not_charging", attr, buf);
++}
++
++static ssize_t show_battery_remaining_running_time(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: minutes. SBS spec v1.1 p27: RunTimeToEmpty() */
++	return show_tp_ec_bat_u16(2, 6, 1, "not_discharging", attr, buf);
++}
++
++static ssize_t show_battery_remaining_running_time_now(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: minutes. SBS spec v1.1 p27: RunTimeToEmpty() */
++	return show_tp_ec_bat_u16(2, 4, 1, "not_discharging", attr, buf);
++}
++
++static ssize_t show_battery_remaining_capacity(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mWh. SBS spec v1.1 p26. */
++	return show_tp_ec_bat_u16(1, 14, 10, "", attr, buf);
++}
++
++static ssize_t show_battery_last_full_capacity(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mWh. SBS spec v1.1 p26: FullChargeCapacity() */
++	return show_tp_ec_bat_u16(2, 2, 10, "", attr, buf);
++}
++
++static ssize_t show_battery_design_capacity(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: mWh. SBS spec v1.1 p32: DesignCapacity() */
++	return show_tp_ec_bat_u16(3, 2, 10, "", attr, buf);
++}
++
++static ssize_t show_battery_cycle_count(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: ordinal. SBS spec v1.1 p32: CycleCount() */
++	return show_tp_ec_bat_u16(2, 12, 1, "", attr, buf);
++}
++
++static ssize_t show_battery_temperature(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* units: millicelsius. SBS spec v1.1: Temperature()*10 */
++	return show_tp_ec_bat_s16(1, 4, 100, -273100, attr, buf);
++}
++
++static ssize_t show_battery_serial(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* type: int. SBS spec v1.1 p34: SerialNumber() */
++	return show_tp_ec_bat_u16(3, 10, 1, "", attr, buf);
++}
++
++static ssize_t show_battery_manufacture_date(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* type: YYYY-MM-DD. SBS spec v1.1 p34: ManufactureDate() */
++	return show_tp_ec_bat_date(3, 8, attr, buf);
++}
++
++static ssize_t show_battery_first_use_date(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	/* type: YYYY-MM-DD */
++	return show_tp_ec_bat_date(8, 2, attr, buf);
++}
++
++/**
++ * show_battery_dump - show the battery's dump attribute
++ * The dump attribute gives a hex dump of all EC readouts related to a
++ * battery. Some of the enumerated values don't really exist (i.e., the
++ * EC function just leaves them untouched); we use a kludge to detect and
++ * denote these.
++ */
++#define MIN_DUMP_ARG0 0x00
++#define MAX_DUMP_ARG0 0x0a /* 0x0b is useful too but hangs old EC firmware */
++static ssize_t show_battery_dump(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	int i;
++	char *p = buf;
++	int bat = attr_get_bat(attr);
++	u8 arg0; /* first argument to EC */
++	u8 rowa[TP_CONTROLLER_ROW_LEN],
++	   rowb[TP_CONTROLLER_ROW_LEN];
++	const u8 junka = 0xAA,
++		 junkb = 0x55; /* junk values for testing changes */
++	int ret;
++
++	for (arg0 = MIN_DUMP_ARG0; arg0 <= MAX_DUMP_ARG0; ++arg0) {
++		if ((p-buf) > PAGE_SIZE-TP_CONTROLLER_ROW_LEN*5)
++			return -ENOMEM; /* don't overflow sysfs buf */
++		/* Read raw twice with different junk values,
++		 * to detect unused output bytes which are left unchaged: */
++		ret = read_tp_ec_row(arg0, bat, junka, rowa);
++		if (ret)
++			return ret;
++		ret = read_tp_ec_row(arg0, bat, junkb, rowb);
++		if (ret)
++			return ret;
++		for (i = 0; i < TP_CONTROLLER_ROW_LEN; i++) {
++			if (rowa[i] == junka && rowb[i] == junkb)
++				p += sprintf(p, "-- "); /* unused by EC */
++			else
++				p += sprintf(p, "%02x ", rowa[i]);
++		}
++		p += sprintf(p, "\n");
++	}
++	return p-buf;
++}
++
++
++/*********************************************************************
++ * sysfs attribute I/O, other than batteries
++ */
++
++static ssize_t show_ac_connected(
++	struct device *dev, struct device_attribute *attr, char *buf)
++{
++	int ret = power_device_present(0xFF);
++	if (ret < 0)
++		return ret;
++	return sprintf(buf, "%d\n", ret);  /* type: boolean */
++}
++
++/*********************************************************************
++ * The the "smapi_request" sysfs attribute executes a raw SMAPI call.
++ * You write to make a request and read to get the result. The state
++ * is saved globally rather than per fd (sysfs limitation), so
++ * simultaenous requests may get each other's results! So this is for
++ * development and debugging only.
++ */
++#define MAX_SMAPI_ATTR_ANSWER_LEN   128
++static char smapi_attr_answer[MAX_SMAPI_ATTR_ANSWER_LEN] = "";
++
++static ssize_t show_smapi_request(struct device *dev,
++				  struct device_attribute *attr, char *buf)
++{
++	int ret = snprintf(buf, PAGE_SIZE, "%s", smapi_attr_answer);
++	smapi_attr_answer[0] = '\0';
++	return ret;
++}
++
++static ssize_t store_smapi_request(struct device *dev,
++				   struct device_attribute *attr,
++				   const char *buf, size_t count)
++{
++	unsigned int inEBX, inECX, inEDI, inESI;
++	u32 outEBX, outECX, outEDX, outEDI, outESI;
++	const char *msg;
++	int ret;
++	if (sscanf(buf, "%x %x %x %x", &inEBX, &inECX, &inEDI, &inESI) != 4) {
++		smapi_attr_answer[0] = '\0';
++		return -EINVAL;
++	}
++	ret = smapi_request(
++		   inEBX, inECX, inEDI, inESI,
++		   &outEBX, &outECX, &outEDX, &outEDI, &outESI, &msg);
++	snprintf(smapi_attr_answer, MAX_SMAPI_ATTR_ANSWER_LEN,
++		 "%x %x %x %x %x %d '%s'\n",
++		 (unsigned int)outEBX, (unsigned int)outECX,
++		 (unsigned int)outEDX, (unsigned int)outEDI,
++		 (unsigned int)outESI, ret, msg);
++	if (ret)
++		return ret;
++	else
++		return count;
++}
++
++/*********************************************************************
++ * Power management: the embedded controller forgets the battery
++ * thresholds when the system is suspended to disk and unplugged from
++ * AC and battery, so we restore it upon resume.
++ */
++
++static int saved_threshs[4] = {-1, -1, -1, -1};  /* -1 = don't know */
++
++static int tp_suspend(struct platform_device *dev, pm_message_t state)
++{
++	int restore = (state.event == PM_EVENT_HIBERNATE ||
++	               state.event == PM_EVENT_FREEZE);
++	if (!restore || get_real_thresh(0, THRESH_STOP , &saved_threshs[0]))
++		saved_threshs[0] = -1;
++	if (!restore || get_real_thresh(0, THRESH_START, &saved_threshs[1]))
++		saved_threshs[1] = -1;
++	if (!restore || get_real_thresh(1, THRESH_STOP , &saved_threshs[2]))
++		saved_threshs[2] = -1;
++	if (!restore || get_real_thresh(1, THRESH_START, &saved_threshs[3]))
++		saved_threshs[3] = -1;
++	DPRINTK("suspend saved: %d %d %d %d", saved_threshs[0],
++		saved_threshs[1], saved_threshs[2], saved_threshs[3]);
++	return 0;
++}
++
++static int tp_resume(struct platform_device *dev)
++{
++	DPRINTK("resume restoring: %d %d %d %d", saved_threshs[0],
++		saved_threshs[1], saved_threshs[2], saved_threshs[3]);
++	if (saved_threshs[0] >= 0)
++		set_real_thresh(0, THRESH_STOP , saved_threshs[0]);
++	if (saved_threshs[1] >= 0)
++		set_real_thresh(0, THRESH_START, saved_threshs[1]);
++	if (saved_threshs[2] >= 0)
++		set_real_thresh(1, THRESH_STOP , saved_threshs[2]);
++	if (saved_threshs[3] >= 0)
++		set_real_thresh(1, THRESH_START, saved_threshs[3]);
++	return 0;
++}
++
++
++/*********************************************************************
++ * Driver model
++ */
++
++static struct platform_driver tp_driver = {
++	.suspend = tp_suspend,
++	.resume = tp_resume,
++	.driver = {
++		.name = "smapi",
++		.owner = THIS_MODULE
++	},
++};
++
++
++/*********************************************************************
++ * Sysfs device model
++ */
++
++/* Attributes in /sys/devices/platform/smapi/ */
++
++static DEVICE_ATTR(ac_connected, 0444, show_ac_connected, NULL);
++static DEVICE_ATTR(smapi_request, 0600, show_smapi_request,
++					store_smapi_request);
++
++static struct attribute *tp_root_attributes[] = {
++	&dev_attr_ac_connected.attr,
++	&dev_attr_smapi_request.attr,
++	NULL
++};
++static struct attribute_group tp_root_attribute_group = {
++	.attrs = tp_root_attributes
++};
++
++/* Attributes under /sys/devices/platform/smapi/BAT{0,1}/ :
++ * Every attribute needs to be defined (i.e., statically allocated) for
++ * each battery, and then referenced in the attribute list of each battery.
++ * We use preprocessor voodoo to avoid duplicating the list of attributes 4
++ * times. The preprocessor output is just normal sysfs attributes code.
++ */
++
++/**
++ * FOREACH_BAT_ATTR - invoke the given macros on all our battery attributes
++ * @_BAT:     battery number (0 or 1)
++ * @_ATTR_RW: macro to invoke for each read/write attribute
++ * @_ATTR_R:  macro to invoke for each read-only  attribute
++ */
++#define FOREACH_BAT_ATTR(_BAT, _ATTR_RW, _ATTR_R) \
++	_ATTR_RW(_BAT, start_charge_thresh) \
++	_ATTR_RW(_BAT, stop_charge_thresh) \
++	_ATTR_RW(_BAT, inhibit_charge_minutes) \
++	_ATTR_RW(_BAT, force_discharge) \
++	_ATTR_R(_BAT, installed) \
++	_ATTR_R(_BAT, state) \
++	_ATTR_R(_BAT, manufacturer) \
++	_ATTR_R(_BAT, model) \
++	_ATTR_R(_BAT, barcoding) \
++	_ATTR_R(_BAT, chemistry) \
++	_ATTR_R(_BAT, voltage) \
++	_ATTR_R(_BAT, group0_voltage) \
++	_ATTR_R(_BAT, group1_voltage) \
++	_ATTR_R(_BAT, group2_voltage) \
++	_ATTR_R(_BAT, group3_voltage) \
++	_ATTR_R(_BAT, current_now) \
++	_ATTR_R(_BAT, current_avg) \
++	_ATTR_R(_BAT, charging_max_current) \
++	_ATTR_R(_BAT, power_now) \
++	_ATTR_R(_BAT, power_avg) \
++	_ATTR_R(_BAT, remaining_percent) \
++	_ATTR_R(_BAT, remaining_percent_error) \
++	_ATTR_R(_BAT, remaining_charging_time) \
++	_ATTR_R(_BAT, remaining_running_time) \
++	_ATTR_R(_BAT, remaining_running_time_now) \
++	_ATTR_R(_BAT, remaining_capacity) \
++	_ATTR_R(_BAT, last_full_capacity) \
++	_ATTR_R(_BAT, design_voltage) \
++	_ATTR_R(_BAT, charging_max_voltage) \
++	_ATTR_R(_BAT, design_capacity) \
++	_ATTR_R(_BAT, cycle_count) \
++	_ATTR_R(_BAT, temperature) \
++	_ATTR_R(_BAT, serial) \
++	_ATTR_R(_BAT, manufacture_date) \
++	_ATTR_R(_BAT, first_use_date) \
++	_ATTR_R(_BAT, dump)
++
++/* Define several macros we will feed into FOREACH_BAT_ATTR: */
++
++#define DEFINE_BAT_ATTR_RW(_BAT,_NAME) \
++	static struct bat_device_attribute dev_attr_##_NAME##_##_BAT = {  \
++		.dev_attr = __ATTR(_NAME, 0644, show_battery_##_NAME,   \
++						store_battery_##_NAME), \
++		.bat = _BAT \
++	};
++
++#define DEFINE_BAT_ATTR_R(_BAT,_NAME) \
++	static struct bat_device_attribute dev_attr_##_NAME##_##_BAT = {    \
++		.dev_attr = __ATTR(_NAME, 0644, show_battery_##_NAME, 0), \
++		.bat = _BAT \
++	};
++
++#define REF_BAT_ATTR(_BAT,_NAME) \
++	&dev_attr_##_NAME##_##_BAT.dev_attr.attr,
++
++/* This provide all attributes for one battery: */
++
++#define PROVIDE_BAT_ATTRS(_BAT) \
++	FOREACH_BAT_ATTR(_BAT, DEFINE_BAT_ATTR_RW, DEFINE_BAT_ATTR_R) \
++	static struct attribute *tp_bat##_BAT##_attributes[] = { \
++		FOREACH_BAT_ATTR(_BAT, REF_BAT_ATTR, REF_BAT_ATTR) \
++		NULL \
++	}; \
++	static struct attribute_group tp_bat##_BAT##_attribute_group = { \
++		.name  = "BAT" #_BAT, \
++		.attrs = tp_bat##_BAT##_attributes \
++	};
++
++/* Finally genereate the attributes: */
++
++PROVIDE_BAT_ATTRS(0)
++PROVIDE_BAT_ATTRS(1)
++
++/* List of attribute groups */
++
++static struct attribute_group *attr_groups[] = {
++	&tp_root_attribute_group,
++	&tp_bat0_attribute_group,
++	&tp_bat1_attribute_group,
++	NULL
++};
++
++
++/*********************************************************************
++ * Init and cleanup
++ */
++
++static struct attribute_group **next_attr_group; /* next to register */
++
++static int __init tp_init(void)
++{
++	int ret;
++	printk(KERN_INFO "tp_smapi " TP_VERSION " loading...\n");
++
++	ret = find_smapi_port();
++	if (ret < 0)
++		goto err;
++	else
++		smapi_port = ret;
++
++	if (!request_region(smapi_port, 1, "smapi")) {
++		printk(KERN_ERR "tp_smapi cannot claim port 0x%x\n",
++		       smapi_port);
++		ret = -ENXIO;
++		goto err;
++	}
++
++	if (!request_region(SMAPI_PORT2, 1, "smapi")) {
++		printk(KERN_ERR "tp_smapi cannot claim port 0x%x\n",
++		       SMAPI_PORT2);
++		ret = -ENXIO;
++		goto err_port1;
++	}
++
++	ret = platform_driver_register(&tp_driver);
++	if (ret)
++		goto err_port2;
++
++	pdev = platform_device_alloc("smapi", -1);
++	if (!pdev) {
++		ret = -ENOMEM;
++		goto err_driver;
++	}
++
++	ret = platform_device_add(pdev);
++	if (ret)
++		goto err_device_free;
++
++	for (next_attr_group = attr_groups; *next_attr_group;
++	     ++next_attr_group) {
++		ret = sysfs_create_group(&pdev->dev.kobj, *next_attr_group);
++		if (ret)
++			goto err_attr;
++	}
++
++	printk(KERN_INFO "tp_smapi successfully loaded (smapi_port=0x%x).\n",
++	       smapi_port);
++	return 0;
++
++err_attr:
++	while (--next_attr_group >= attr_groups)
++		sysfs_remove_group(&pdev->dev.kobj, *next_attr_group);
++	platform_device_unregister(pdev);
++err_device_free:
++	platform_device_put(pdev);
++err_driver:
++	platform_driver_unregister(&tp_driver);
++err_port2:
++	release_region(SMAPI_PORT2, 1);
++err_port1:
++	release_region(smapi_port, 1);
++err:
++	printk(KERN_ERR "tp_smapi init failed (ret=%d)!\n", ret);
++	return ret;
++}
++
++static void __exit tp_exit(void)
++{
++	while (next_attr_group && --next_attr_group >= attr_groups)
++		sysfs_remove_group(&pdev->dev.kobj, *next_attr_group);
++	platform_device_unregister(pdev);
++	platform_driver_unregister(&tp_driver);
++	release_region(SMAPI_PORT2, 1);
++	if (smapi_port)
++		release_region(smapi_port, 1);
++
++	printk(KERN_INFO "tp_smapi unloaded.\n");
++}
++
++module_init(tp_init);
++module_exit(tp_exit);
+diff --git a/fs/exec.c b/fs/exec.c
+index 65eaacaba4f4..1d3b310bd5f0 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -63,6 +63,8 @@
+ #include <linux/compat.h>
+ #include <linux/vmalloc.h>
+ 
++#include <trace/events/fs.h>
++
+ #include <linux/uaccess.h>
+ #include <asm/mmu_context.h>
+ #include <asm/tlb.h>
+@@ -866,9 +868,12 @@ static struct file *do_open_execat(int fd, struct filename *name, int flags)
+ 	if (err)
+ 		goto exit;
+ 
+-	if (name->name[0] != '\0')
++	if (name->name[0] != '\0') {
+ 		fsnotify_open(file);
+ 
++		trace_open_exec(name->name);
++	}
++
+ out:
+ 	return file;
+ 
+diff --git a/fs/open.c b/fs/open.c
+index cb81623a8b09..a92b0f6061ac 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -34,6 +34,9 @@
+ 
+ #include "internal.h"
+ 
++#define CREATE_TRACE_POINTS
++#include <trace/events/fs.h>
++
+ int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
+ 	struct file *filp)
+ {
+@@ -1068,8 +1071,11 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
+ 
+ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
+ {
++ 	struct filename *tmp;
++ 	tmp = getname(filename);
+ 	struct open_how how = build_open_how(flags, mode);
+ 	return do_sys_openat2(dfd, filename, &how);
++			trace_do_sys_open(tmp->name, flags, mode);
+ }
+ 
+ 
+diff --git a/include/trace/events/fs.h b/include/trace/events/fs.h
+new file mode 100644
+index 000000000000..fb634b74adf3
+--- /dev/null
++++ b/include/trace/events/fs.h
+@@ -0,0 +1,53 @@
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM fs
++
++#if !defined(_TRACE_FS_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_FS_H
++
++#include <linux/fs.h>
++#include <linux/tracepoint.h>
++
++TRACE_EVENT(do_sys_open,
++
++	TP_PROTO(const char *filename, int flags, int mode),
++
++	TP_ARGS(filename, flags, mode),
++
++	TP_STRUCT__entry(
++		__string(	filename, filename		)
++		__field(	int, flags			)
++		__field(	int, mode			)
++	),
++
++	TP_fast_assign(
++		__assign_str(filename, filename);
++		__entry->flags = flags;
++		__entry->mode = mode;
++	),
++
++	TP_printk("\"%s\" %x %o",
++		  __get_str(filename), __entry->flags, __entry->mode)
++);
++
++TRACE_EVENT(open_exec,
++
++	TP_PROTO(const char *filename),
++
++	TP_ARGS(filename),
++
++	TP_STRUCT__entry(
++		__string(	filename, filename		)
++	),
++
++	TP_fast_assign(
++		__assign_str(filename, filename);
++	),
++
++	TP_printk("\"%s\"",
++		  __get_str(filename))
++);
++
++#endif /* _TRACE_FS_H */
++
++/* This part must be outside protection */
++#include <trace/define_trace.h> 
+diff --git a/include/linux/thinkpad_ec.h b/include/linux/thinkpad_ec.h
+new file mode 100644
+index 000000000000..1b80d7ee5493
+--- /dev/null
++++ b/include/linux/thinkpad_ec.h
+@@ -0,0 +1,47 @@
++/*
++ *  thinkpad_ec.h - interface to ThinkPad embedded controller LPC3 functions
++ *
++ *  Copyright (C) 2005 Shem Multinymous <multinymous@gmail.com>
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#ifndef _THINKPAD_EC_H
++#define _THINKPAD_EC_H
++
++#ifdef __KERNEL__
++
++#define TP_CONTROLLER_ROW_LEN 16
++
++/* EC transactions input and output (possibly partial) vectors of 16 bytes. */
++struct thinkpad_ec_row {
++	u16 mask; /* bitmap of which entries of val[] are meaningful */
++	u8 val[TP_CONTROLLER_ROW_LEN];
++};
++
++extern int __must_check thinkpad_ec_lock(void);
++extern int __must_check thinkpad_ec_try_lock(void);
++extern void thinkpad_ec_unlock(void);
++
++extern int thinkpad_ec_read_row(const struct thinkpad_ec_row *args,
++				struct thinkpad_ec_row *data);
++extern int thinkpad_ec_try_read_row(const struct thinkpad_ec_row *args,
++				    struct thinkpad_ec_row *mask);
++extern int thinkpad_ec_prefetch_row(const struct thinkpad_ec_row *args);
++extern void thinkpad_ec_invalidate(void);
++
++
++#endif /* __KERNEL */
++#endif /* _THINKPAD_EC_H */
