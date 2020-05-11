@@ -834,14 +834,14 @@ index 000000000000..ae28b85c9995
 +
 +Con Kolivas <kernel@kolivas.org> Sat, 29th October 2016
 diff --git a/Makefile b/Makefile
-index 4d0711f54047..aa5770ed49a3 100644
+index 4d0711f54047..92e1ee508c18 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -15,6 +15,10 @@ NAME = Kleptomaniac Octopus
  PHONY := _all
  _all:
  
-+CKVERSION = -ck1
++CKVERSION = -ck2
 +CKNAME = MuQSS Powered
 +EXTRAVERSION := $(EXTRAVERSION)$(CKVERSION)
 +
@@ -3480,10 +3480,10 @@ index 21fb5a5662b5..a04ffebc6b7a 100644
  obj-$(CONFIG_MEMBARRIER) += membarrier.o
 diff --git a/kernel/sched/MuQSS.c b/kernel/sched/MuQSS.c
 new file mode 100644
-index 000000000000..25d06f15e4e6
+index 000000000000..43cb43a60716
 --- /dev/null
 +++ b/kernel/sched/MuQSS.c
-@@ -0,0 +1,7604 @@
+@@ -0,0 +1,7600 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + *  kernel/sched/MuQSS.c, was kernel/sched.c
@@ -3599,7 +3599,7 @@ index 000000000000..25d06f15e4e6
 +
 +void print_scheduler_version(void)
 +{
-+	printk(KERN_INFO "MuQSS CPU scheduler v0.199 by Con Kolivas.\n");
++	printk(KERN_INFO "MuQSS CPU scheduler v0.200 by Con Kolivas.\n");
 +}
 +
 +/* Define RQ share levels */
@@ -4228,17 +4228,15 @@ index 000000000000..25d06f15e4e6
 +static void update_load_avg(struct rq *rq, unsigned int flags)
 +{
 +	long us_interval, load;
-+	unsigned long curload;
 +
 +	us_interval = NS_TO_US(rq->niffies - rq->load_update);
 +	if (unlikely(us_interval <= 0))
 +		return;
 +
-+	curload = rq_load(rq);
 +	load = rq->load_avg - (rq->load_avg * us_interval * 5 / 262144);
 +	if (unlikely(load < 0))
 +		load = 0;
-+	load += curload * curload * SCHED_CAPACITY_SCALE * us_interval * 5 / 262144;
++	load += rq_load(rq) * SCHED_CAPACITY_SCALE * us_interval * 5 / 262144;
 +	rq->load_avg = load;
 +
 +	rq->load_update = rq->niffies;
@@ -4255,17 +4253,15 @@ index 000000000000..25d06f15e4e6
 +static void update_irq_load_avg(struct rq *rq, long delta)
 +{
 +	long us_interval, load;
-+	unsigned long curload;
 +
 +	us_interval = NS_TO_US(rq->niffies - rq->irq_load_update);
 +	if (unlikely(us_interval <= 0))
 +		return;
 +
-+	curload = NS_TO_US(delta) / us_interval;
 +	load = rq->irq_load_avg - (rq->irq_load_avg * us_interval * 5 / 262144);
 +	if (unlikely(load < 0))
 +		load = 0;
-+	load += curload * curload * SCHED_CAPACITY_SCALE * us_interval * 5 / 262144;
++	load += NS_TO_US(delta) * SCHED_CAPACITY_SCALE * 5 / 262144;
 +	rq->irq_load_avg = load;
 +
 +	rq->irq_load_update = rq->niffies;
@@ -6964,7 +6960,7 @@ index 000000000000..25d06f15e4e6
 +		 * Make sure the next tick runs within a reasonable
 +		 * amount of time.
 +		 */
-+		delta = rq_clock_task(rq) - curr->se.exec_start;
++		delta = rq_clock_task(rq) - curr->last_ran;
 +		WARN_ON_ONCE(delta > (u64)NSEC_PER_SEC * 3);
 +	}
 +	task_tick(rq);
@@ -12620,39 +12616,18 @@ index ad5b88a53c5a..4c9cd46d850f 100644
  	{
  		.procname	= "spin_retry",
 diff --git a/kernel/time/Kconfig b/kernel/time/Kconfig
-index fcc42353f125..46bb16d3c159 100644
+index fcc42353f125..60b4fd254c80 100644
 --- a/kernel/time/Kconfig
 +++ b/kernel/time/Kconfig
-@@ -66,6 +66,9 @@ config NO_HZ_COMMON
- 	depends on !ARCH_USES_GETTIMEOFFSET && GENERIC_CLOCKEVENTS
- 	select TICK_ONESHOT
+@@ -123,7 +123,7 @@ config CONTEXT_TRACKING
  
-+config NO_HZ_FULL
-+	bool
-+
- choice
- 	prompt "Timer tick handling"
- 	default NO_HZ_IDLE if NO_HZ
-@@ -87,8 +90,9 @@ config NO_HZ_IDLE
- 
- 	  Most of the time you want to say Y here.
- 
--config NO_HZ_FULL
-+config NO_HZ_FULL_NODEF
- 	bool "Full dynticks system (tickless)"
-+	select NO_HZ_FULL
- 	# NO_HZ_COMMON dependency
- 	depends on !ARCH_USES_GETTIMEOFFSET && GENERIC_CLOCKEVENTS
- 	# We need at least one periodic CPU for timekeeping
-@@ -114,6 +118,8 @@ config NO_HZ_FULL
- 	 transitions: syscalls, exceptions and interrupts. Even when it's
- 	 dynamically off.
- 
-+	 Not recommended for desktops,laptops, or mobile devices.
-+
- 	 Say N.
- 
- endchoice
+ config CONTEXT_TRACKING_FORCE
+ 	bool "Force context tracking"
+-	depends on CONTEXT_TRACKING
++	depends on CONTEXT_TRACKING && !SCHED_MUQSS
+ 	default y if !NO_HZ_FULL
+ 	help
+ 	  The major pre-requirement for full dynticks to work is to
 diff --git a/kernel/time/clockevents.c b/kernel/time/clockevents.c
 index f5490222e134..544c58c29267 100644
 --- a/kernel/time/clockevents.c
