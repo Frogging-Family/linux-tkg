@@ -22,7 +22,6 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 - Per-CPU-arch native optimizations
 - memory management and swapping tweaks
 - scheduling tweaks
-- optional built-in Thinkpad hardware functions driver / embedded controller LPC3 functions / SMAPI support
 - optional "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
 - CFS tweaks
 - using yeah TCP congestion algo by default

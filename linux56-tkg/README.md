@@ -24,7 +24,6 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 - scheduling tweaks
 - using prefered raid6 gen function directly
 - using lz4 algo for zswap by default
-- built-in Thinkpad hardware functions driver / embedded controller LPC3 functions / SMAPI support
 - optional "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
 - CFS tweaks
 - using yeah TCP congestion algo by default
