@@ -2,7 +2,7 @@
 
 ### MuQSS is not yet an available option for this revision
 
-A custom Linux kernel 5.7 RC with specific PDS and BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+A custom Linux kernel 5.7.y with specific PDS and BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 Various personalization options available and userpatches support (put your own patches in the same dir as the PKGBUILD, with the ".mypatch" extension.
 
@@ -34,6 +34,6 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
-cd linux-tkg/linux57-rc-tkg
+cd linux-tkg/linux57-tkg
 makepkg -si
 ```
