@@ -2,8 +2,6 @@
 
 ### MuQSS and BMQ are not yet available options for this revision
 
-### Nvidia proprietary drivers are not yet compatible with this revision
-
 A custom Linux kernel 5.8 RC with specific PDS and CFS CPU schedulers related patchsets selector and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
