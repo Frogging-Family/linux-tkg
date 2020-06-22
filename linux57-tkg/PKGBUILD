@@ -89,7 +89,7 @@ pkgname=("${pkgbase}" "${pkgbase}-headers")
 _basekernel=5.7
 _sub=5
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=10
+pkgrel=11
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -363,14 +363,24 @@ prepare() {
       plain "0: No yield."
       plain "1: Deboost and requeue task. (default)"
       plain "2: Set rq skip task."
-      read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS and MuQSS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
+      if [ "${_cpusched}" == "MuQSS" ]; then
+        read -rp "`echo $'\n      0. Supposedly best option for gaming performance - could lead to stability issues on some (AMD) platforms when combined with MuQSS\n    > 1. Default and recommended option for MuQSS - could lead to stability issues on some (Intel) platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
+      else
+        read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
+      fi
     fi
-    if [ "$CONDITION0" == "1" ]; then
+    if [ "$CONDITION0" == "0" ]; then
+      sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
+    elif [ "$CONDITION0" == "1" ]; then
       msg2 "Using default CPU sched yield type (1)"
     elif [ "$CONDITION0" == "2" ]; then
       sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
     else
-      sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
+      if [ "${_cpusched}" == "MuQSS" ]; then
+        msg2 "Using default CPU sched yield type (1)"
+      else
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
+      fi
     fi
   fi
 
