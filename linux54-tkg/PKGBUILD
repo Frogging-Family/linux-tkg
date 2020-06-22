@@ -89,7 +89,7 @@ pkgname=("${pkgbase}" "${pkgbase}-headers")
 _basekernel=5.4
 _sub=48
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=64
+pkgrel=65
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -99,6 +99,7 @@ optdepends=('schedtool')
 options=('!strip')
 source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
         "https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -125,13 +126,14 @@ source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.x
 )
 sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
             'd9765b6202925693377e7ec71c2f514f563c9abf708722da76cb5939f0566c82'
+            '27b7fc535ade94b636c3ec4e809e141831e9465a0ef55215a9852b87048629e2'
             'b7f23bbc09b6c571b76f851f0389386a6f3a64f3d7b1b8509c8550228b0f4537'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             '31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
             'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
-            '55db7c30c6d5e7d88cf38a4c757e447faf11a7440afbc081c3da12757073cca7'
+            '156a2c75fd228920e3c3da5e04a110afa403951bdfbb85772c2fd4b82fd24d61'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
@@ -220,9 +222,15 @@ prepare() {
     patch -Np1 -i ../0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
   fi
 
+  # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
+  msg2 "Applying graysky's cpu opts patch"
+  patch -Np1 -i ../enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch
+
   # TkG
+  msg2 "Applying clear linux patches"
   patch -Np1 -i ../0002-clear-patches.patch
 
+  msg2 "Applying glitched base patch"
   patch -Np1 -i ../0003-glitched-base.patch
 
   if [ "${_cpusched}" == "MuQSS" ]; then
@@ -294,6 +302,11 @@ prepare() {
   echo "# CONFIG_MSKYLAKEX is not set" >> ./.config
   echo "# CONFIG_MCANNONLAKE is not set" >> ./.config
   echo "# CONFIG_MICELAKE is not set" >> ./.config
+  echo "# CONFIG_MGOLDMONT is not set" >> ./.config
+  echo "# CONFIG_MGOLDMONTPLUS is not set" >> ./.config
+  echo "# CONFIG_MCASCADELAKE is not set" >> ./.config
+  echo "# CONFIG_MCOOPERLAKE is not set" >> ./.config
+  echo "# CONFIG_MTIGERLAKE is not set" >> ./.config
 
   # Disable some debugging
   if [ "${_debugdisable}" == "true" ]; then
@@ -480,6 +493,16 @@ prepare() {
     sed -i -e 's/# CONFIG_MCANNONLAKE is not set/CONFIG_MCANNONLAKE=y/' ./.config
   elif [ "$_processor_opt" == "icelake" ]; then
     sed -i -e 's/# CONFIG_MICELAKE is not set/CONFIG_MICELAKE=y/' ./.config
+  elif [ "$_processor_opt" == "goldmont" ]; then
+    sed -i -e 's/# CONFIG_MGOLDMONT is not set/CONFIG_MGOLDMONT=y/' ./.config
+  elif [ "$_processor_opt" == "goldmontplus" ]; then
+    sed -i -e 's/# CONFIG_MGOLDMONTPLUS is not set/CONFIG_MGOLDMONTPLUS=y/' ./.config
+  elif [ "$_processor_opt" == "cascadelake" ]; then
+    sed -i -e 's/# CONFIG_MCASCADELAKE is not set/CONFIG_MCASCADELAKE=y/' ./.config
+  elif [ "$_processor_opt" == "cooperlake" ]; then
+    sed -i -e 's/# CONFIG_MCOOPERLAKE is not set/CONFIG_MCOOPERLAKE=y/' ./.config
+  elif [ "$_processor_opt" == "tigerlake" ]; then
+    sed -i -e 's/# CONFIG_MTIGERLAKE is not set/CONFIG_MTIGERLAKE=y/' ./.config
   fi
 
   # irq threading

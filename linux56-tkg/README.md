@@ -19,7 +19,7 @@ If you want to streamline your kernel config for lower footprint and faster comp
 You can enable support for it at the beginning of the PKGBUILD file. Make sure to read everything you need to know about it.
 
 ## Other stuff included:
-- Per-CPU-arch native optimizations
+- Graysky's per-CPU-arch native optimizations - https://github.com/graysky2/kernel_gcc_patch
 - memory management and swapping tweaks
 - scheduling tweaks
 - using prefered raid6 gen function directly
