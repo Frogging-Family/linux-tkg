@@ -77,25 +77,32 @@ _tkg_initscript() {
 
 
 _tkg_srcprep() {
-  msg2 "Setting version..."
-  scripts/setlocalversion --save-scmversion
-  echo "-$pkgrel-tkg-${_cpusched}" > localversion.10-pkgrel
-  echo "" > localversion.20-pkgname
+  
+  if [ "${_distro}" == "Arch" ]; then
+    msg2 "Setting version..."
+    scripts/setlocalversion --save-scmversion
+    echo "-$pkgrel-tkg-${_cpusched}" > localversion.10-pkgrel
+    echo "" > localversion.20-pkgname
 
-  # add upstream patch
-  patch -p1 -i "$_where"/patch-"${pkgver}"
+    # add upstream patch
+    patch -p1 -i "$_where"/patch-"${pkgver}"
 
-  # ARCH Patches
-  if [ "${_configfile}" == "config_hardened.x86_64" ] && [ "${_cpusched}" == "cfs" ]; then
-    msg2 "Using linux hardened patchset"
-    patch -Np1 -i "$_where"/0012-linux-hardened.patch
-  else
-    patch -Np1 -i "$_where"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+    # ARCH Patches
+    if [ "${_configfile}" == "config_hardened.x86_64" ] && [ "${_cpusched}" == "cfs" ]; then
+      msg2 "Using linux hardened patchset"
+      patch -Np1 -i "$_where"/0012-linux-hardened.patch
+    else
+      patch -Np1 -i "$_where"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+    fi
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
   msg2 "Applying graysky's cpu opts patch"
-  patch -Np1 -i "$_where"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch
+  if [ "${_distro}" == "Arch" ]; then
+    patch -Np1 -i "$_where"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch
+  else
+    patch -Np1 -i "$_where"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.7+.patch
+  fi
 
   # TkG
   msg2 "Applying clear linux patches"
@@ -129,11 +136,14 @@ _tkg_srcprep() {
     patch -Np1 -i "$_where"/0003-glitched-cfs.patch
   fi
 
-  if [ -z "${_configfile}" ]; then
+  if [ "${_distro}" == "Arch" ]; then
+    if [ -z "${_configfile}" ]; then
     _configfile="config.x86_64"
-  fi
+    fi
 
-  cat "${srcdir}/${_configfile}" > ./.config
+    cat "${srcdir}/${_configfile}" > ./.config
+  fi 
+
 
   # Set some -tkg defaults
   echo "# CONFIG_DYNAMIC_FAULT is not set" >> ./.config
@@ -152,8 +162,10 @@ _tkg_srcprep() {
   sed -i -e 's/# CONFIG_CMDLINE_BOOL is not set/CONFIG_CMDLINE_BOOL=y/' ./.config
   echo "CONFIG_CMDLINE=\"${_custom_commandline}\"" >> ./.config
   echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ./.config
-  if [ "$_noccache" != "true" ] && pacman -Qq ccache &> /dev/null; then
-    sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
+  if [ "$_noccache" != "true" ]; then 
+    if { [ "$_distro" == "Arch" ] && [ pacman -Qq ccache &> /dev/null ]; } || { [ "$_distro" == "Ubuntu" ] && [ dpkg -l ccache > /dev/null ]; }; then
+      sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
+    fi
   fi
 
   if [ "$_font_autoselect" != "false" ]; then
@@ -683,12 +695,14 @@ _tkg_srcprep() {
     rm -f "$_where"/$_p
   done
 
-  # don't run depmod on 'make install'. We'll do this ourselves in packaging
-  sed -i '2iexit 0' scripts/depmod.sh
+  if [ "$_distro" == "Arch"]; then
+    # don't run depmod on 'make install'. We'll do this ourselves in packaging
+    sed -i '2iexit 0' scripts/depmod.sh
 
-  # get kernel version
-  make prepare
-
+    # get kernel version
+    make prepare
+  fi
+ 
   # modprobed-db
   if [ -z "$_modprobeddb" ]; then
     plain ""
@@ -787,6 +801,8 @@ _tkg_srcprep() {
     rm .config.orig
   fi
 
-  make -s kernelrelease > version
-  msg2 "Prepared %s version %s" "$pkgbase" "$(<version)"
+  if [ "$_distro" == "Arch" ]; then
+    make -s kernelrelease > version
+    msg2 "Prepared %s version %s" "$pkgbase" "$(<version)"
+  fi
 }
