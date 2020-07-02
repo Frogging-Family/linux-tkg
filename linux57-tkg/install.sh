@@ -18,6 +18,11 @@ plain() {
 # alias plain=echo
 
 source customization.cfg
+# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
+if [ -e "$_EXT_CONFIG_PATH" ]; then
+  source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && msg2 ""
+fi
+
 source linux57-tkg-config/prepare
 
 _define_vars
