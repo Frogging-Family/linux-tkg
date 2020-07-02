@@ -84,3 +84,36 @@ msg2 "Done"
 
 # apply linux-tkg patching script
 _tkg_srcprep
+
+# Use custom compiler paths if defined
+if [ -n "${CUSTOM_GCC_PATH}" ]; then
+  PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
+fi
+
+if [ "$_force_all_threads" == "true" ]; then
+  _thread_num=`nproc`
+else
+  _thread_num=`expr \`nproc\` / 4`
+  if [ _thread_num == 0 ]; then
+    _thread_num=1
+  fi
+fi
+
+# ccache
+if [ "$_noccache" != "true" ]; then
+  if [ "$_distro" == "Ubuntu" ] && dpkg -l ccache > /dev/null; then
+    export PATH="/usr/lib/ccache/bin/:$PATH"
+    export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
+    export CCACHE_NOHASHDIR="true"
+    msg2 'ccache was found and will be used'
+  fi
+fi
+
+_kernel_flavor="${_kernel_localversion}"
+if [ -z $_kernel_localversion ]; then
+  _kernel_flavor="tkg-${_cpusched}"
+fi
+
+if [ "$_distro" == "Ubuntu" ]; then
+  make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
+fi
