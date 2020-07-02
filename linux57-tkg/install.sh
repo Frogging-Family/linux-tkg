@@ -64,7 +64,7 @@ else
 fi
 
 msg2 "Decompressing tar archive to folder ..."
-rm -rf linux-${pkgver}/*
+rm -rf linux-${pkgver}
 tar -xf linux-${pkgver}.tar
 msg2 "Done"
 
