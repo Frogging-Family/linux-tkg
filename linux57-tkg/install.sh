@@ -76,8 +76,11 @@ _tkg_initscript
 
 # cd in linux folder, copy Ubuntu's current config file, update with new params
 cd linux-${pkgver}
+
+msg2 "Copying current kernel's config and running make oldconfig..."
 cp /boot/config-`uname -r` .config
 yes '' | make oldconfig
+msg2 "Done"
 
 # apply linux-tkg patching script
 _tkg_srcprep
