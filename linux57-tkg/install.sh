@@ -33,52 +33,19 @@ if [ "$_distro" != "Ubuntu" ]; then
   exit 0
 fi
 
-if [ -f linux-${_basekernel}.tar.xz ]; then  
-  msg2 "linux-${_basekernel}.tar.xz already available locally."
+if [ -d linux-${_basekernel} ]; then
+  msg2 "Reseting files in linux-$_basekernel to their original state"
+  cd linux-${_basekernel}
+  git fetch
+  git reset --hard v${pkgver}
+  git clean -f -d
+  cd ..
+  msg2 "Done"
 else
-  msg2 "linux-${_basekernel}.tar.xz not available locally, downloading..."
-  wget ${source[0]}
+  msg2 "Shallow git cloning linux $_basekernel"
+  git clone --branch linux-$_basekernel.y --single-branch --shallow-since=$_basever_date https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
+  git checkout v${pkgver}
 fi
-
-if [ -f linux-${_basekernel}.tar.sign ]; then 
-  rm -f linux-${_basekernel}.tar.sign
-fi
-
-wget ${source[1]}
-gpg2 --locate-keys torvalds@kernel.org gregkh@kernel.org
-
-if ! [ -f linux-${_basekernel}.tar ]; then
-  msg2 "Decompressing archive into tar file ..."
-  xz -d -k linux-${_basekernel}.tar.xz 
-  msg2 "Done."
-fi
-
-
-msg2 "Verifying signature"
-if gpg2 --verify linux-${_basekernel}.tar.sign ; then 
-  msg2 "Signature good!"
-else  
-  rm -rf linux-${_basekernel}.tar.xz linux-${_basekernel}.tar.sign linux-${_basekernel}.tar
-  msg2 "Wrong linux archive signature, please re-run the installer."
-  exit 0
-fi
-
-msg2 "Decompressing tar archive to folder ..."
-rm -rf linux-${_basekernel}
-tar -xf linux-${_basekernel}.tar
-msg2 "Done"
-
-
-if [ -f patch-${pkgver}.xz ]; then  
-  msg2 "patch-${pkgver}.xz already available locally."
-else
-  msg2 "patch-${pkgver}.xz not available locally, downloading..."
-  wget ${source[2]}
-fi
-
-msg2 "Decompressing linux ${pkgver} patch..."
-unxz < patch-${pkgver}.xz > linux-${_basekernel}/patch-${pkgver}
-msg2 "Done"
 
 # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
 source linux57-tkg-config/prepare
