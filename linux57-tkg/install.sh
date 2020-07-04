@@ -33,40 +33,51 @@ if [ "$_distro" != "Ubuntu" ]; then
   exit 0
 fi
 
-if [ -f linux-${pkgver}.tar.xz ]; then  
-  msg2 "linux-${pkgver}.tar.xz already available locally."
+if [ -f linux-${_basekernel}.tar.xz ]; then  
+  msg2 "linux-${_basekernel}.tar.xz already available locally."
 else
-  msg2 "linux-${pkgver}.tar.xz not available locally, downloading..."
+  msg2 "linux-${_basekernel}.tar.xz not available locally, downloading..."
   wget ${source[0]}
 fi
 
-
-if [ -f linux-${pkgver}.tar.sign ]; then 
-  rm -f linux-${pkgver}.tar.sign
+if [ -f linux-${_basekernel}.tar.sign ]; then 
+  rm -f linux-${_basekernel}.tar.sign
 fi
 
 wget ${source[1]}
 gpg2 --locate-keys torvalds@kernel.org gregkh@kernel.org
 
-if ! [ -f linux-${pkgver}.tar ]; then
+if ! [ -f linux-${_basekernel}.tar ]; then
   msg2 "Decompressing archive into tar file ..."
-  xz -d -k linux-${pkgver}.tar.xz 
+  xz -d -k linux-${_basekernel}.tar.xz 
   msg2 "Done."
 fi
 
 
-echo "Verifying signature"
-if gpg2 --verify linux-${pkgver}.tar.sign ; then 
+msg2 "Verifying signature"
+if gpg2 --verify linux-${_basekernel}.tar.sign ; then 
   msg2 "Signature good!"
 else  
-  rm -rf linux-${pkgver}.tar.xz linux-${pkgver}.tar.sign linux-src linux-${pkgver}.tar
+  rm -rf linux-${_basekernel}.tar.xz linux-${_basekernel}.tar.sign linux-${_basekernel}.tar
   msg2 "Wrong linux archive signature, please re-run the installer."
   exit 0
 fi
 
 msg2 "Decompressing tar archive to folder ..."
-rm -rf linux-${pkgver}
-tar -xf linux-${pkgver}.tar
+rm -rf linux-${_basekernel}
+tar -xf linux-${_basekernel}.tar
+msg2 "Done"
+
+
+if [ -f patch-${pkgver}.xz ]; then  
+  msg2 "patch-${pkgver}.xz already available locally."
+else
+  msg2 "patch-${pkgver}.xz not available locally, downloading..."
+  wget ${source[2]}
+fi
+
+msg2 "Decompressing linux ${pkgver} patch..."
+unxz < patch-${pkgver}.xz > linux-${_basekernel}/patch-${pkgver}
 msg2 "Done"
 
 # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
@@ -76,7 +87,7 @@ _tkg_initscript
 # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
 # cd in linux folder, copy Ubuntu's current config file, update with new params
-cd linux-${pkgver}
+cd linux-${_basekernel}
 
 msg2 "Copying current kernel's config and running make oldconfig..."
 cp /boot/config-`uname -r` .config
