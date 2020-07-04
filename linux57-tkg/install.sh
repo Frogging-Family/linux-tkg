@@ -16,6 +16,7 @@ plain() {
 }
 
 # alias plain=echo
+set -e
 
 source customization.cfg
 # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
