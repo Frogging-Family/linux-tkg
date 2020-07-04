@@ -36,17 +36,26 @@ if [ "$_distro" != "Ubuntu" ]; then
 fi
 
 if [ -d linux-${_basekernel} ]; then
-  msg2 "Reseting files in linux-$_basekernel to their original state"
+  msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
   cd linux-${_basekernel}
-  git fetch
-  git reset --hard v${pkgver}
+  git checkout --force linux-$_basekernel.y
   git clean -f -d
-  cd ..
+  git pull
   msg2 "Done"
+  if ! [ -z $_kernel_subver ]; then
+    msg2 "Reverting to older subversion: ${_kernel_subver}"
+    git checkout v$_basekernel.$_kernel_subver
+    msg2 "Done"
+  fi  
+  cd ..
 else
   msg2 "Shallow git cloning linux $_basekernel"
   git clone --branch linux-$_basekernel.y --single-branch --shallow-since=$_basever_date https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
-  git checkout v${pkgver}
+  if [ -n $_kernel_subver ]; then
+    cd linux-${_basekernel}  
+    git checkout v$_basekernel.$_kernel_subver
+    cd ..
+  fi  
 fi
 
 # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
