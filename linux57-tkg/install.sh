@@ -35,11 +35,15 @@ if [ "$_distro" != "Ubuntu" ]; then
   exit 0
 fi
 
+if [ -d linux-5.7.orig ]; then
+  rm -rf linux-5.7.orig
+fi
+
 if [ -d linux-${_basekernel} ]; then
   msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
   cd linux-${_basekernel}
   git checkout --force linux-$_basekernel.y
-  git clean -f -d
+  git clean -f -d -x
   git pull
   msg2 "Done"
   if ! [ -z $_kernel_subver ]; then
