@@ -1,10 +1,12 @@
 **Due to intel_pstate poor performances as of late, I have decided to set it to passive mode to make use of the acpi_cpufreq governors passthrough, keeping full support for turbo frequencies.**
 
-A custom Linux kernel 5.7.y with specific PDS and BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+A custom Linux kernel 5.7.y with specific PDS, MuQSS and Project C / BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 Various personalization options available and userpatches support (put your own patches in the same dir as the PKGBUILD, with the ".mypatch" extension.
 
-BMQ : http://cchalpha.blogspot.com/
+MuQSS : http://ck-hack.blogspot.com/
+
+Project C / BMQ : http://cchalpha.blogspot.com/
 
 PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
 
