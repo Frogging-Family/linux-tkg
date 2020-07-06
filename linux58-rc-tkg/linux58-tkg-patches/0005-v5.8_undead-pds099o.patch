@@ -192,21 +192,6 @@ diff --git a/kernel/smp.c b/kernel/smp.c
 index 4418f5cb8324..2b51afac5b06 100644
 --- a/kernel/smp.c
 +++ b/kernel/smp.c
-@@ -669,12 +669,14 @@ void __init smp_init(void)
- 	BUILD_BUG_ON(offsetof(struct irq_work, flags) !=
- 		     offsetof(struct __call_single_data, flags));
- 
-+#ifndef CONFIG_SCHED_PDS
- 	/*
- 	 * Assert the CSD_TYPE_TTWU layout is similar enough
- 	 * for task_struct to be on the @call_single_queue.
- 	 */
- 	BUILD_BUG_ON(offsetof(struct task_struct, wake_entry_type) - offsetof(struct task_struct, wake_entry) !=
- 		     offsetof(struct __call_single_data, flags) - offsetof(struct __call_single_data, llist));
-+#endif /* !CONFIG_SCHED_PDS */
- 
- 	idle_threads_init();
- 	cpuhp_threads_init();
 diff --git a/include/linux/sched.h b/include/linux/sched.h
 index 4418f5cb8324..2b51afac5b06 100644
 --- a/include/linux/sched.h
@@ -219,17 +204,16 @@ index 4418f5cb8324..2b51afac5b06 100644
  
  /* task_struct member predeclarations (sorted alphabetically): */
  struct audit_context;
-@@ -652,10 +653,14 @@ struct task_struct {
+@@ -652,9 +653,13 @@ struct task_struct {
  	unsigned int			flags;
  	unsigned int			ptrace;
  
 -#ifdef CONFIG_SMP
-+#if defined(CONFIG_SMP) && !defined(CONFIG_SCHED_PDS)
- 	struct llist_node		wake_entry;
- 	unsigned int			wake_entry_type;
-+#endif
 +#if defined(CONFIG_SMP) || defined(CONFIG_SCHED_PDS)
  	int				on_cpu;
++#endif
++#if defined(CONFIG_SMP) && !defined(CONFIG_SCHED_PDS)
+ 	struct __call_single_node	wake_entry;
 +#endif
 +#ifdef CONFIG_SMP
  #ifdef CONFIG_THREAD_INFO_IN_TASK
@@ -6739,14 +6723,14 @@ index 000000000000..02d7d5a67c77
 +{
 +	struct mm_struct *mm = current->active_mm;
 +
-+	BUG_ON(cpu_online(smp_processor_id()));
++	BUG_ON(current != this_rq()->idle);
 +
 +	if (mm != &init_mm) {
 +		switch_mm(mm, &init_mm, current);
-+		current->active_mm = &init_mm;
 +		finish_arch_post_lock_switch();
 +	}
-+	mmdrop(mm);
++
++	/* finish_cpu(), as ran on the BP, will clean up the active_mm state */
 +}
 +
 +/*
