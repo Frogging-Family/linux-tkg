@@ -18,6 +18,8 @@ plain() {
 # alias plain=echo
 set -e
 
+_script_loc=`pwd`
+
 source customization.cfg
 
 # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
@@ -41,35 +43,36 @@ fi
 
 if [ -d linux-${_basekernel} ]; then
   msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
-  cd linux-${_basekernel}
+  cd $_script_loc/linux-${_basekernel}
   git checkout --force linux-$_basekernel.y
   git clean -f -d -x
   git pull
-  msg2 "Done"
+  msg2 "Done" 
+
   if ! [ -z $_kernel_subver ]; then
     msg2 "Reverting to older subversion: ${_kernel_subver}"
     git checkout v$_basekernel.$_kernel_subver
+    git clean -f -d -x   
     msg2 "Done"
   fi  
-  cd ..
+  cd $_script_loc
 else
   msg2 "Shallow git cloning linux $_basekernel"
   git clone --branch linux-$_basekernel.y --single-branch --shallow-since=$_basever_date https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
-  if [ -n $_kernel_subver ]; then
-    cd linux-${_basekernel}  
+  if ! [ -z $_kernel_subver ]; then
+    cd $_script_loc/linux-${_basekernel}  
     git checkout v$_basekernel.$_kernel_subver
-    cd ..
+    cd $_script_loc
   fi  
 fi
 
 # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
-source linux57-tkg-config/prepare
 _tkg_initscript
 
 # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
 # cd in linux folder, copy Ubuntu's current config file, update with new params
-cd linux-${_basekernel}
+cd $_script_loc/linux-${_basekernel}
 
 msg2 "Copying current kernel's config and running make oldconfig..."
 cp /boot/config-`uname -r` .config
