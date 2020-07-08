@@ -66,6 +66,15 @@ else
   fi  
 fi
 
+# Define current kernel subversion if not defined in customization.cfg
+if [ -z $_kernel_subver ]; then
+  cd $_script_loc/linux-${_basekernel}  
+  _kernelverstr=`git describe`
+  _kernel_subver=${_kernelverstr:5}
+  cd $_script_loc
+fi  
+
+
 # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
 _tkg_initscript
 
@@ -112,5 +121,21 @@ if [ -z $_kernel_localversion ]; then
 fi
 
 if [ "$_distro" == "Ubuntu" ]; then
-  make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
+  # if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
+    msg2 "Building successfully finished!"
+    read -p "Do you want to install the new Kernel ? y/[n]: " _install
+    if [ $_install == "y" ] || [ $_install == "Y" ] || [ $_install == "yes" ] || [ $_install == "Yes" ]; then
+      cd $_script_loc
+      _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
+      _headers_deb=linux-headers-${_kernelname}*.deb
+      _image_deb=linux-image-${_kernelname}_*.deb
+      
+      sudo dpkg -i $_headers_deb $_image_deb
+
+      # Add to the list of installed kernels, used for uninstall
+      if ! { [ -f installed-kernels ] && grep -Fxq "$_kernelname" installed-kernels; }; then
+        echo $_kernelname >> installed-kernels 
+      fi   
+    fi
+  # fi
 fi
