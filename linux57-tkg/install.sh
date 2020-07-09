@@ -121,7 +121,7 @@ if [ -z $_kernel_localversion ]; then
 fi
 
 if [ "$_distro" == "Ubuntu" ]; then
-  # if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
+  if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
     msg2 "Building successfully finished!"
     read -p "Do you want to install the new Kernel ? y/[n]: " _install
     if [ $_install == "y" ] || [ $_install == "Y" ] || [ $_install == "yes" ] || [ $_install == "Yes" ]; then
@@ -137,5 +137,5 @@ if [ "$_distro" == "Ubuntu" ]; then
         echo $_kernelname >> installed-kernels 
       fi   
     fi
-  # fi
+  fi
 fi
