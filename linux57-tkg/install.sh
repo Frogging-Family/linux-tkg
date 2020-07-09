@@ -160,3 +160,41 @@ if [ "$1" == "install" ]; then
   fi
 fi
 
+if [ "$1" == "uninstall" ]; then
+  _command_recognised=1
+
+  cd $_script_loc
+
+  if [ ! -f installed-kernels ] || [ ! -s installed-kernels ]; then
+    echo "No custom kernel has been installed yet"
+    exit 0
+  fi
+
+  i=1
+  declare -a _custom_kernels
+  msg2 "Installed custom kernel versions: "
+  while read p; do
+    echo "    $i) $p"
+    _custom_kernels+=($p)
+    i=$((i+1))
+  done < installed-kernels
+  
+  i=$((i-1))
+  _delete_index=0
+  read -p "Which one would you like to delete ? [1-$i]: " _delete_index
+
+  if [ $_delete_index -ge 1 ] && [ $_delete_index -le $i ]; then
+    _delete_index=$((_delete_index-1))
+    # sudo dpkg -r linux-headers-${_custom_kernels[$_delete_index]} linux-image-${_custom_kernels[$_delete_index]}
+  fi
+
+  rm -f installed-kernels
+  i=0
+  for kernel in "${_custom_kernels[@]}"; do 
+    if [ $_delete_index != $i ]; then
+      echo "$kernel" >> installed-kernels
+    fi
+    i=$((i+1))
+  done
+
+fi
