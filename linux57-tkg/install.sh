@@ -60,31 +60,20 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
     git clean -f -d -x
     git pull
     msg2 "Done" 
-
-    if ! [ -z $_kernel_subver ]; then
-      msg2 "Reverting to older subversion: ${_kernel_subver}"
-      git checkout v$_basekernel.$_kernel_subver
-      git clean -f -d -x   
-      msg2 "Done"
-    fi  
     cd $_script_loc
   else
     msg2 "Shallow git cloning linux $_basekernel"
-    git clone --branch linux-$_basekernel.y --single-branch --shallow-since=$_basever_date https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
-    if ! [ -z $_kernel_subver ]; then
-      cd $_script_loc/linux-${_basekernel}  
-      git checkout v$_basekernel.$_kernel_subver
-      cd $_script_loc
-    fi  
+    git clone --branch linux-$_basekernel.y --single-branch --depth=1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
+    msg2 "Done"
   fi
 
-  # Define current kernel subversion if not defined in customization.cfg
+  # Define current kernel subversion
   if [ -z $_kernel_subver ]; then
     cd $_script_loc/linux-${_basekernel}  
     _kernelverstr=`git describe`
     _kernel_subver=${_kernelverstr:5}
     cd $_script_loc
-  fi  
+  fi
 
 
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
