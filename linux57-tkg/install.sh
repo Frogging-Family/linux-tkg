@@ -42,6 +42,13 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
     exit 0
   fi
 
+  if [ "$_distro" == "Ubuntu" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex
+  else
+    msg2 "Dependencies are unknown for the target linux distribution."
+  fi
+
   # Force prepare script to avoid Arch specific commands if the user didn't change _distro from "Arch"
   if [ "$1" == "config" ]; then
     _distro=""
