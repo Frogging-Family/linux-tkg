@@ -22,15 +22,15 @@ set -e
 _command_recognised=0
 _script_loc=`pwd`
 
+source customization.cfg
+
+# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
+if [ -e "$_EXT_CONFIG_PATH" ]; then
+  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
+  source "$_EXT_CONFIG_PATH"
+fi
+
 if [ "$1" == "install" ] || [ "$1" == "config" ]; then
-
-  source customization.cfg
-
-  # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
-  if [ -e "$_EXT_CONFIG_PATH" ]; then
-    msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values."
-    source "$_EXT_CONFIG_PATH"
-  fi
 
   source linux57-tkg-config/prepare
 
