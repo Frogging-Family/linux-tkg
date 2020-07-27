@@ -35,7 +35,7 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 
 ## Install procedure
 
-### Arch @ derivatives
+### Arch & derivatives
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux57-tkg
@@ -43,7 +43,7 @@ cd linux-tkg/linux57-tkg
 makepkg -si
 ```
 
-### Ubuntu @ derivatives
+### Ubuntu & derivatives
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux57-tkg
