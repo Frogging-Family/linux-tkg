@@ -48,7 +48,6 @@ makepkg -si
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux57-tkg
 # Edit customization.cfg file to at least set _distro to "Ubuntu"
-nano customization.cfg
 ./install.sh install
 ```
 To uninstall custom kernels installed through the script:
