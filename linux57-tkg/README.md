@@ -59,7 +59,7 @@ cd path/to/linux-tkg/linux57-tkg
 ### Other linux distributions
 Other distros are not supported, Debian may work with the `install.sh` script. Otherwise,
 that same `install.sh` script can clone, patch and edit a `.config` file from your current distro's 
-that is expected at `/boot/config-`uname -r` .config`. Otherwise it won't work as-is.
+that is expected at ``/boot/config-`uname -r`.config``. Otherwise it won't work as-is.
 
 The command to do for that is:
 ```
