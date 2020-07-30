@@ -64,8 +64,8 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
 
   _command_recognised=1
 
-  if [ -d linux-5.7.orig ]; then
-    rm -rf linux-5.7.orig
+  if [ -d linux-${_basekernel}.orig ]; then
+    rm -rf linux-${_basekernel}.orig
   fi
 
   if [ -d linux-${_basekernel} ]; then
