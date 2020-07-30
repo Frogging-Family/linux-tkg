@@ -192,7 +192,7 @@ index 8874f681b056..59eb72bf7d5f 100644
  	[RLIMIT_RTTIME]		= {  RLIM_INFINITY,  RLIM_INFINITY },	\
  }
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 4418f5cb8324..9393d324c946 100644
+index 4418f5cb8324..1e8030513489 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
 @@ -652,13 +652,18 @@ struct task_struct {
@@ -200,7 +200,7 @@ index 4418f5cb8324..9393d324c946 100644
  	unsigned int			ptrace;
  
 -#ifdef CONFIG_SMP
-+#if defined(CONFIG_SMP) && !defined(CONFIG_SCHED_ALT)
++#if defined(CONFIG_SMP)
  	struct llist_node		wake_entry;
 +#endif
 +#if defined(CONFIG_SMP) || defined(CONFIG_SCHED_ALT)
@@ -267,16 +267,21 @@ index 4418f5cb8324..9393d324c946 100644
  {
  	return task->thread_pid;
 diff --git a/include/linux/sched/deadline.h b/include/linux/sched/deadline.h
-index 1aff00b65f3c..babbd495ce81 100644
+index 1aff00b65f3c..da0306d2fedb 100644
 --- a/include/linux/sched/deadline.h
 +++ b/include/linux/sched/deadline.h
-@@ -1,5 +1,15 @@
+@@ -1,5 +1,20 @@
  /* SPDX-License-Identifier: GPL-2.0 */
  
 +#ifdef CONFIG_SCHED_ALT
 +
 +#ifdef CONFIG_SCHED_BMQ
 +#define __tsk_deadline(p)	(0UL)
++
++static inline int dl_task(struct task_struct *p)
++{
++	return 0;
++}
 +#endif
 +
 +#else
@@ -286,7 +291,7 @@ index 1aff00b65f3c..babbd495ce81 100644
  /*
   * SCHED_DEADLINE tasks has negative priorities, reflecting
   * the fact that any of them has higher prio than RT and
-@@ -19,6 +29,7 @@ static inline int dl_task(struct task_struct *p)
+@@ -19,6 +34,7 @@ static inline int dl_task(struct task_struct *p)
  {
  	return dl_prio(p->prio);
  }
@@ -606,10 +611,10 @@ index 21fb5a5662b5..1cad9ff599a4 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..09ca47de425c
+index 000000000000..48e5fac710bc
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,5940 @@
+@@ -0,0 +1,6057 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -946,6 +951,20 @@ index 000000000000..09ca47de425c
 +		while (unlikely(task_on_rq_migrating(p)))
 +			cpu_relax();
 +	}
++}
++
++static inline void
++rq_lock_irqsave(struct rq *rq, struct rq_flags *rf)
++	__acquires(rq->lock)
++{
++	raw_spin_lock_irqsave(&rq->lock, rf->flags);
++}
++
++static inline void
++rq_unlock_irqrestore(struct rq *rq, struct rq_flags *rf)
++	__releases(rq->lock)
++{
++	raw_spin_unlock_irqrestore(&rq->lock, rf->flags);
 +}
 +
 +/*
@@ -1382,6 +1401,34 @@ index 000000000000..09ca47de425c
 +		wake_up_idle_cpu(cpu);
 +}
 +
++static inline bool got_nohz_idle_kick(void)
++{
++	int cpu = smp_processor_id();
++
++	/* TODO: need to support nohz_flag
++	if (!(atomic_read(nohz_flags(cpu)) & NOHZ_KICK_MASK))
++		return false;
++	*/
++
++	if (idle_cpu(cpu) && !need_resched())
++		return true;
++
++	/*
++	 * We can't run Idle Load Balance on this CPU for this time so we
++	 * cancel it and clear NOHZ_BALANCE_KICK
++	 */
++	/* TODO: need to support nohz_flag
++	atomic_andnot(NOHZ_KICK_MASK, nohz_flags(cpu));
++	*/
++	return false;
++}
++
++#else /* CONFIG_NO_HZ_COMMON */
++
++static inline bool got_nohz_idle_kick(void)
++{
++	return false;
++}
 +#endif /* CONFIG_NO_HZ_COMMON */
 +#endif /* CONFIG_SMP */
 +
@@ -1739,6 +1786,12 @@ index 000000000000..09ca47de425c
 +	 * be on another CPU but it doesn't matter.
 +	 */
 +	local_irq_disable();
++	/*
++	 * We need to explicitly wake pending tasks before running
++	 * __migrate_task() such that we will not miss enforcing cpus_ptr
++	 * during wakeups, see set_cpus_allowed_ptr()'s TASK_WAKING test.
++	 */
++	sched_ttwu_pending();
 +
 +	raw_spin_lock(&p->pi_lock);
 +	raw_spin_lock(&rq->lock);
@@ -2085,7 +2138,7 @@ index 000000000000..09ca47de425c
 +		goto out;
 +	}
 +
-+	if (cpumask_equal(p->cpus_ptr, new_mask))
++	if (cpumask_equal(&p->cpus_mask, new_mask))
 +		goto out;
 +
 +	dest_cpu = cpumask_any_and(cpu_valid_mask, new_mask);
@@ -2220,6 +2273,26 @@ index 000000000000..09ca47de425c
 +}
 +
 +#ifdef CONFIG_SMP
++void sched_ttwu_pending(void)
++{
++	struct rq *rq = this_rq();
++	struct llist_node *llist = llist_del_all(&rq->wake_list);
++	struct task_struct *p, *t;
++	struct rq_flags rf;
++
++	if (!llist)
++		return;
++
++	rq_lock_irqsave(rq, &rf);
++	update_rq_clock(rq);
++
++	llist_for_each_entry_safe(p, t, llist, wake_entry)
++		ttwu_do_activate(rq, p, p->sched_remote_wakeup ? WF_MIGRATED : 0);
++	check_preempt_curr(rq);
++
++	rq_unlock_irqrestore(rq, &rf);
++}
++
 +void scheduler_ipi(void)
 +{
 +	/*
@@ -2229,11 +2302,36 @@ index 000000000000..09ca47de425c
 +	 */
 +	preempt_fold_need_resched();
 +
-+	if (!idle_cpu(smp_processor_id()) || need_resched())
++	if (llist_empty(&this_rq()->wake_list) && !got_nohz_idle_kick())
 +		return;
 +
 +	irq_enter();
++	sched_ttwu_pending();
++
++	/*
++	 * Check if someone kicked us for doing the nohz idle load balance.
++	 */
++	if (unlikely(got_nohz_idle_kick())) {
++		/* TODO need to kick off balance
++		this_rq()->idle_balance = 1;
++		raise_softirq_irqoff(SCHED_SOFTIRQ);
++		*/
++	}
 +	irq_exit();
++}
++
++static void ttwu_queue_remote(struct task_struct *p, int cpu, int wake_flags)
++{
++	struct rq *rq = cpu_rq(cpu);
++
++	p->sched_remote_wakeup = !!(wake_flags & WF_MIGRATED);
++
++	if (llist_add(&p->wake_entry, &cpu_rq(cpu)->wake_list)) {
++		if (!set_nr_if_polling(rq->idle))
++			smp_send_reschedule(cpu);
++		else
++			trace_sched_wake_idle_without_ipi(cpu);
++	}
 +}
 +
 +void wake_up_if_idle(int cpu)
@@ -2269,6 +2367,14 @@ index 000000000000..09ca47de425c
 +static inline void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
 +{
 +	struct rq *rq = cpu_rq(cpu);
++
++#if defined(CONFIG_SMP)
++	if (!cpus_share_cache(smp_processor_id(), cpu)) {
++		sched_clock_cpu(cpu); /* Sync clocks across CPUs */
++		ttwu_queue_remote(p, cpu, wake_flags);
++		return;
++	}
++#endif
 +
 +	raw_spin_lock(&rq->lock);
 +	update_rq_clock(rq);
@@ -4502,7 +4608,20 @@ index 000000000000..09ca47de425c
 + */
 +int idle_cpu(int cpu)
 +{
-+	return cpu_curr(cpu) == cpu_rq(cpu)->idle;
++	struct rq *rq = cpu_rq(cpu);
++
++	if (rq->curr != rq->idle)
++		return 0;
++
++	if (rq->nr_running)
++		return 0;
++
++#ifdef CONFIG_SMP
++	if (!llist_empty(&rq->wake_list))
++		return 0;
++#endif
++
++	return 1;
 +}
 +
 +/**
@@ -6038,6 +6157,9 @@ index 000000000000..09ca47de425c
 +	struct rq *rq = cpu_rq(cpu);
 +	unsigned long flags;
 +
++	/* Handle pending wakeups and then migrate everything off */
++	sched_ttwu_pending();
++
 +	sched_tick_stop(cpu);
 +	raw_spin_lock_irqsave(&rq->lock, flags);
 +	set_rq_offline(rq);
@@ -6065,7 +6187,7 @@ index 000000000000..09ca47de425c
 +			&(per_cpu(sched_cpu_affinity_masks, cpu)[0]);
 +		per_cpu(sched_cpu_affinity_end_mask, cpu) =
 +			&(per_cpu(sched_cpu_affinity_masks, cpu)[1]);
-+		per_cpu(sd_llc_id, cpu) = cpu;
++		/*per_cpu(sd_llc_id, cpu) = cpu;*/
 +	}
 +}
 +
@@ -6589,10 +6711,10 @@ index 000000000000..835e6bb98dda
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..0936cf766514
+index 000000000000..2b66983cce42
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,521 @@
+@@ -0,0 +1,527 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -6752,6 +6874,11 @@ index 000000000000..0936cf766514
 +	unsigned int ttwu_count;
 +	unsigned int ttwu_local;
 +#endif /* CONFIG_SCHEDSTATS */
++
++#ifdef CONFIG_SMP
++	struct llist_head	wake_list;
++#endif
++
 +#ifdef CONFIG_CPU_IDLE
 +	/* Must be inspected within a rcu lock section */
 +	struct cpuidle_state *idle_state;
@@ -6813,6 +6940,9 @@ index 000000000000..0936cf766514
 +		__best_mask_cpu(cpu, cpumask, &(per_cpu(sched_cpu_affinity_masks, cpu)[0]));
 +}
 +
++extern void sched_ttwu_pending(void);
++#else  /* !CONFIG_SMP */
++static inline void sched_ttwu_pending(void) { }
 +#endif /* CONFIG_SMP */
 +
 +#ifndef arch_scale_freq_tick
@@ -6931,8 +7061,6 @@ index 000000000000..0936cf766514
 +}
 +
 +extern struct static_key_false sched_schedstats;
-+
-+static inline void sched_ttwu_pending(void) { }
 +
 +#ifdef CONFIG_CPU_IDLE
 +static inline void idle_set_state(struct rq *rq,
@@ -7136,11 +7264,11 @@ index 000000000000..4ce30c30bd3e
 +#endif
 diff --git a/kernel/sched/bmq_imp.h b/kernel/sched/bmq_imp.h
 new file mode 100644
-index 000000000000..68313e01356d
+index 000000000000..cb0fc0688a89
 --- /dev/null
 +++ b/kernel/sched/bmq_imp.h
 @@ -0,0 +1,86 @@
-+#define ALT_SCHED_VERSION_MSG "sched/bmq: BMQ CPU Scheduler 5.7-r2 by Alfred Chen.\n"
++#define ALT_SCHED_VERSION_MSG "sched/bmq: BMQ CPU Scheduler 5.7-r3 by Alfred Chen.\n"
 +
 +static inline void sched_queue_init(struct rq *rq)
 +{
@@ -7687,19 +7815,3 @@ index b5e3496cf803..cfbae0a21cef 100644
  	};
  	struct wakeup_test_data *x = data;
  
-diff --git a/include/linux/sched/deadline.h b/include/linux/sched/deadline.h
-index babbd495ce81574e2823e60cf5d7f4bc85a99716..da0306d2fedbc474fb379dfd3bb132785c26211f 100644
---- a/include/linux/sched/deadline.h
-+++ b/include/linux/sched/deadline.h
-@@ -4,6 +4,11 @@
- 
- #ifdef CONFIG_SCHED_BMQ
- #define __tsk_deadline(p)	(0UL)
-+
-+static inline int dl_task(struct task_struct *p)
-+{
-+	return 0;
-+}
- #endif
- 
- #else
