@@ -32,8 +32,38 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 - **optional** ZFS fpu symbols
 - **optional** Fsync support (proton)
 
+
+## Install procedure
+
+### Arch & derivatives
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux57-tkg
+# Edit customization.cfg file 
 makepkg -si
 ```
+
+### Ubuntu & derivatives
+```
+git clone https://github.com/Frogging-Family/linux-tkg.git
+cd linux-tkg/linux57-tkg
+# Edit customization.cfg file to at least set _distro to "Ubuntu"
+./install.sh install
+```
+To uninstall custom kernels installed through the script:
+```
+cd path/to/linux-tkg/linux57-tkg
+./install.sh uninstall
+```
+
+### Other linux distributions
+Other distros are not supported, Debian may work with the `install.sh` script. Otherwise,
+that same `install.sh` script can clone, patch and edit a `.config` file from your current distro's 
+that is expected at ``/boot/config-`uname -r`.config``. Otherwise it won't work as-is.
+
+The command to do for that is:
+```
+./install.sh config
+```
+
+
