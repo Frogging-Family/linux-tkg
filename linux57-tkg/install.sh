@@ -1,4 +1,5 @@
 #!/bin/bash
+
 msg2() {
  echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
 }
@@ -20,7 +21,10 @@ set -e
 
 # Variable to know if the user command has been recognised
 _command_recognised=0
-_script_loc=`pwd`
+_where=`pwd`
+srcdir="$_where"
+
+_cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch"  
 
 source customization.cfg
 
@@ -40,9 +44,7 @@ fi
 
 if [ "$1" == "install" ] || [ "$1" == "config" ]; then
 
-  source linux57-tkg-config/prepare
-
-  _define_vars
+  source linux*-tkg-config/prepare
 
   if [ $1 == "install" ] && [ "$_distro" != "Ubuntu" ]; then 
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\""
@@ -70,12 +72,12 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
 
   if [ -d linux-${_basekernel} ]; then
     msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
-    cd $_script_loc/linux-${_basekernel}
+    cd "$_where"/linux-${_basekernel}
     git checkout --force linux-$_basekernel.y
     git clean -f -d -x
     git pull
     msg2 "Done" 
-    cd $_script_loc
+    cd "$_where"
   else
     msg2 "Shallow git cloning linux $_basekernel"
     git clone --branch linux-$_basekernel.y --single-branch --depth=1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
@@ -84,20 +86,24 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
 
   # Define current kernel subversion
   if [ -z $_kernel_subver ]; then
-    cd $_script_loc/linux-${_basekernel}  
+    cd "$_where"/linux-${_basekernel}
     _kernelverstr=`git describe`
     _kernel_subver=${_kernelverstr:5}
-    cd $_script_loc
+    cd "$_where"
   fi
 
 
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
+  cd "$_where"
+  msg2 "Downloading Graysky2's CPU optimisations patch"
+  wget "$_cpu_opt_patch_link"
+
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
   # cd in linux folder, copy Ubuntu's current config file, update with new params
-  cd $_script_loc/linux-${_basekernel}
+  cd "$_where"/linux-${_basekernel}
 
   msg2 "Copying current kernel's config and running make oldconfig..."
   cp /boot/config-`uname -r` .config
@@ -123,7 +129,7 @@ if [ "$1" == "install" ]; then
     _thread_num=`nproc`
   else
     _thread_num=`expr \`nproc\` / 4`
-    if [ _thread_num == 0 ]; then
+    if [ "$_thread_num" = "0" ]; then
       _thread_num=1
     fi
   fi
@@ -148,7 +154,7 @@ if [ "$1" == "install" ]; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ $_install == "y" ] || [ $_install == "Y" ] || [ $_install == "yes" ] || [ $_install == "Yes" ]; then
-        cd $_script_loc
+        cd "$_where"
         _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
         _headers_deb=linux-headers-${_kernelname}*.deb
         _image_deb=linux-image-${_kernelname}_*.deb
@@ -167,7 +173,7 @@ fi
 if [ "$1" == "uninstall" ]; then
   _command_recognised=1
 
-  cd $_script_loc
+  cd "$_where"
 
   if [ ! -f installed-kernels ] || [ ! -s installed-kernels ]; then
     echo "No custom kernel has been installed yet"

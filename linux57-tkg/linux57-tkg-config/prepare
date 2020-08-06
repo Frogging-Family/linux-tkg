@@ -1,22 +1,18 @@
 #!/bin/bash
 
-_define_vars() {
-  _basekernel=5.7
-  _where="$_script_loc/linux-${_basekernel}"
-  _cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch"  
-}
+_basever=57
+_basekernel=5.7
+_sub=13
 
 _tkg_initscript() {
 
-  cp $_script_loc/linux57-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-  cp $_script_loc/linux57-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+  cp "$_where"/linux"$_basever"-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+  cp "$_where"/linux"$_basever"-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
 
-
-  cd $_script_loc/linux-${_basekernel}
-  msg2 "Downloading Graysky2's CPU optimisations patch"
-  wget $_cpu_opt_patch_link
-  msg2 "Done"
-  cd $_script_loc
+  # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
+  if [ -e "$_EXT_CONFIG_PATH" ]; then
+    source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && msg2 ""
+  fi
 
   if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_where"/cpuschedset ]; then
     # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
@@ -111,10 +107,8 @@ user_patcher() {
 }
 
 _tkg_srcprep() {
-  
-  if [ "${_distro}" == "Arch" ]; then
-    _where=".."
 
+  if [ "${_distro}" == "Arch" ]; then
     msg2 "Setting version..."
     scripts/setlocalversion --save-scmversion
     echo "-$pkgrel-tkg-${_cpusched}" > localversion.10-pkgrel
@@ -122,95 +116,80 @@ _tkg_srcprep() {
 
     # add upstream patch
     msg2 "Patching from $_basekernel to $pkgver"
-    patch -p1 -i "$_where"/patch-"${pkgver}"
-    msg2 "Done"
+    patch -p1 -i "$srcdir"/patch-"${pkgver}"
 
     # ARCH Patches
     if [ "${_configfile}" == "config_hardened.x86_64" ] && [ "${_cpusched}" == "cfs" ]; then
       msg2 "Using linux hardened patchset"
-      patch -Np1 -i "$_where"/0012-linux-hardened.patch
-      msg2 "Done"
+      patch -Np1 -i "$srcdir"/0012-linux-hardened.patch
     else
-      patch -Np1 -i "$_where"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+      patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
     fi
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
   msg2 "Applying graysky's cpu opts patch"
   if [ "${_distro}" == "Arch" ]; then
-    patch -Np1 -i "$_where"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch
+    patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch
   else
-    patch -Np1 -i "$_where"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.7+.patch
+    patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.7+.patch
   fi
-  msg2 "Done"
 
   # TkG
   msg2 "Applying clear linux patches"
-  patch -Np1 -i "$_where"/0002-clear-patches.patch
-  msg2 "Done"
+  patch -Np1 -i "$srcdir"/0002-clear-patches.patch
 
   msg2 "Applying glitched base patch"
-  patch -Np1 -i "$_where"/0003-glitched-base.patch
-  msg2 "Done"
+  patch -Np1 -i "$srcdir"/0003-glitched-base.patch
 
   if [ "$_misc_adds" = "true" ]; then
     msg2 "Applying misc additions patch"
-    patch -Np1 -i "$_where"/0012-misc-additions.patch
+    patch -Np1 -i "$srcdir"/0012-misc-additions.patch
   fi
 
   if [ "${_cpusched}" == "MuQSS" ]; then
     # MuQSS
     msg2 "Applying MuQSS base patch"
-    patch -Np1 -i "$_where"/0004-5.7-ck1.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0004-5.7-ck1.patch
     
     if [ "${_aggressive_ondemand}" == "true" ]; then
       msg2 "Applying MuQSS agressive ondemand governor patch"
-      patch -Np1 -i "$_where"/0004-glitched-ondemand-muqss.patch
-      msg2 "Done"
+      patch -Np1 -i "$srcdir"/0004-glitched-ondemand-muqss.patch
     fi
 
     msg2 "Applying Glitched MuQSS patch"
-    patch -Np1 -i "$_where"/0004-glitched-muqss.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0004-glitched-muqss.patch
   
   elif [ "${_cpusched}" == "pds" ]; then
     # PDS-mq
     msg2 "Applying PDS base patch"
-    patch -Np1 -i "$_where"/0005-v5.7_undead-pds099o.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0005-v5.7_undead-pds099o.patch
 
     if [ "${_aggressive_ondemand}" == "true" ]; then
       msg2 "Applying PDS agressive ondemand governor patch"
-      patch -Np1 -i "$_where"/0005-glitched-ondemand-pds.patch
-      msg2 "Done"
+      patch -Np1 -i "$srcdir"/0005-glitched-ondemand-pds.patch
     fi
 
     msg2 "Applying Glitched PDS patch"
-    patch -Np1 -i "$_where"/0005-glitched-pds.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0005-glitched-pds.patch
   
   elif [ "${_cpusched}" == "bmq" ]; then
     
     # Project C / BMQ
     msg2 "Applying Project C / BMQ base patch"
     
-    patch -Np1 -i ../0009-prjc_v5.7-r3.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0009-prjc_v5.7-r3.patch
 
     if [ "${_aggressive_ondemand}" == "true" ]; then
       msg2 "Applying BMQ agressive ondemand governor patch"
-      patch -Np1 -i "$_where"/0009-glitched-ondemand-bmq.patch
-      msg2 "Done"
+      patch -Np1 -i "$srcdir"/0009-glitched-ondemand-bmq.patch
     fi
 
     msg2 "Applying Glitched BMQ patch"
-    patch -Np1 -i "$_where"/0009-glitched-bmq.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0009-glitched-bmq.patch
   else
     msg2 "Applying Glitched CFS patch"
-    patch -Np1 -i "$_where"/0003-glitched-cfs.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0003-glitched-cfs.patch
   fi
 
   if [ "${_distro}" == "Arch" ]; then
@@ -718,8 +697,7 @@ _tkg_srcprep() {
   fi
   if [ "$CONDITION7" == "y" ] || [ "$_acs_override" == "true" ]; then
     msg2 "Patching ACS override"
-    patch -Np1 -i "$_where"/0006-add-acs-overrides_iommu.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0006-add-acs-overrides_iommu.patch
   fi
 
   # bcachefs
@@ -731,8 +709,7 @@ _tkg_srcprep() {
    fi
    if [ "$CONDITION8" == "y" ] || [ "$_bcachefs" == "true" ]; then
      msg2 "Patching Bcache filesystem support override"
-     patch -Np1 -i "$_where"/0008-5.7-bcachefs.patch
-     msg2 "Done"
+     patch -Np1 -i "$srcdir"/0008-5.7-bcachefs.patch
 
      echo "CONFIG_BCACHEFS_FS=m" >> ./.config
      echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
@@ -751,8 +728,7 @@ _tkg_srcprep() {
   fi
   if [ "$CONDITION9" == "y" ] || [ "$_fsync" == "true" ]; then
     msg2 "Patching Fsync support"
-    patch -Np1 -i "$_where"/0007-v5.7-fsync.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0007-v5.7-fsync.patch
   fi
 
   # ZFS fix
@@ -764,8 +740,7 @@ _tkg_srcprep() {
   fi
   if [ "$CONDITION11" == "y" ] || [ "$_zfsfix" == "true" ]; then
     msg2 "Patching missing symbol for AES-NI/AVX support on ZFS"
-    patch -Np1 -i "$_where"/0011-ZFS-fix.patch
-    msg2 "Done"
+    patch -Np1 -i "$srcdir"/0011-ZFS-fix.patch
   fi
 
   # Community patches
@@ -775,7 +750,7 @@ _tkg_srcprep() {
     fi
     _community_patches=($_community_patches)
     for _p in ${_community_patches[@]}; do
-      ln -s "$_where"/../../community-patches/linux57-tkg/$_p "$_where"/
+      ln -s "$_where"/../../community-patches/linux"$_basever"-tkg/$_p "$_where"/
     done
   fi
 
@@ -902,3 +877,85 @@ _tkg_srcprep() {
     msg2 "Prepared %s version %s" "$pkgbase" "$(<version)"
   fi
 }
+
+exit_cleanup() {
+  # Remove state tracker
+  rm -f "$_where"/cpuschedset
+
+  # Remove temporarily copied files
+  rm -rf "$_where"/*.patch
+  rm -rf "$_where"/*-profile.cfg
+  rm -f "$_where"/config*
+  rm -f "$_where"/*.hook
+  rm -f "$_where"/cleanup
+  rm -f "$_where"/prepare
+
+  # Community patches removal in case of failure
+  for _p in ${_community_patches[@]}; do
+    rm -f "$_where"/"$_p"
+  done
+
+  if [ "$_NUKR" = "true" ] && [ "$_where" != "$srcdir" ]; then
+    rm -rf "$_where"/src/*
+    # Double tap
+    rm -rf "$srcdir"/linux-*
+    rm -rf "$srcdir"/*.xz
+    rm -rf "$srcdir"/*.patch
+    rm -rf "$srcdir"/*-profile.cfg
+    rm -f "$srcdir"/config.x86_64
+    rm -f "$srcdir"/customization.cfg
+  else
+    # Meh
+    rm -rf "$srcdir"/linux-${_basekernel}/Documentation/filesystems/aufs/*
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/ABI/testing/*-aufs
+    rm -rf "$srcdir"/linux-${_basekernel}/fs/aufs/*
+    rm -f "$srcdir"/linux-${_basekernel}/include/uapi/linux/aufs*
+
+    rm -f "$srcdir"/linux-${_basekernel}/mm/prfile.c
+
+    rm -f "$srcdir"/linux-${_basekernel}/block/bfq*
+
+    rm -rf "$srcdir"/linux-${_basekernel}/drivers/scsi/vhba/*
+
+    rm -rf "$srcdir"/linux-${_basekernel}/fs/exfat/*
+    rm -f "$srcdir"/linux-${_basekernel}/include/trace/events/fs.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-PDS-mq.txt
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/skip_list.h
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds_sched.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BMQ.txt
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_core.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/sched/alt_debug.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_sched.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BFS.txt
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-MuQSS.txt
+    rm -rf "$srcdir"/linux-${_basekernel}/arch/blackfin/*
+    rm -f "$srcdir"/linux-${_basekernel}/arch/powerpc/configs/c2k_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/score/configs/spct6600_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilegx_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilepro_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/drivers/staging/lustre/lnet/lnet/lib-eq.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/MuQSS*
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/skip_list.c
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/vm/uksm.txt
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/sradix-tree.h
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/uksm.h
+    rm -f "$srcdir"/linux-${_basekernel}/lib/sradix-tree.c
+    rm -f "$srcdir"/linux-${_basekernel}/mm/uksm.c
+  fi
+
+  if [ "${_distro}" == "Arch" ]; then
+    remove_deps
+  fi
+
+  msg2 'exit cleanup done\n'
+  if [ -n "$_runtime" ]; then
+    msg2 "compilation time : \n$_runtime"
+  fi
+}
+
+trap exit_cleanup EXIT
