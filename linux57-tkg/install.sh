@@ -188,7 +188,7 @@ if [ "$1" == "uninstall" ]; then
 
   if [ $_delete_index -ge 1 ] && [ $_delete_index -le $i ]; then
     _delete_index=$((_delete_index-1))
-    # sudo dpkg -r linux-headers-${_custom_kernels[$_delete_index]} linux-image-${_custom_kernels[$_delete_index]}
+    sudo dpkg -r linux-headers-${_custom_kernels[$_delete_index]} linux-image-${_custom_kernels[$_delete_index]}
   fi
 
   rm -f installed-kernels
