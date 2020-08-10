@@ -1,0 +1,437 @@
+# Based on the file created for Arch Linux by:
+# Tobias Powalowski <tpowa@archlinux.org>
+# Thomas Baechler <thomas@archlinux.org>
+
+# Contributor: Tk-Glitch <ti3nou at gmail dot com>
+
+plain '       .---.`               `.---.'
+plain '    `/syhhhyso-           -osyhhhys/`'
+plain '   .syNMdhNNhss/``.---.``/sshNNhdMNys.'
+plain '   +sdMh.`+MNsssssssssssssssNM+`.hMds+'
+plain '   :syNNdhNNhssssssssssssssshNNhdNNys:'
+plain '    /ssyhhhysssssssssssssssssyhhhyss/'
+plain '    .ossssssssssssssssssssssssssssso.'
+plain '   :sssssssssssssssssssssssssssssssss:'
+plain '  /sssssssssssssssssssssssssssssssssss/'
+plain ' :sssssssssssssoosssssssoosssssssssssss:'
+plain ' osssssssssssssoosssssssoossssssssssssso'
+plain ' osssssssssssyyyyhhhhhhhyyyyssssssssssso'
+plain ' /yyyyyyhhdmmmmNNNNNNNNNNNmmmmdhhyyyyyy/'
+plain '  smmmNNNNNNNNNNNNNNNNNNNNNNNNNNNNNmmms'
+plain '   /dNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNd/'
+plain '    `:sdNNNNNNNNNNNNNNNNNNNNNNNNNds:`'
+plain '       `-+shdNNNNNNNNNNNNNNNdhs+-`'
+plain '             `.-:///////:-.`'
+
+_where="$PWD" # track basedir as different Arch based distros are moving srcdir around
+
+cp "$_where"/linux58-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+cp "$_where"/linux58-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+
+source "$_where"/customization.cfg # load default configuration from file
+
+# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
+if [ -e "$_EXT_CONFIG_PATH" ]; then
+  source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && msg2 ""
+fi
+
+if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_where"/cpuschedset ]; then
+  # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
+  plain "Do you want to use a predefined optimized profile?"
+  read -rp "`echo $'  > 1.Custom\n    2.Ryzen Desktop (Performance)\n    3.Other Desktop (Performance)\nchoice[1-3?]: '`" _OPTIPROFILE;
+fi
+if [ "$_OPTIPROFILE" == "2" ]; then
+  source "$_where"/ryzen-desktop-profile.cfg && msg2 "Ryzen Desktop (Performance) profile will be used." && msg2 ""
+elif [ "$_OPTIPROFILE" == "3" ]; then
+  source "$_where"/generic-desktop-profile.cfg && msg2 "Generic Desktop (Performance) profile will be used." && msg2 ""
+fi
+
+# source cpuschedset early if present
+if [ -e "$_where"/cpuschedset ]; then
+  source "$_where"/cpuschedset
+fi
+
+# CPU SCHED selector
+if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
+  plain "What CPU sched variant do you want to build/install?"
+  read -rp "`echo $'  > 1.PDS\n    2.CFS\nchoice[1-2?]: '`" CONDITION;
+  if [ "$CONDITION" == "2" ]; then
+    echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+  else
+    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+  fi
+  if [ -n "$_custom_pkgbase" ]; then
+    echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "$_where"/cpuschedset
+  fi
+elif [ "$_cpusched" == "pds" ]; then
+  echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+elif [ "$_cpusched" == "cfs" ]; then
+  echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+else
+  warning "Invalid selection - Falling back to CFS..."
+  echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+fi
+
+source "$_where"/cpuschedset
+
+_basever=58
+if [ -n "$_custom_pkgbase" ]; then
+  pkgbase="${_custom_pkgbase}"
+else
+  pkgbase=linux"${_basever}"-tkg-"${_cpusched}"
+fi
+pkgname=("${pkgbase}" "${pkgbase}-headers")
+_basekernel=5.8
+_sub=rc7
+pkgver="${_basekernel}"."${_sub}"
+pkgrel=1
+pkgdesc='Linux-tkg'
+arch=('x86_64') # no i686 in here
+url="http://www.kernel.org/"
+license=('GPL2')
+makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'patchutils' 'pahole' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
+optdepends=('schedtool')
+options=('!strip')
+source=("https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        'config.x86_64' # stock Arch config
+        #'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        #0004-glitched-ondemand-muqss.patch
+        #0004-glitched-muqss.patch
+        #0004-5.8-ck1.patch
+        0005-glitched-ondemand-pds.patch
+        0005-glitched-pds.patch
+        0005-v5.8_undead-pds099o.patch
+        0006-add-acs-overrides_iommu.patch
+        0007-v5.8-fsync.patch
+        #0008-5.8-bcachefs.patch
+        #0009-glitched-ondemand-bmq.patch
+        #0009-glitched-bmq.patch
+        #0009-bmq_v5.8-r0.patch
+        0011-ZFS-fix.patch
+        #0012-linux-hardened.patch
+        0012-misc-additions.patch
+)
+sha256sums=('ace7c02ad8577c8fc19b2e6b5d0aeeee06721511527bc38dd975b2c56982ccec'
+            '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
+            '6ee0c373c8aeed0f162f9515a3f82e14b90982bd3180e155cb91c1b6749e854a'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
+            'd6cde733ad3bd8287528f69c16debfa75e7e43e8bb4c26a8ca9e1a3a7e303a02'
+            '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+            '7fd8e776209dac98627453fda754bdf9aff4a09f27cb0b3766d7983612eb3c74'
+            '0731f18ba998743c5759818aeecf05394954efd1cb6ff2ad9946219ce23cd901'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            'cd225e86d72eaf6c31ef3d7b20df397f4cc44ddd04389850691292cdf292b204'
+            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
+            'b9f724ada90bc7c87c77429278ddbe20cfcbd768bd3cb1e1c132a0f1eda3625f')
+
+export KBUILD_BUILD_HOST=archlinux
+export KBUILD_BUILD_USER=$pkgbase
+export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
+
+user_patcher() {
+	# To patch the user because all your base are belong to us
+	local _patches=("$_where"/*."${_userpatch_ext}revert")
+	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
+	  if [ "$_user_patches_no_confirm" != "true" ]; then
+	    msg2 "Found ${#_patches[@]} 'to revert' userpatches for ${_userpatch_target}:"
+	    printf '%s\n' "${_patches[@]}"
+	    read -rp "Do you want to install it/them? - Be careful with that ;)"$'\n> N/y : ' _CONDITION;
+	  fi
+	  if [ "$_CONDITION" == "y" ] || [ "$_user_patches_no_confirm" == "true" ]; then
+	    for _f in "${_patches[@]}"; do
+	      if [ -e "${_f}" ]; then
+	        msg2 "######################################################"
+	        msg2 ""
+	        msg2 "Reverting your own ${_userpatch_target} patch ${_f}"
+	        msg2 ""
+	        msg2 "######################################################"
+	        patch -Np1 -R < "${_f}"
+	        echo "Reverted your own patch ${_f}" >> "$_where"/last_build_config.log
+	      fi
+	    done
+	  fi
+	fi
+
+	_patches=("$_where"/*."${_userpatch_ext}patch")
+	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
+	  if [ "$_user_patches_no_confirm" != "true" ]; then
+	    msg2 "Found ${#_patches[@]} userpatches for ${_userpatch_target}:"
+	    printf '%s\n' "${_patches[@]}"
+	    read -rp "Do you want to install it/them? - Be careful with that ;)"$'\n> N/y : ' _CONDITION;
+	  fi
+	  if [ "$_CONDITION" == "y" ] || [ "$_user_patches_no_confirm" == "true" ]; then
+	    for _f in "${_patches[@]}"; do
+	      if [ -e "${_f}" ]; then
+	        msg2 "######################################################"
+	        msg2 ""
+	        msg2 "Applying your own ${_userpatch_target} patch ${_f}"
+	        msg2 ""
+	        msg2 "######################################################"
+	        patch -Np1 < "${_f}"
+	        echo "Applied your own patch ${_f}" >> "$_where"/last_build_config.log
+	      fi
+	    done
+	  fi
+	fi
+}
+
+prepare() {
+  rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
+
+  ln -s "${_where}/customization.cfg" "${srcdir}" # workaround
+
+  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+
+  source "$_where/linux$_basever-tkg-config/prepare"
+  _tkg_srcprep
+}
+
+build() {
+  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+
+  # Use custom compiler paths if defined
+  if [ -n "${CUSTOM_GCC_PATH}" ]; then
+    PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
+  fi
+
+  if [ "$_force_all_threads" == "true" ]; then
+    _force_all_threads="-j$((`nproc`*2))"
+  else
+    _force_all_threads="${MAKEFLAGS}"
+  fi
+
+  # ccache
+  if [ "$_noccache" != "true" ] && pacman -Qq ccache &> /dev/null; then
+    export PATH="/usr/lib/ccache/bin/:$PATH"
+    export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
+    export CCACHE_NOHASHDIR="true"
+    msg2 'ccache was found and will be used'
+  fi
+
+  # build!
+  _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 make ${_force_all_threads} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( make ${_force_all_threads} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+}
+
+hackbase() {
+  pkgdesc="The $pkgdesc kernel and modules"
+  depends=('coreutils' 'kmod' 'initramfs')
+  optdepends=('linux-docs: Kernel hackers manual - HTML documentation that comes with the Linux kernel.'
+              'crda: to set the correct wireless channels of your country.'
+              'linux-firmware: Firmware files for Linux'
+              'modprobed-db: Keeps track of EVERY kernel module that has ever been probed. Useful for make localmodconfig.'
+              'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
+              'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
+              'update-grub: Simple wrapper around grub-mkconfig.')
+  provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+  replaces=(virtualbox-guest-modules-arch wireguard-arch)
+
+  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+
+  # get kernel version
+  local _kernver="$(<version)"
+  local modulesdir="$pkgdir/usr/lib/modules/$_kernver"
+
+  msg2 "Installing boot image..."
+  # systemd expects to find the kernel here to allow hibernation
+  # https://github.com/systemd/systemd/commit/edda44605f06a41fb86b7ab8128dcf99161d2344
+  install -Dm644 "$(make -s image_name)" "$modulesdir/vmlinuz"
+
+  # Used by mkinitcpio to name the kernel
+  echo "$pkgbase" | install -Dm644 /dev/stdin "$modulesdir/pkgbase"
+
+  msg2 "Installing modules..."
+  make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 modules_install
+
+  # remove build and source links
+  rm "$modulesdir"/{source,build}
+
+  # install cleanup pacman hook and script
+  sed -e "s|cleanup|${pkgbase}-cleanup|g" "${srcdir}"/90-cleanup.hook |
+    install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/90-${pkgbase}.hook"
+  install -Dm755 "${srcdir}"/cleanup "${pkgdir}/usr/share/libalpm/scripts/${pkgbase}-cleanup"
+}
+
+hackheaders() {
+  pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
+  provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
+
+  cd "${srcdir}/linux-${_basekernel}-${_sub}"
+  local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
+
+  msg2 "Installing build files..."
+  install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map \
+    localversion.* version vmlinux
+  install -Dt "$builddir/kernel" -m644 kernel/Makefile
+  install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
+  cp -t "$builddir" -a scripts
+
+  # add objtool for external module building and enabled VALIDATION_STACK option
+  install -Dt "$builddir/tools/objtool" tools/objtool/objtool
+
+  # add xfs and shmem for aufs building
+  mkdir -p "$builddir"/{fs/xfs,mm}
+
+  msg2 "Installing headers..."
+  cp -t "$builddir" -a include
+  cp -t "$builddir/arch/x86" -a arch/x86/include
+  install -Dt "$builddir/arch/x86/kernel" -m644 arch/x86/kernel/asm-offsets.s
+
+  install -Dt "$builddir/drivers/md" -m644 drivers/md/*.h
+  install -Dt "$builddir/net/mac80211" -m644 net/mac80211/*.h
+
+  # http://bugs.archlinux.org/task/13146
+  install -Dt "$builddir/drivers/media/i2c" -m644 drivers/media/i2c/msp3400-driver.h
+
+  # http://bugs.archlinux.org/task/20402
+  install -Dt "$builddir/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
+  install -Dt "$builddir/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
+  install -Dt "$builddir/drivers/media/tuners" -m644 drivers/media/tuners/*.h
+
+  msg2 "Installing KConfig files..."
+  find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
+
+  msg2 "Removing unneeded architectures..."
+  local arch
+  for arch in "$builddir"/arch/*/; do
+    [[ $arch = */x86/ ]] && continue
+    echo "Removing $(basename "$arch")"
+    rm -r "$arch"
+  done
+
+  msg2 "Removing documentation..."
+  rm -r "$builddir/Documentation"
+
+  msg2 "Removing broken symlinks..."
+  find -L "$builddir" -type l -printf 'Removing %P\n' -delete
+
+  msg2 "Removing loose objects..."
+  find "$builddir" -type f -name '*.o' -printf 'Removing %P\n' -delete
+
+  msg2 "Stripping build tools..."
+  local file
+  while read -rd '' file; do
+    case "$(file -bi "$file")" in
+      application/x-sharedlib\;*)      # Libraries (.so)
+        strip -v $STRIP_SHARED "$file" ;;
+      application/x-archive\;*)        # Libraries (.a)
+        strip -v $STRIP_STATIC "$file" ;;
+      application/x-executable\;*)     # Binaries
+        strip -v $STRIP_BINARIES "$file" ;;
+      application/x-pie-executable\;*) # Relocatable binaries
+        strip -v $STRIP_SHARED "$file" ;;
+    esac
+  done < <(find "$builddir" -type f -perm -u+x ! -name vmlinux -print0)
+
+  msg2 "Adding symlink..."
+  mkdir -p "$pkgdir/usr/src"
+  ln -sr "$builddir" "$pkgdir/usr/src/$pkgbase"
+
+  echo "Stripping vmlinux..."
+  strip -v $STRIP_STATIC "$builddir/vmlinux"
+
+  if [ $_NUKR == "true" ]; then
+    rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
+  fi
+}
+
+source /dev/stdin <<EOF
+package_${pkgbase}() {
+hackbase
+}
+
+package_${pkgbase}-headers() {
+hackheaders
+}
+EOF
+
+function exit_cleanup {
+  # Remove state tracker
+  rm -f "$_where"/cpuschedset
+  
+  # Remove temporarily copied files
+  rm -rf "$_where"/*.patch
+  rm -rf "$_where"/*-profile.cfg
+  rm -f "$_where"/config*
+  rm -f "$_where"/*.hook
+  rm -f "$_where"/cleanup
+  rm -f "$_where"/prepare
+
+  # Community patches removal in case of failure
+  for _p in ${_community_patches[@]}; do
+    rm -f "$_where"/"$_p"
+  done
+
+  if [ "$_NUKR" == "true" ]; then
+    rm -rf "$_where"/src/*
+    # Double tap
+    rm -rf "$srcdir"/linux-*
+    rm -rf "$srcdir"/*.xz
+    rm -rf "$srcdir"/*.patch
+    rm -rf "$srcdir"/*-profile.cfg
+    rm -f "$srcdir"/config.x86_64
+    rm -f "$srcdir"/customization.cfg
+  else
+    # Meh
+    rm -rf "$srcdir"/linux-${_basekernel}/Documentation/filesystems/aufs/*
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/ABI/testing/*-aufs
+    rm -rf "$srcdir"/linux-${_basekernel}/fs/aufs/*
+    rm -f "$srcdir"/linux-${_basekernel}/include/uapi/linux/aufs*
+
+    rm -f "$srcdir"/linux-${_basekernel}/mm/prfile.c
+
+    rm -f "$srcdir"/linux-${_basekernel}/block/bfq*
+
+    rm -rf "$srcdir"/linux-${_basekernel}/drivers/scsi/vhba/*
+
+    rm -rf "$srcdir"/linux-${_basekernel}/fs/exfat/*
+    rm -f "$srcdir"/linux-${_basekernel}/include/trace/events/fs.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-PDS-mq.txt
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/skip_list.h
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds_sched.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BMQ.txt
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/bmq.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/bmq_sched.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BFS.txt
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-MuQSS.txt
+    rm -rf "$srcdir"/linux-${_basekernel}/arch/blackfin/*
+    rm -f "$srcdir"/linux-${_basekernel}/arch/powerpc/configs/c2k_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/score/configs/spct6600_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilegx_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilepro_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/drivers/staging/lustre/lnet/lnet/lib-eq.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/MuQSS*
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/skip_list.c
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/vm/uksm.txt
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/sradix-tree.h
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/uksm.h
+    rm -f "$srcdir"/linux-${_basekernel}/lib/sradix-tree.c
+    rm -f "$srcdir"/linux-${_basekernel}/mm/uksm.c
+  fi
+
+  remove_deps
+
+  msg2 'exit cleanup done\n'
+  if [ -n "$_runtime" ]; then
+    msg2 "compilation time : \n$_runtime"
+  fi
+}
+
+trap exit_cleanup EXIT
