@@ -16,7 +16,7 @@ plain() {
  echo "$1" >&2
 }
 
-# alias plain=echo
+# Stop the script at any ecountered error
 set -e
 
 _where=`pwd`
@@ -27,10 +27,11 @@ _cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch
 source customization.cfg
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall" ]; then
-  echo "Command not recognised, options are:
-        - config : shallow clones the linux 5.7.x git tree into the folder linux-5.7, then applies on it the extra patches and prepares the .config file by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
-        - install : [Debian-like only (Debian, Ubuntu, Pop_os!...)], does the config step, proceeds to compile, then prompts to install
-        - uninstall : [Debian-like only (Debian, Ubuntu, Pop_os!...)], lists the installed custom kernels through this script, then prompts for which one to uninstall."
+  msg2 "Argument not recognised, options are:
+        - config : shallow clones the linux 5.7.x git tree into the folder linux-5.7, then applies on it the extra patches and prepares the .config file 
+                   by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
+        - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
+        - uninstall : [RPM and DEB based distros only], lists the installed custom kernels through this script, then prompts for which one to uninstall."
   exit 0
 fi
 
@@ -44,15 +45,19 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
 
   source linux*-tkg-config/prepare
 
-  if [ $1 == "install" ] && [ "$_distro" != "Ubuntu" ]; then 
-    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\""
-    msg2 "This script can only install custom kernels for Ubuntu and Debian derivatives. Exiting..."
+  if [ $1 == "install" ] && ! { [ "$_distro" == "Ubuntu" ] || [ "$_distro" == "Fedora" ]; } then 
+    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\" or \"Fedora\""
+    msg2 "This script can only install custom kernels for RPM and DEB based distros. Exiting..."
     exit 0
   fi
 
   if [ "$_distro" == "Ubuntu" ]; then
     msg2 "Installing dependencies"
-    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex
+    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex -y
+  elif [ "$_distro" == "Fedora" ]; then
+    msg2 "Installing dependencies"
+    sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves -y
+    sudo dnf group install "Development Tools" -y
   else
     msg2 "Dependencies are unknown for the target linux distribution."
   fi
@@ -130,12 +135,20 @@ if [ "$1" == "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
-    if [ "$_distro" == "Ubuntu" ] && dpkg -l ccache > /dev/null; then
+    
+    if [ "$_distro" == "Ubuntu" ] && dpkg -l ccache > /dev/null; then    
       export PATH="/usr/lib/ccache/bin/:$PATH"
       export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
       export CCACHE_NOHASHDIR="true"
       msg2 'ccache was found and will be used'
+
+    elif [ "$_distro" == "Fedora" ] && dnf list --installed ccache > /dev/null; then
+      export PATH="/usr/lib64/ccache/:$PATH"
+      export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
+      export CCACHE_NOHASHDIR="true"
+      msg2 'ccache was found and will be used'
     fi
+
   fi
 
   _kernel_flavor="${_kernel_localversion}"
@@ -154,6 +167,34 @@ if [ "$1" == "install" ]; then
         _image_deb=linux-image-${_kernelname}_*.deb
         
         sudo dpkg -i $_headers_deb $_image_deb
+
+        # Add to the list of installed kernels, used for uninstall
+        if ! { [ -f installed-kernels ] && grep -Fxq "$_kernelname" installed-kernels; }; then
+          echo $_kernelname >> installed-kernels 
+        fi   
+      fi
+    fi
+  fi
+
+  # Replace dashes with underscores, it seems that it's being done by binrpm-pkg
+  # Se we can actually refer properly to the rpm files.
+  if [ "$_distro" == "Fedora" ]; then
+    _kernel_flavor=${_kernel_flavor//-/_}
+  fi
+
+  if [ "$_distro" == "Fedora" ]; then
+    #if make -j ${_thread_num} binrpm-pkg EXTRAVERSION="_${_kernel_flavor}"; then
+    if [ "0" == "0" ]; then
+      msg2 "Building successfully finished!"
+      read -p "Do you want to install the new Kernel ? y/[n]: " _install
+      if [ "$_install" == "y" ] || [ "$_install" == "Y" ] || [ "$_install" == "yes" ] || [ "$_install" == "Yes" ]; then
+        _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
+        _headers_rpm="kernel-headers-${_kernelname}*.rpm"
+        _kernel_rpm="kernel-${_kernelname}*.rpm"
+        
+        sudo rpm --upgrade --replacepkgs ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
+        
+        msg2 "Install successful"
 
         # Add to the list of installed kernels, used for uninstall
         if ! { [ -f installed-kernels ] && grep -Fxq "$_kernelname" installed-kernels; }; then
