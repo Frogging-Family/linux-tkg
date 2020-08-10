@@ -19,8 +19,6 @@ plain() {
 # alias plain=echo
 set -e
 
-# Variable to know if the user command has been recognised
-_command_recognised=0
 _where=`pwd`
 srcdir="$_where"
 
@@ -63,8 +61,6 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
   if [ "$1" == "config" ]; then
     _distro=""
   fi
-
-  _command_recognised=1
 
   if [ -d linux-${_basekernel}.orig ]; then
     rm -rf linux-${_basekernel}.orig
@@ -118,8 +114,6 @@ fi
 
 if [ "$1" == "install" ]; then
 
-  _command_recognised=1
-
   # Use custom compiler paths if defined
   if [ -n "${CUSTOM_GCC_PATH}" ]; then
     PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
@@ -171,7 +165,6 @@ if [ "$1" == "install" ]; then
 fi
 
 if [ "$1" == "uninstall" ]; then
-  _command_recognised=1
 
   cd "$_where"
 
@@ -195,7 +188,7 @@ if [ "$1" == "uninstall" ]; then
 
   if [ $_delete_index -ge 1 ] && [ $_delete_index -le $i ]; then
     _delete_index=$((_delete_index-1))
-    # sudo dpkg -r linux-headers-${_custom_kernels[$_delete_index]} linux-image-${_custom_kernels[$_delete_index]}
+    sudo dpkg -r linux-headers-${_custom_kernels[$_delete_index]} linux-image-${_custom_kernels[$_delete_index]}
   fi
 
   rm -f installed-kernels
