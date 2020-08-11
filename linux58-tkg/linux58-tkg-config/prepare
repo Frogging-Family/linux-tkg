@@ -48,8 +48,8 @@ _tkg_srcprep() {
     fi
     patch -Np1 -i ../0005-glitched-pds.patch
   elif [ "${_cpusched}" == "bmq" ]; then
-    # BMQ
-    patch -Np1 -i ../0009-bmq_v5.8-r0.patch
+    # Project C / BMQ
+    patch -Np1 -i ../0009-prjc_v5.8-r0.patch
     if [ "${_aggressive_ondemand}" == "true" ]; then
       patch -Np1 -i ../0009-glitched-ondemand-bmq.patch
     fi
@@ -139,7 +139,7 @@ _tkg_srcprep() {
     echo "CONFIG_SCHED_PDS=y" >> ./.config
   elif [ "${_cpusched}" == "bmq" ]; then
     # BMQ default config
-    echo "CONFIG_SCHED_BMQ=y" >> ./.config
+    echo "CONFIG_SCHED_ALT=y" >> ./.config
   fi
 
   if [ "${_cpusched}" == "MuQSS" ] || [ "${_cpusched}" == "pds" ] || [ "${_cpusched}" == "bmq" ]; then
@@ -162,14 +162,34 @@ _tkg_srcprep() {
       plain "0: No yield."
       plain "1: Deboost and requeue task. (default)"
       plain "2: Set rq skip task."
-      read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS and MuQSS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
+      if [ "${_cpusched}" == "MuQSS" ]; then
+        read -rp "`echo $'\n      0. Supposedly best option for gaming performance - could lead to stability issues on some (AMD) platforms when combined with MuQSS\n    > 1. Default and recommended option for MuQSS - could lead to stability issues on some (Intel) platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
+      else
+        read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
+      fi
     fi
-    if [ "$CONDITION0" == "1" ]; then
+    if [ "$CONDITION0" == "0" ]; then
+      if [ "${_cpusched}" == "bmq" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+      else
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
+      fi
+    elif [ "$CONDITION0" == "1" ]; then
       msg2 "Using default CPU sched yield type (1)"
     elif [ "$CONDITION0" == "2" ]; then
-      sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
+      if [ "${_cpusched}" == "bmq" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/alt_core.c
+      else
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
+      fi
     else
-      sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
+      if [ "${_cpusched}" == "MuQSS" ]; then
+        msg2 "Using default CPU sched yield type (1)"
+      elif [ "${_cpusched}" == "bmq" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+      else
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
+      fi
     fi
   fi
 
