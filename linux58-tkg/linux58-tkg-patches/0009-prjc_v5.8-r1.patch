@@ -611,10 +611,10 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..0a75a830de05
+index 000000000000..5db1f74f3559
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,6200 @@
+@@ -0,0 +1,6202 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -758,7 +758,9 @@ index 000000000000..0a75a830de05
 +
 +#define IDLE_WM	(IDLE_TASK_SCHED_PRIO)
 +
++#ifdef CONFIG_SCHED_SMT
 +static cpumask_t sched_sg_idle_mask ____cacheline_aligned_in_smp;
++#endif
 +static cpumask_t sched_rq_watermark[SCHED_BITS] ____cacheline_aligned_in_smp;
 +
 +static inline void update_sched_rq_watermark(struct rq *rq)
@@ -6456,12 +6458,12 @@ index 000000000000..0a75a830de05
 +#ifdef CONFIG_SCHED_SMT
 +		rq->active_balance = 0;
 +#endif
-+#endif
-+		rq->nr_switches = 0;
 +
 +#ifdef CONFIG_NO_HZ_COMMON
 +		rq_csd_init(rq, &rq->nohz_csd, nohz_csd_func);
 +#endif
++#endif /* CONFIG_SMP */
++		rq->nr_switches = 0;
 +
 +		hrtick_rq_init(rq);
 +		atomic_set(&rq->nr_iowait, 0);
@@ -7434,11 +7436,11 @@ index 000000000000..aba3c98759f8
 +#endif
 diff --git a/kernel/sched/bmq_imp.h b/kernel/sched/bmq_imp.h
 new file mode 100644
-index 000000000000..e581fbf3528b
+index 000000000000..86d496ec23b3
 --- /dev/null
 +++ b/kernel/sched/bmq_imp.h
 @@ -0,0 +1,86 @@
-+#define ALT_SCHED_VERSION_MSG "sched/bmq: BMQ CPU Scheduler 5.8-r0 by Alfred Chen.\n"
++#define ALT_SCHED_VERSION_MSG "sched/bmq: BMQ CPU Scheduler 5.8-r1 by Alfred Chen.\n"
 +
 +static inline void sched_queue_init(struct rq *rq)
 +{
@@ -7674,10 +7676,10 @@ index b4b1ff96642f..b7e99a169b79 100644
  #ifdef CONFIG_SCHED_THERMAL_PRESSURE
  /*
 diff --git a/kernel/sched/pelt.h b/kernel/sched/pelt.h
-index eb034d9f024d..49aa805750c5 100644
+index eb034d9f024d..7fefc89b377a 100644
 --- a/kernel/sched/pelt.h
 +++ b/kernel/sched/pelt.h
-@@ -1,11 +1,13 @@
+@@ -1,13 +1,15 @@
  #ifdef CONFIG_SMP
  #include "sched-pelt.h"
  
@@ -7689,8 +7691,11 @@ index eb034d9f024d..49aa805750c5 100644
  int update_dl_rq_load_avg(u64 now, struct rq *rq, int running);
 +#endif
  
- #ifdef CONFIG_SCHED_THERMAL_PRESSURE
+-#ifdef CONFIG_SCHED_THERMAL_PRESSURE
++#if defined(CONFIG_SCHED_THERMAL_PRESSURE) && !defined(CONFIG_SCHED_ALT)
  int update_thermal_load_avg(u64 now, struct rq *rq, u64 capacity);
+ 
+ static inline u64 thermal_load_avg(struct rq *rq)
 @@ -37,6 +39,7 @@ update_irq_load_avg(struct rq *rq, u64 running)
  }
  #endif
@@ -7985,32 +7990,3 @@ index b5e3496cf803..cfbae0a21cef 100644
  	};
  	struct wakeup_test_data *x = data;
  
-diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index 0a75a830de0586e306868b07a650092897f42af1..5db1f74f35592f9fe087fe3689daf127fa5b3ffc 100644
---- a/kernel/sched/alt_core.c
-+++ b/kernel/sched/alt_core.c
-@@ -141,7 +141,9 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
- 
- #define IDLE_WM	(IDLE_TASK_SCHED_PRIO)
- 
-+#ifdef CONFIG_SCHED_SMT
- static cpumask_t sched_sg_idle_mask ____cacheline_aligned_in_smp;
-+#endif
- static cpumask_t sched_rq_watermark[SCHED_BITS] ____cacheline_aligned_in_smp;
- 
- static inline void update_sched_rq_watermark(struct rq *rq)
-@@ -5839,12 +5841,12 @@ void __init sched_init(void)
- #ifdef CONFIG_SCHED_SMT
- 		rq->active_balance = 0;
- #endif
--#endif
--		rq->nr_switches = 0;
- 
- #ifdef CONFIG_NO_HZ_COMMON
- 		rq_csd_init(rq, &rq->nohz_csd, nohz_csd_func);
- #endif
-+#endif /* CONFIG_SMP */
-+		rq->nr_switches = 0;
- 
- 		hrtick_rq_init(rq);
- 		atomic_set(&rq->nr_iowait, 0);
