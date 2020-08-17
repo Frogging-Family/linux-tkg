@@ -40,17 +40,17 @@ if [ -e "$_EXT_CONFIG_PATH" ]; then
   source "$_EXT_CONFIG_PATH"
 fi
 
-if [ "$1" == "install" ] || [ "$1" == "config" ]; then
+if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   source linux*-tkg-config/prepare
 
-  if [ $1 == "install" ] && [ "$_distro" != "Ubuntu" ]; then 
+  if [ $1 = "install" ] && [ "$_distro" != "Ubuntu" ]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\""
     msg2 "This script can only install custom kernels for Ubuntu and Debian derivatives. Exiting..."
     exit 0
   fi
 
-  if [ "$_distro" == "Ubuntu" ]; then
+  if [ "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex
   else
@@ -58,7 +58,7 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
   fi
 
   # Force prepare script to avoid Arch specific commands if the user didn't change _distro from "Arch"
-  if [ "$1" == "config" ]; then
+  if [ "$1" = "config" ]; then
     _distro=""
   fi
 
@@ -112,14 +112,14 @@ if [ "$1" == "install" ] || [ "$1" == "config" ]; then
   msg2 "Configuration done."
 fi
 
-if [ "$1" == "install" ]; then
+if [ "$1" = "install" ]; then
 
   # Use custom compiler paths if defined
   if [ -n "${CUSTOM_GCC_PATH}" ]; then
     PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
   fi
 
-  if [ "$_force_all_threads" == "true" ]; then
+  if [ "$_force_all_threads" = "true" ]; then
     _thread_num=`nproc`
   else
     _thread_num=`expr \`nproc\` / 4`
@@ -130,7 +130,7 @@ if [ "$1" == "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
-    if [ "$_distro" == "Ubuntu" ] && dpkg -l ccache > /dev/null; then
+    if [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
       export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
       export CCACHE_NOHASHDIR="true"
@@ -143,11 +143,11 @@ if [ "$1" == "install" ]; then
     _kernel_flavor="tkg-${_cpusched}"
   fi
 
-  if [ "$_distro" == "Ubuntu" ]; then
+  if [ "$_distro" = "Ubuntu" ]; then
     if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
-      if [[ $_install =~ [yY] ]] || [[ $_install =~ [yY] ]] || [ $_install == "yes" ] || [ $_install == "Yes" ]; then
+      if [[ $_install =~ [yY] ]] || [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
         cd "$_where"
         _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
         _headers_deb=linux-headers-${_kernelname}*.deb
@@ -164,7 +164,7 @@ if [ "$1" == "install" ]; then
   fi
 fi
 
-if [ "$1" == "uninstall" ]; then
+if [ "$1" = "uninstall" ]; then
 
   cd "$_where"
 
