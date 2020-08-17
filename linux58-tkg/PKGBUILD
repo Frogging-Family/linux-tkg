@@ -25,83 +25,30 @@ plain '             `.-:///////:-.`'
 
 _where="$PWD" # track basedir as different Arch based distros are moving srcdir around
 
-cp "$_where"/linux58-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-cp "$_where"/linux58-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-
 source "$_where"/customization.cfg # load default configuration from file
+source "$_where"/linux*-tkg-config/prepare
 
-# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
-if [ -e "$_EXT_CONFIG_PATH" ]; then
-  source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && msg2 ""
-fi
-
-if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_where"/cpuschedset ]; then
-  # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
-  plain "Do you want to use a predefined optimized profile?"
-  read -rp "`echo $'  > 1.Custom\n    2.Ryzen Desktop (Performance)\n    3.Other Desktop (Performance)\nchoice[1-3?]: '`" _OPTIPROFILE;
-fi
-if [ "$_OPTIPROFILE" == "2" ]; then
-  source "$_where"/ryzen-desktop-profile.cfg && msg2 "Ryzen Desktop (Performance) profile will be used." && msg2 ""
-elif [ "$_OPTIPROFILE" == "3" ]; then
-  source "$_where"/generic-desktop-profile.cfg && msg2 "Generic Desktop (Performance) profile will be used." && msg2 ""
-fi
-
-# source cpuschedset early if present
-if [ -e "$_where"/cpuschedset ]; then
-  source "$_where"/cpuschedset
-fi
-
-# CPU SCHED selector
-if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
-  plain "What CPU sched variant do you want to build/install?"
-  read -rp "`echo $'  > 1.PDS\n    2.Project C / BMQ\n    3.CFS\nchoice[1-3?]: '`" CONDITION;
-  if [ "$CONDITION" == "2" ]; then
-    echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
-  elif [ "$CONDITION" == "3" ]; then
-    echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
-  else
-    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
-  fi
-  if [ -n "$_custom_pkgbase" ]; then
-    echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "$_where"/cpuschedset
-  fi
-elif [ "$_cpusched" == "pds" ]; then
-  echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
-elif [ "$_cpusched" == "cfs" ]; then
-  echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
-elif [ "$_cpusched" == "bmq" ]; then
-  echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
+if [[ "$_sub" = rc* ]]; then
+  _srcpath="linux-${_basekernel}-${_sub}"
 else
-  if [ "$_nofallback" != "true" ]; then
-    warning "Something is wrong with your cpusched selection. Do you want to fallback to CFS (default)?"
-    read -rp "`echo $'    > N/y : '`" _fallback;
-  fi
-  if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" == "true" ]; then
-    echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
-  else
-    error "Exiting..."
-    exit 1
-  fi
+  _srcpath="linux-${_basekernel}"
 fi
 
-source "$_where"/cpuschedset
+_tkg_initscript
 
-_basever=58
 if [ -n "$_custom_pkgbase" ]; then
   pkgbase="${_custom_pkgbase}"
 else
   pkgbase=linux"${_basever}"-tkg-"${_cpusched}"
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
-_basekernel=5.8
-_sub=1
 pkgver="${_basekernel}"."${_sub}"
 pkgrel=2
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
 license=('GPL2')
-makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'patchutils' 'pahole' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
+makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'pahole' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
 optdepends=('schedtool')
 options=('!strip')
 source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
@@ -158,66 +105,18 @@ export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
 export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
 
-user_patcher() {
-	# To patch the user because all your base are belong to us
-	local _patches=("$_where"/*."${_userpatch_ext}revert")
-	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
-	  if [ "$_user_patches_no_confirm" != "true" ]; then
-	    msg2 "Found ${#_patches[@]} 'to revert' userpatches for ${_userpatch_target}:"
-	    printf '%s\n' "${_patches[@]}"
-	    read -rp "Do you want to install it/them? - Be careful with that ;)"$'\n> N/y : ' _CONDITION;
-	  fi
-	  if [[ "$_CONDITION" =~ [yY] ]] || [ "$_user_patches_no_confirm" == "true" ]; then
-	    for _f in "${_patches[@]}"; do
-	      if [ -e "${_f}" ]; then
-	        msg2 "######################################################"
-	        msg2 ""
-	        msg2 "Reverting your own ${_userpatch_target} patch ${_f}"
-	        msg2 ""
-	        msg2 "######################################################"
-	        patch -Np1 -R < "${_f}"
-	        echo "Reverted your own patch ${_f}" >> "$_where"/last_build_config.log
-	      fi
-	    done
-	  fi
-	fi
-
-	_patches=("$_where"/*."${_userpatch_ext}patch")
-	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
-	  if [ "$_user_patches_no_confirm" != "true" ]; then
-	    msg2 "Found ${#_patches[@]} userpatches for ${_userpatch_target}:"
-	    printf '%s\n' "${_patches[@]}"
-	    read -rp "Do you want to install it/them? - Be careful with that ;)"$'\n> N/y : ' _CONDITION;
-	  fi
-	  if [[ "$_CONDITION" =~ [yY] ]] || [ "$_user_patches_no_confirm" == "true" ]; then
-	    for _f in "${_patches[@]}"; do
-	      if [ -e "${_f}" ]; then
-	        msg2 "######################################################"
-	        msg2 ""
-	        msg2 "Applying your own ${_userpatch_target} patch ${_f}"
-	        msg2 ""
-	        msg2 "######################################################"
-	        patch -Np1 < "${_f}"
-	        echo "Applied your own patch ${_f}" >> "$_where"/last_build_config.log
-	      fi
-	    done
-	  fi
-	fi
-}
-
 prepare() {
   rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
   ln -s "${_where}/customization.cfg" "${srcdir}" # workaround
 
-  cd "${srcdir}/linux-${_basekernel}"
+  cd "${srcdir}/${_srcpath}"
 
-  source "$_where/linux$_basever-tkg-config/prepare"
   _tkg_srcprep
 }
 
 build() {
-  cd "${srcdir}/linux-${_basekernel}"
+  cd "${srcdir}/${_srcpath}"
 
   # Use custom compiler paths if defined
   if [ -n "${CUSTOM_GCC_PATH}" ]; then
@@ -255,7 +154,7 @@ hackbase() {
   provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
-  cd "${srcdir}/linux-${_basekernel}"
+  cd "${srcdir}/${_srcpath}"
 
   # get kernel version
   local _kernver="$(<version)"
@@ -285,7 +184,7 @@ hackheaders() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
 
-  cd "${srcdir}/linux-${_basekernel}"
+  cd "${srcdir}/${_srcpath}"
   local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
 
   msg2 "Installing build files..."
@@ -373,83 +272,3 @@ package_${pkgbase}-headers() {
 hackheaders
 }
 EOF
-
-function exit_cleanup {
-  # Remove state tracker
-  rm -f "$_where"/cpuschedset
-  
-  # Remove temporarily copied files
-  rm -rf "$_where"/*.patch
-  rm -rf "$_where"/*-profile.cfg
-  rm -f "$_where"/config*
-  rm -f "$_where"/*.hook
-  rm -f "$_where"/cleanup
-  rm -f "$_where"/prepare
-
-  # Community patches removal in case of failure
-  for _p in ${_community_patches[@]}; do
-    rm -f "$_where"/"$_p"
-  done
-
-  if [ "$_NUKR" == "true" ]; then
-    rm -rf "$_where"/src/*
-    # Double tap
-    rm -rf "$srcdir"/linux-*
-    rm -rf "$srcdir"/*.xz
-    rm -rf "$srcdir"/*.patch
-    rm -rf "$srcdir"/*-profile.cfg
-    rm -f "$srcdir"/config.x86_64
-    rm -f "$srcdir"/customization.cfg
-  else
-    # Meh
-    rm -rf "$srcdir"/linux-${_basekernel}/Documentation/filesystems/aufs/*
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/ABI/testing/*-aufs
-    rm -rf "$srcdir"/linux-${_basekernel}/fs/aufs/*
-    rm -f "$srcdir"/linux-${_basekernel}/include/uapi/linux/aufs*
-
-    rm -f "$srcdir"/linux-${_basekernel}/mm/prfile.c
-
-    rm -f "$srcdir"/linux-${_basekernel}/block/bfq*
-
-    rm -rf "$srcdir"/linux-${_basekernel}/drivers/scsi/vhba/*
-
-    rm -rf "$srcdir"/linux-${_basekernel}/fs/exfat/*
-    rm -f "$srcdir"/linux-${_basekernel}/include/trace/events/fs.h
-
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-PDS-mq.txt
-    rm -f "$srcdir"/linux-${_basekernel}/include/linux/skip_list.h
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds_sched.h
-
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BMQ.txt
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_core.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/sched/alt_debug.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_sched.h
-
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BFS.txt
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-MuQSS.txt
-    rm -rf "$srcdir"/linux-${_basekernel}/arch/blackfin/*
-    rm -f "$srcdir"/linux-${_basekernel}/arch/powerpc/configs/c2k_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/arch/score/configs/spct6600_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilegx_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilepro_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/drivers/staging/lustre/lnet/lnet/lib-eq.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/MuQSS*
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/skip_list.c
-
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/vm/uksm.txt
-    rm -f "$srcdir"/linux-${_basekernel}/include/linux/sradix-tree.h
-    rm -f "$srcdir"/linux-${_basekernel}/include/linux/uksm.h
-    rm -f "$srcdir"/linux-${_basekernel}/lib/sradix-tree.c
-    rm -f "$srcdir"/linux-${_basekernel}/mm/uksm.c
-  fi
-
-  remove_deps
-
-  msg2 'exit cleanup done\n'
-  if [ -n "$_runtime" ]; then
-    msg2 "compilation time : \n$_runtime"
-  fi
-}
-
-trap exit_cleanup EXIT
