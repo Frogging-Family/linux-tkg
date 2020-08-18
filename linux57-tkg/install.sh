@@ -188,16 +188,18 @@ if [ "$1" == "install" ]; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" == "y" ] || [ "$_install" == "Y" ] || [ "$_install" == "yes" ] || [ "$_install" == "Yes" ]; then
+        
         _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         
-        sudo rpm --upgrade --replacepkgs ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
+        sudo dnf install -y ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
         
         msg2 "Install successful"
 
         # Add to the list of installed kernels, used for uninstall
         if ! { [ -f installed-kernels ] && grep -Fxq "$_kernelname" installed-kernels; }; then
+          cd "$_where"
           echo $_kernelname >> installed-kernels 
         fi   
       fi
