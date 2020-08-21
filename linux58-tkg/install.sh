@@ -28,7 +28,7 @@ source customization.cfg
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall" ]; then
   echo "Command not recognised, options are:
-        - config : shallow clones the linux 5.7.x git tree into the folder linux-5.7, then applies on it the extra patches and prepares the .config file by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
+        - config : shallow clones the linux 5.8.x git tree into the folder linux-5.8, then applies on it the extra patches and prepares the .config file by copying the one from the current linux system in /boot/config-`uname -r` and updates it.
         - install : [Debian-like only (Debian, Ubuntu, Pop_os!...)], does the config step, proceeds to compile, then prompts to install
         - uninstall : [Debian-like only (Debian, Ubuntu, Pop_os!...)], lists the installed custom kernels through this script, then prompts for which one to uninstall."
   exit 0
