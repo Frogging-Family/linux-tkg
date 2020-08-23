@@ -135,7 +135,7 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
-    if [[ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]] && dpkg -l ccache > /dev/null; then
+    if [[ "$_distro" = "Ubuntu"  || "$_distro" = "Debian" ]] && dpkg -l ccache > /dev/null; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
       export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
       export CCACHE_NOHASHDIR="true"
