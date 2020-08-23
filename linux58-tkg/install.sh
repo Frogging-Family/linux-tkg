@@ -74,10 +74,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     git checkout --force linux-$_basekernel.y
     git clean -f -d -x
     git pull
-    if [ "$_distro" = "Ubuntu" ]; then #Help Debian cert problem.
-	        sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' "$_where"/linux${_basekernel//.}-tkg-config/config.x86_64
-	        cp "$_where"/linux${_basekernel//.}-tkg-config/config.x86_64 "$_where"/linux-${_basekernel}/.config
-    fi
     msg2 "Done" 
     cd "$_where"
   else
@@ -109,6 +105,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   msg2 "Copying current kernel's config and running make oldconfig..."
   cp /boot/config-`uname -r` .config
+  if [ "$_distro" = "Ubuntu" ]; then #Help Debian cert problem.
+    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
+  fi
   yes '' | make oldconfig
   msg2 "Done"
 
