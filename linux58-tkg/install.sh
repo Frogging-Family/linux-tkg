@@ -46,13 +46,13 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   source linux*-tkg-config/prepare
 
-  if [ $1 = "install" ] && [ "$_distro" != "Ubuntu" ]; then
-    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\""
+  if [ $1 = "install" ] && [ "$_distro" != "Ubuntu" ] && [ "$_distro" != "Debian" ]; then
+    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Debian\" or \"Ubuntu\""
     msg2 "This script can only install custom kernels for Ubuntu and Debian derivatives. Exiting..."
     exit 0
   fi
 
-  if [ "$_distro" = "Ubuntu" ]; then
+  if [ "$_distro" = "Debian" ] || [ "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex
   else
@@ -105,7 +105,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   msg2 "Copying current kernel's config and running make oldconfig..."
   cp /boot/config-`uname -r` .config
-  if [ "$_distro" = "Ubuntu" ]; then #Help Debian cert problem.
+  if [ "$_distro" = "Debian" ]; then #Help Debian cert problem.
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
   yes '' | make oldconfig
@@ -135,7 +135,7 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
-    if [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; then
+    if [[ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]] && dpkg -l ccache > /dev/null; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
       export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
       export CCACHE_NOHASHDIR="true"
@@ -148,7 +148,7 @@ if [ "$1" = "install" ]; then
     _kernel_flavor="tkg-${_cpusched}"
   fi
 
-  if [ "$_distro" = "Ubuntu" ]; then
+  if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
     if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
