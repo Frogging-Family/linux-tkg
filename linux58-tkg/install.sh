@@ -46,7 +46,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   source linux*-tkg-config/prepare
 
-  if [ $1 = "install" ] && [[ "$_distro" != "Ubuntu" || "$_distro" != "Debian" ]]; then
+  if [ $1 = "install" ] && [[ "$_distro" != "Ubuntu" && "$_distro" != "Debian" ]]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Debian\" or \"Ubuntu\""
     msg2 "This script can only install custom kernels for Ubuntu and Debian derivatives. Exiting..."
     exit 0
