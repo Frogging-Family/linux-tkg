@@ -56,7 +56,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [ "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex -y
-  elif [ "$_distro" == "Fedora" ]; then
+  elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
     sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves -y
     sudo dnf group install "Development Tools" -y
@@ -143,7 +143,7 @@ if [ "$1" = "install" ]; then
       export CCACHE_NOHASHDIR="true"
       msg2 'ccache was found and will be used'
 
-    elif [ "$_distro" == "Fedora" ] && dnf list --installed ccache > /dev/null; then
+    elif [ "$_distro" = "Fedora" ] && dnf list --installed ccache > /dev/null; then
       export PATH="/usr/lib64/ccache/:$PATH"
       export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
       export CCACHE_NOHASHDIR="true"
@@ -179,16 +179,16 @@ if [ "$1" = "install" ]; then
 
   # Replace dashes with underscores, it seems that it's being done by binrpm-pkg
   # Se we can actually refer properly to the rpm files.
-  if [ "$_distro" == "Fedora" ]; then
+  if [ "$_distro" = "Fedora" ]; then
     _kernel_flavor=${_kernel_flavor//-/_}
   fi
 
-  if [ "$_distro" == "Fedora" ]; then
+  if [ "$_distro" = "Fedora" ]; then
     if make -j ${_thread_num} binrpm-pkg EXTRAVERSION="_${_kernel_flavor}"; then
-    #if [ "0" == "0" ]; then
+    #if [ "0" = "0" ]; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
-      if [ "$_install" == "y" ] || [ "$_install" == "Y" ] || [ "$_install" == "yes" ] || [ "$_install" == "Yes" ]; then
+      if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
         
         _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
