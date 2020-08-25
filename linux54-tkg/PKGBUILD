@@ -74,7 +74,16 @@ elif [ "$_cpusched" == "pds" ]; then
 elif [ "$_cpusched" == "bmq" ]; then
   echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
 else
-  echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+  if [ "$_nofallback" != "true" ]; then
+    warning "Something is wrong with your cpusched selection. Do you want to fallback to CFS (default)?"
+    read -rp "`echo $'    > N/y : '`" _fallback;
+  fi
+  if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" == "true" ]; then
+    echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+  else
+    error "Exiting..."
+    exit 1
+  fi
 fi
 
 source "$_where"/cpuschedset
@@ -87,16 +96,16 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 _basekernel=5.4
-_sub=57
+_sub=60
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=75
+pkgrel=79
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
 license=('GPL2')
 makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
 optdepends=('schedtool')
-options=('!strip')
+options=('!strip' 'docs')
 source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
         "https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
@@ -125,9 +134,9 @@ source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.x
         0012-linux-hardened.patch
 )
 sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '5b22c27823b8578c4e237f107658a9391d640110ce7bc4cca9f5366b5c6eaf72'
+            '03fd731d632249ec5233a02343273f7f23e23127ebd860490b283a01caecff80'
             '27b7fc535ade94b636c3ec4e809e141831e9465a0ef55215a9852b87048629e2'
-            'b7f23bbc09b6c571b76f851f0389386a6f3a64f3d7b1b8509c8550228b0f4537'
+            '55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -137,7 +146,7 @@ sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
-            'e7638aabd2041dd8a03096462f9d5d4aa58680ee0f690703ccb1912047dac4f4'
+            '6f69af16c82ce751a873d590af65735664ba8121369face03da48507ce803a5b'
             '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
             'eac7e5d6201528e64f4bdf5e286c842511e1afc52e1518dc8e7d11932bbe0a99'
             'db03fbd179ec78941eefe1c0edde4c19071bc603511d0b5c06c04e412994b62e'
@@ -185,6 +194,9 @@ build() {
     msg2 'ccache was found and will be used'
   fi
 
+  # document the TkG variables, excluding "_", "_EXT_CONFIG_PATH", and "_where".
+  declare -p | cut -d ' ' -f 3 | grep -P '^_(?!=|EXT_CONFIG_PATH|where)' > "${srcdir}/customization-full.cfg"
+
   # build!
   _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 make $_force_all_threads LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( make $_force_all_threads LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
 }
@@ -225,6 +237,9 @@ hackbase() {
   sed -e "s|cleanup|${pkgbase}-cleanup|g" "${srcdir}"/90-cleanup.hook |
     install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/90-${pkgbase}.hook"
   install -Dm755 "${srcdir}"/cleanup "${pkgdir}/usr/share/libalpm/scripts/${pkgbase}-cleanup"
+
+  # install customization file, for reference
+  install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 
   msg2 "Fixing permissions..."
   chmod -Rc u=rwX,go=rX "$pkgdir"

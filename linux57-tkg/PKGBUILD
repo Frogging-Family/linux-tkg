@@ -37,14 +37,14 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=26
+pkgrel=30
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
 license=('GPL2')
 makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'pahole' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
 optdepends=('schedtool')
-options=('!strip')
+options=('!strip' 'docs')
 source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
         "https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch"
@@ -75,7 +75,7 @@ source=("https://www.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.x
         0012-misc-additions.patch
 )
 sha256sums=('de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
-            '64e9290db20c3e361f6bf65319a813b233397e771428ac68440ae6f98e42f664'
+            '6b14459a38134bc2a5282bf3f4fc0e8de7bdba925411ad8019fb97b805a5d84b'
             '1f56a2466bd9b4477925682d8f944fabb38727140e246733214fe50aa326fc47'
             '6313ccad7f8e4d8ce09dd5bdb51b8dfa124d0034d7097ba47008380a14a84f09'
             '15ce09447b7e9b28425c1df5961c955378f2829e4115037337eef347b1db3d9d'
@@ -87,7 +87,7 @@ sha256sums=('de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
-            '88c73f8960a3b7d0685a2f19b8624de3b592e451a47a51be6b66f86b7c91a0bd'
+            'e76bbee6b93ae4d88f697a934c8d4680da27c6e24f05ed1fb08342c316a4d478'
             '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
             '7fd8e776209dac98627453fda754bdf9aff4a09f27cb0b3766d7983612eb3c74'
             '55be5e4c6254da0a9d34bbfac807a70d8b58b3f7b2ec852026195c4db5e263e2'
@@ -123,7 +123,7 @@ build() {
     PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
   fi
 
-  if [ "$_force_all_threads" == "true" ]; then
+  if [ "$_force_all_threads" = "true" ]; then
     _force_all_threads="-j$((`nproc`*2))"
   else
     _force_all_threads="${MAKEFLAGS}"
@@ -136,6 +136,9 @@ build() {
     export CCACHE_NOHASHDIR="true"
     msg2 'ccache was found and will be used'
   fi
+
+  # document the TkG variables, excluding "_", "_EXT_CONFIG_PATH", and "_where".
+  declare -p | cut -d ' ' -f 3 | grep -P '^_(?!=|EXT_CONFIG_PATH|where)' > "${srcdir}/customization-full.cfg"
 
   # build!
   _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 make ${_force_all_threads} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( make ${_force_all_threads} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
@@ -178,6 +181,9 @@ hackbase() {
   sed -e "s|cleanup|${pkgbase}-cleanup|g" "${srcdir}"/90-cleanup.hook |
     install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/90-${pkgbase}.hook"
   install -Dm755 "${srcdir}"/cleanup "${pkgdir}/usr/share/libalpm/scripts/${pkgbase}-cleanup"
+
+  # install customization file, for reference
+  install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 }
 
 hackheaders() {
@@ -258,7 +264,7 @@ hackheaders() {
   echo "Stripping vmlinux..."
   strip -v $STRIP_STATIC "$builddir/vmlinux"
 
-  if [ $_NUKR == "true" ]; then
+  if [ $_NUKR = "true" ]; then
     rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
   fi
 }
