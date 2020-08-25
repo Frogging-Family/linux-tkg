@@ -137,14 +137,17 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
+
+    _ccache_found="false"
     if [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
-      export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
-      export CCACHE_NOHASHDIR="true"
-      msg2 'ccache was found and will be used'
-
+      _ccache_found="true"
     elif [ "$_distro" = "Fedora" ] && dnf list --installed ccache > /dev/null; then
-      export PATH="/usr/lib64/ccache/:$PATH"
+      export PATH="/usr/lib64/ccache/:$PATH" 
+      _ccache_found="true"  
+    fi
+
+    if [ "$_ccache_found"="true" ]; then
       export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
       export CCACHE_NOHASHDIR="true"
       msg2 'ccache was found and will be used'
@@ -158,6 +161,7 @@ if [ "$1" = "install" ]; then
   fi
 
   if [ "$_distro" = "Ubuntu" ]; then
+
     if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
@@ -175,17 +179,14 @@ if [ "$1" = "install" ]; then
         fi   
       fi
     fi
-  fi
 
-  # Replace dashes with underscores, it seems that it's being done by binrpm-pkg
-  # Se we can actually refer properly to the rpm files.
-  if [ "$_distro" = "Fedora" ]; then
+  elif [ "$_distro" = "Fedora" ]; then
+
+    # Replace dashes with underscores, it seems that it's being done by binrpm-pkg
+    # Se we can actually refer properly to the rpm files.
     _kernel_flavor=${_kernel_flavor//-/_}
-  fi
 
-  if [ "$_distro" = "Fedora" ]; then
     if make -j ${_thread_num} binrpm-pkg EXTRAVERSION="_${_kernel_flavor}"; then
-    #if [ "0" = "0" ]; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
@@ -206,6 +207,7 @@ if [ "$1" = "install" ]; then
       fi
     fi
   fi
+
 fi
 
 if [ "$1" = "uninstall" ]; then
