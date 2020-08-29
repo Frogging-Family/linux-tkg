@@ -234,7 +234,7 @@ if [ "$1" = "uninstall" ]; then
   if [ $_delete_index -ge 1 ] && [ $_delete_index -le $i ]; then
     _delete_index=$((_delete_index-1))
     if [ "$_distro" = "Ubuntu" ]; then
-      sudo dpkg -r linux-headers-${_custom_kernels[$_delete_index]} linux-image-${_custom_kernels[$_delete_index]}
+      sudo dpkg -r linux-image-${_custom_kernels[$_delete_index]}
     elif [ "$_distro" = "Fedora" ]; then
       sudo dnf remove --noautoremove kernel-${_custom_kernels[$_delete_index]}*
     fi
