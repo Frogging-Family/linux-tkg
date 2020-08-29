@@ -165,7 +165,7 @@ if [ "$1" = "install" ]; then
     if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
-      if [[ $_install =~ [yY] ]] || [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
+      if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
         cd "$_where"
         _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
         _headers_deb=linux-headers-${_kernelname}*.deb
