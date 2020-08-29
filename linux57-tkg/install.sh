@@ -58,8 +58,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex -y
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
-    sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves -y
-    sudo dnf group install "Development Tools" -y
+    sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build -y
   else
     msg2 "Dependencies are unknown for the target linux distribution."
   fi
