@@ -59,6 +59,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
     sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build -y
+  elif [ "$_distro" = "Suse" ]; then
+    msg2 "Installing dependencies"
+    sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build
   else
     msg2 "Dependencies are unknown for the target linux distribution."
   fi
@@ -179,7 +182,7 @@ if [ "$1" = "install" ]; then
       fi
     fi
 
-  elif [ "$_distro" = "Fedora" ]; then
+  elif [[ "$_distro" = "Fedora" ||  "$_distro" = "Suse" ]]; then
 
     # Replace dashes with underscores, it seems that it's being done by binrpm-pkg
     # Se we can actually refer properly to the rpm files.
@@ -194,7 +197,11 @@ if [ "$1" = "install" ]; then
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         
-        sudo dnf install -y ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
+        if [ "$_distro" = "Fedora" ]; then
+          sudo dnf install -y ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
+        elif [ "$_distro" = "Suse" ]; then
+          sudo zypper install -y ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
+        fi
         
         msg2 "Install successful"
 
@@ -237,6 +244,8 @@ if [ "$1" = "uninstall" ]; then
       sudo dpkg -r linux-image-${_custom_kernels[$_delete_index]}
     elif [ "$_distro" = "Fedora" ]; then
       sudo dnf remove --noautoremove kernel-${_custom_kernels[$_delete_index]}*
+    elif [ "$_distro" = "Suse" ]; then
+      sudo zypper remove --noautoremove kernel-${_custom_kernels[$_delete_index]}*
     fi
   fi
 
