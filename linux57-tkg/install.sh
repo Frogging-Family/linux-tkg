@@ -22,6 +22,8 @@ set -e
 _where=`pwd`
 srcdir="$_where"
 
+source linux*-tkg-config/prepare
+
 _cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${_basekernel}%2B.patch"  
 
 source customization.cfg
@@ -44,8 +46,6 @@ fi
 _misc_adds="false" # We currently don't want this enabled on non-Arch
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
-
-  source linux*-tkg-config/prepare
 
   if [ -z $_distro ]; then
     
