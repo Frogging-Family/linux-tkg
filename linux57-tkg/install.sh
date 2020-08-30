@@ -167,6 +167,17 @@ if [ "$1" = "install" ]; then
 
     if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
+
+      cd "$_where"
+
+      # Create rpms folder if it doensn't exist
+      if ! [ -d DEBS ]; then
+        mkdir DEBS
+      fi
+      
+      # Move rpm files to RPMS folder inside the linux-tkg folder
+      mv "$_where"/*.deb "$_where"/DEBS/
+
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
         cd "$_where"
@@ -174,12 +185,7 @@ if [ "$1" = "install" ]; then
         _headers_deb=linux-headers-${_kernelname}*.deb
         _image_deb=linux-image-${_kernelname}_*.deb
         
-        sudo dpkg -i $_headers_deb $_image_deb
-
-        # Add to the list of installed kernels, used for uninstall
-        if ! { [ -f installed-kernels ] && grep -Fxq "$_kernelname" installed-kernels; }; then
-          echo $_kernelname >> installed-kernels 
-        fi   
+        sudo dpkg -i DEBS/$_headers_deb DEBS/$_image_deb
       fi
     fi
 
