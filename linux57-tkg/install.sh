@@ -182,10 +182,11 @@ if [ "$1" = "install" ]; then
       if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
         cd "$_where"
         _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
-        _headers_deb=linux-headers-${_kernelname}*.deb
-        _image_deb=linux-image-${_kernelname}_*.deb
+        _headers_deb="linux-headers-${_kernelname}*.deb"
+        _image_deb="linux-image-${_kernelname}_*.deb"
+        _kernel_devel_deb="linux-libc-dev_${_kernelname}*.rpm"
         
-        sudo dpkg -i DEBS/$_headers_deb DEBS/$_image_deb
+        sudo dpkg -i DEBS/$_headers_deb DEBS/$_image_deb DEBS/$_kernel_devel_deb
       fi
     fi
 
