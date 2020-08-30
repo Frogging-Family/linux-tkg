@@ -199,9 +199,9 @@ if [ "$1" = "install" ]; then
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
         
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install -y ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
+          sudo dnf install ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          sudo zypper install -y --allow-unsigned-rpm ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
+          sudo zypper install --allow-unsigned-rpm ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
         fi
         
         msg2 "Install successful"
