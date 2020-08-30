@@ -237,8 +237,10 @@ if [ "$1" = "uninstall" ]; then
     echo ""
     #sudo dpkg -r linux-image-${_custom_kernels[$_delete_index]}
   elif [ "$_distro" = "Fedora" ]; then
-    echo ""
-    #sudo dnf remove --noautoremove kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
+    dnf list --installed kernel*
+    msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
+    msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
+    msg2 "       where VERSION is displayed in the second column"
   elif [ "$_distro" = "Suse" ]; then
     zypper packages --installed-only | grep kernel.*tkg
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
