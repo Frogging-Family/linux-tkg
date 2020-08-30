@@ -157,9 +157,10 @@ if [ "$1" = "install" ]; then
 
   fi
 
-  _kernel_flavor="${_kernel_localversion}"
   if [ -z $_kernel_localversion ]; then
     _kernel_flavor="tkg-${_cpusched}"
+  else
+    _kernel_flavor="tkg-${_kernel_localversion}"
   fi
 
   if [ "$_distro" = "Ubuntu" ]; then
@@ -206,13 +207,7 @@ if [ "$1" = "install" ]; then
           sudo zypper install --replacefiles --allow-unsigned-rpm ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
         fi
         
-        msg2 "Install successful"
-
-        # Add to the list of installed kernels, used for uninstall
-        if ! { [ -f installed-kernels ] && grep -Fxq "$_kernelname" installed-kernels; }; then
-          cd "$_where"
-          echo $_kernelname >> installed-kernels 
-        fi   
+        msg2 "Install successful" 
       fi
     fi
   fi
@@ -221,44 +216,14 @@ fi
 
 if [ "$1" = "uninstall" ]; then
 
-  cd "$_where"
+  cd "$_where" 
 
-  if [ ! -f installed-kernels ] || [ ! -s installed-kernels ]; then
-    echo "No custom kernel has been installed yet"
-    exit 0
+  if [ "$_distro" = "Ubuntu" ]; then
+    #sudo dpkg -r linux-image-${_custom_kernels[$_delete_index]}
+  elif [ "$_distro" = "Fedora" ]; then
+    #sudo dnf remove --noautoremove kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
+  elif [ "$_distro" = "Suse" ]; then
+    #sudo zypper remove --no-clean-deps kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
   fi
-
-  i=1
-  declare -a _custom_kernels
-  msg2 "Installed custom kernel versions: "
-  while read p; do
-    echo "    $i) $p"
-    _custom_kernels+=($p)
-    i=$((i+1))
-  done < installed-kernels
-  
-  i=$((i-1))
-  _delete_index=0
-  read -p "Which one would you like to delete ? [1-$i]: " _delete_index
-
-  if [ $_delete_index -ge 1 ] && [ $_delete_index -le $i ]; then
-    _delete_index=$((_delete_index-1))
-    if [ "$_distro" = "Ubuntu" ]; then
-      sudo dpkg -r linux-image-${_custom_kernels[$_delete_index]}
-    elif [ "$_distro" = "Fedora" ]; then
-      sudo dnf remove --noautoremove kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
-    elif [ "$_distro" = "Suse" ]; then
-      sudo zypper remove --no-clean-deps kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
-    fi
-  fi
-
-  rm -f installed-kernels
-  i=0
-  for kernel in "${_custom_kernels[@]}"; do 
-    if [ $_delete_index != $i ]; then
-      echo "$kernel" >> installed-kernels
-    fi
-    i=$((i+1))
-  done
 
 fi
