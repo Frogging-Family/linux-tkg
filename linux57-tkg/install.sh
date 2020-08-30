@@ -61,7 +61,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build -y
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
-    sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build
+    sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build libqt5-qtbase-common-devel libqt5-qtbase-devel lz4
   else
     msg2 "Dependencies are unknown for the target linux distribution."
   fi
