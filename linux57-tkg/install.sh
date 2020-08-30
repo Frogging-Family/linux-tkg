@@ -200,7 +200,7 @@ if [ "$1" = "install" ]; then
         if [ "$_distro" = "Fedora" ]; then
           sudo dnf install -y ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          sudo zypper install -y ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
+          sudo zypper install -y --no-gpgcheck ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm
         fi
         
         msg2 "Install successful"
