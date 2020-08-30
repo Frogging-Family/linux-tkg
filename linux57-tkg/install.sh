@@ -241,8 +241,11 @@ if [ "$1" = "uninstall" ]; then
   msg2 "List of installed custom tkg kernels: "
 
   if [ "$_distro" = "Ubuntu" ]; then
-    echo ""
-    #sudo dpkg -r linux-image-${_custom_kernels[$_delete_index]}
+    dpkg -l "*tkg*"
+    dpkg -l "*linux-libc-dev*"
+    msg2 "To uninstall a version, you should remove the linux-image, linux-headers and linux-libc-dev associated to it (if installed), with: "
+    msg2 "      sudo apt remove linux-image-VERSION linux-headers-VERSION linux-libc-dev-VERSION"
+    msg2 "       where VERSION is displayed in the lists above, uninstall only versions that have \"tkg\" in its name"
   elif [ "$_distro" = "Fedora" ]; then
     dnf list --installed kernel*
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
