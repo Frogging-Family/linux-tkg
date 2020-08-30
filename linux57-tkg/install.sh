@@ -191,6 +191,20 @@ if [ "$1" = "install" ]; then
 
     if make -j ${_thread_num} rpm-pkg EXTRAVERSION="_${_kernel_flavor}"; then
       msg2 "Building successfully finished!"
+
+      cd "$_where"
+
+      # Create rpms folder if it doensn't exist
+      if ! [ -d RPMS ]; then
+        mkdir RPMS
+      fi
+      
+      # Move rpm files to RPMS folder inside the linux-tkg folder
+      mv ~/rpmbuild/RPMS/x86_64/* "$_where"/RPMS/
+
+      #Clean up the original folder, unneeded and takes a lot of space
+      rm -rf ~/rpmbuild/
+
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
         
@@ -200,11 +214,11 @@ if [ "$1" = "install" ]; then
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
         
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
+          sudo dnf install RPMS/$_headers_rpm RPMS/$_kernel_rpm RPMS/$_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
           msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
           msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'" 
-          sudo zypper install --replacefiles --allow-unsigned-rpm ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
+          sudo zypper install --replacefiles --allow-unsigned-rpm RPMS/$_headers_rpm RPMS/$_kernel_rpm RPMS/$_kernel_devel_rpm
         fi
         
         msg2 "Install successful" 
@@ -216,7 +230,7 @@ fi
 
 if [ "$1" = "uninstall" ]; then
 
-  cd "$_where" 
+  cd "$_where"
   msg2 "List of installed custom tkg kernels: "
 
   if [ "$_distro" = "Ubuntu" ]; then
