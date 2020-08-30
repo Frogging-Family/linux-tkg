@@ -80,7 +80,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
     msg2 "Installing dependencies"
-    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex -y
+    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev -y
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
     sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build -y
