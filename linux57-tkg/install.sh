@@ -188,7 +188,7 @@ if [ "$1" = "install" ]; then
     # Se we can actually refer properly to the rpm files.
     _kernel_flavor=${_kernel_flavor//-/_}
 
-    if make -j ${_thread_num} binrpm-pkg EXTRAVERSION="_${_kernel_flavor}"; then
+    if make -j ${_thread_num} rpm-pkg EXTRAVERSION="_${_kernel_flavor}"; then
       msg2 "Building successfully finished!"
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
