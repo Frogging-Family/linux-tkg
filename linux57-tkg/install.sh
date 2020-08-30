@@ -47,9 +47,34 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   source linux*-tkg-config/prepare
 
+  if [ -z $_distro ]; then
+    
+    echo "Which linux distribution are you running ?"
+    echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
+    echo "   1) Debian"
+    echo "   2) Fedora"
+    echo "   3) Suse"
+    echo "   4) Ubuntu"
+    read -p "[1-4]: " _distro_index
+
+    if [ "$_distro_index" = "1" ]; then
+      _distro="Debian"
+    elif [ "$_distro_index" = "2" ]; then
+      _distro="Fedora"
+    elif [ "$_distro_index" = "3" ]; then
+      _distro="Suse"
+    elif [ "$_distro_index" = "4" ]; then
+      _distro="Ubuntu"
+    else
+      echo "Wrong index. aborting..."
+      exit 0
+    fi
+
+  fi
+
   if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
-    msg2 "This script can only install custom kernels for RPM and DEB based distros. Exiting..."
+    msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
     exit 0
   fi
 
