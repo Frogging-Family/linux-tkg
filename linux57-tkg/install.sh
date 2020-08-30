@@ -201,7 +201,9 @@ if [ "$1" = "install" ]; then
         if [ "$_distro" = "Fedora" ]; then
           sudo dnf install ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          sudo zypper install --allow-unsigned-rpm ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
+          msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
+          msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'" 
+          sudo zypper install --replacefiles --allow-unsigned-rpm ~/rpmbuild/RPMS/x86_64/$_headers_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_rpm ~/rpmbuild/RPMS/x86_64/$_kernel_devel_rpm
         fi
         
         msg2 "Install successful"
@@ -246,7 +248,7 @@ if [ "$1" = "uninstall" ]; then
     elif [ "$_distro" = "Fedora" ]; then
       sudo dnf remove --noautoremove kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
     elif [ "$_distro" = "Suse" ]; then
-      sudo zypper remove --noautoremove kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
+      sudo zypper remove --no-clean-deps kernel-${_custom_kernels[$_delete_index]}* kernel-devel-${_custom_kernels[$_delete_index]}*
     fi
   fi
 
