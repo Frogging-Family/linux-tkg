@@ -31,7 +31,7 @@ if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall" ]; the
         - config : shallow clones the linux 5.7.x git tree into the folder linux-5.7, then applies on it the extra patches and prepares the .config file 
                    by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
         - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
-        - uninstall : [RPM and DEB based distros only], lists the installed custom kernels through this script, then prompts for which one to uninstall."
+        - uninstall : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
   exit 0
 fi
 
@@ -47,13 +47,13 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   source linux*-tkg-config/prepare
 
-  if [[ $1 = "install" && "$_distro" != "Ubuntu" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
-    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\",  \"Fedora\" or \"Suse\""
+  if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
+    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
     msg2 "This script can only install custom kernels for RPM and DEB based distros. Exiting..."
     exit 0
   fi
 
-  if [ "$_distro" = "Ubuntu" ]; then
+  if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex -y
   elif [ "$_distro" = "Fedora" ]; then
@@ -112,6 +112,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   msg2 "Copying current kernel's config and running make oldconfig..."
   cp /boot/config-`uname -r` .config
+  if [ "$_distro" = "Debian" ]; then #Help Debian cert problem.
+    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
+  fi
   yes '' | make oldconfig
   msg2 "Done"
 
@@ -140,20 +143,15 @@ if [ "$1" = "install" ]; then
   # ccache
   if [ "$_noccache" != "true" ]; then
 
-    _ccache_found="false"
-    if [ "$_distro" = "Ubuntu" ]; then
+    if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
-      _ccache_found="true"
     elif [ "$_distro" = "Fedora" ] || [ "$_distro" = "Suse" ]; then
       export PATH="/usr/lib64/ccache/:$PATH" 
-      _ccache_found="true"  
     fi
 
-    if [ "$_ccache_found" = "true" ]; then
-      export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
-      export CCACHE_NOHASHDIR="true"
-      msg2 'ccache was found and will be used'
-    fi
+    export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
+    export CCACHE_NOHASHDIR="true"
+    msg2 'ccache was found and will be used'
 
   fi
 
@@ -163,7 +161,7 @@ if [ "$1" = "install" ]; then
     _kernel_flavor="tkg-${_kernel_localversion}"
   fi
 
-  if [ "$_distro" = "Ubuntu" ]; then
+  if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
     if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
