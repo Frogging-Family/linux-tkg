@@ -141,15 +141,15 @@ if [ "$1" = "install" ]; then
   if [ "$_noccache" != "true" ]; then
 
     _ccache_found="false"
-    if [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; then
+    if [ "$_distro" = "Ubuntu" ]; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
       _ccache_found="true"
-    elif [ "$_distro" = "Fedora" ] && dnf list --installed ccache > /dev/null; then
+    elif [ "$_distro" = "Fedora" ] || [ "$_distro" = "Suse" ]; then
       export PATH="/usr/lib64/ccache/:$PATH" 
       _ccache_found="true"  
     fi
 
-    if [ "$_ccache_found"="true" ]; then
+    if [ "$_ccache_found" = "true" ]; then
       export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
       export CCACHE_NOHASHDIR="true"
       msg2 'ccache was found and will be used'
