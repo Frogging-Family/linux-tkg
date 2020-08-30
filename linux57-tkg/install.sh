@@ -47,8 +47,8 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   source linux*-tkg-config/prepare
 
-  if [ $1 = "install" ] && ! { [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Fedora" ]; } then 
-    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\" or \"Fedora\""
+  if [[ $1 = "install" && "$_distro" != "Ubuntu" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
+    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\",  \"Fedora\" or \"Suse\""
     msg2 "This script can only install custom kernels for RPM and DEB based distros. Exiting..."
     exit 0
   fi
