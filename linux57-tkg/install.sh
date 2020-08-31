@@ -47,7 +47,7 @@ _misc_adds="false" # We currently don't want this enabled on non-Arch
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
-  if [ -z $_distro ]; then
+  if [ -z $_distro ] && [ "$1" = "install" ]; then
     
     echo "Which linux distribution are you running ?"
     echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
@@ -87,11 +87,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
     sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build libqt5-qtbase-common-devel libqt5-qtbase-devel lz4
-  else
-    msg2 "Dependencies are unknown for the target linux distribution."
   fi
 
-  # Force prepare script to avoid Arch specific commands if the user didn't change _distro from "Arch"
+  # Force prepare script to avoid Arch specific commands if the user is using `config`
   if [ "$1" = "config" ]; then
     _distro=""
   fi
