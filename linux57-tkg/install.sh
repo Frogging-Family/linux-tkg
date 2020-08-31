@@ -48,28 +48,31 @@ _misc_adds="false" # We currently don't want this enabled on non-Arch
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   if [ -z $_distro ] && [ "$1" = "install" ]; then
-    
-    echo "Which linux distribution are you running ?"
-    echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
-    echo "   1) Debian"
-    echo "   2) Fedora"
-    echo "   3) Suse"
-    echo "   4) Ubuntu"
-    read -p "[1-4]: " _distro_index
+    while true; do
+      echo "Which linux distribution are you running ?"
+      echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
+      echo "   1) Debian"
+      echo "   2) Fedora"
+      echo "   3) Suse"
+      echo "   4) Ubuntu"
+      read -p "[1-4]: " _distro_index
 
-    if [ "$_distro_index" = "1" ]; then
-      _distro="Debian"
-    elif [ "$_distro_index" = "2" ]; then
-      _distro="Fedora"
-    elif [ "$_distro_index" = "3" ]; then
-      _distro="Suse"
-    elif [ "$_distro_index" = "4" ]; then
-      _distro="Ubuntu"
-    else
-      echo "Wrong index. aborting..."
-      exit 0
-    fi
-
+      if [ "$_distro_index" = "1" ]; then
+        _distro="Debian"
+        break
+      elif [ "$_distro_index" = "2" ]; then
+        _distro="Fedora"
+        break
+      elif [ "$_distro_index" = "3" ]; then
+        _distro="Suse"
+        break
+      elif [ "$_distro_index" = "4" ]; then
+        _distro="Ubuntu"
+        break
+      else
+        echo "Wrong index."
+      fi
+    done
   fi
 
   if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
