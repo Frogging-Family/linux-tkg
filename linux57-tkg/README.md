@@ -39,27 +39,27 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux57-tkg
-# Edit customization.cfg file 
+# Optional: edit customization.cfg file 
 makepkg -si
 ```
 
-### Ubuntu & derivatives
+### Fedora, Ubuntu and derivatives
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux57-tkg
-# Edit customization.cfg file to at least set _distro to "Ubuntu"
+# Optional: edit customization.cfg file
 ./install.sh install
 ```
-To uninstall custom kernels installed through the script:
+Uninstalling custom kernels installed through the script has to be done 
+manually, the script can can help out with some useful information:
 ```
 cd path/to/linux-tkg/linux57-tkg
-./install.sh uninstall
+./install.sh uninstall-help
 ```
 
 ### Other linux distributions
-Other distros are not supported, Debian may work with the `install.sh` script. Otherwise,
-that same `install.sh` script can clone, patch and edit a `.config` file from your current distro's 
-that is expected at ``/boot/config-`uname -r`.config``. Otherwise it won't work as-is.
+If your distro is not DEB or RPM based, `install.sh` script can clone the kernel tree, patch and edit a `.config` file from your current distro's 
+that is expected at ``/boot/config-`uname -r`.config`` (otherwise it won't work as-is)
 
 The command to do for that is:
 ```
