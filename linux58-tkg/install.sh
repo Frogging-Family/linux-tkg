@@ -47,29 +47,32 @@ _misc_adds="false" # We currently don't want this enabled on non-Arch
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
-  if [ -z $_distro ]; then
-    
-    echo "Which linux distribution are you running ?"
-    echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
-    echo "   1) Debian"
-    echo "   2) Fedora"
-    echo "   3) Suse"
-    echo "   4) Ubuntu"
-    read -p "[1-4]: " _distro_index
+  if [ -z $_distro ] && [ "$1" = "install" ]; then
+    while true; do
+      echo "Which linux distribution are you running ?"
+      echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
+      echo "   1) Debian"
+      echo "   2) Fedora"
+      echo "   3) Suse"
+      echo "   4) Ubuntu"
+      read -p "[1-4]: " _distro_index
 
-    if [ "$_distro_index" = "1" ]; then
-      _distro="Debian"
-    elif [ "$_distro_index" = "2" ]; then
-      _distro="Fedora"
-    elif [ "$_distro_index" = "3" ]; then
-      _distro="Suse"
-    elif [ "$_distro_index" = "4" ]; then
-      _distro="Ubuntu"
-    else
-      echo "Wrong index. aborting..."
-      exit 0
-    fi
-
+      if [ "$_distro_index" = "1" ]; then
+        _distro="Debian"
+        break
+      elif [ "$_distro_index" = "2" ]; then
+        _distro="Fedora"
+        break
+      elif [ "$_distro_index" = "3" ]; then
+        _distro="Suse"
+        break
+      elif [ "$_distro_index" = "4" ]; then
+        _distro="Ubuntu"
+        break
+      else
+        echo "Wrong index."
+      fi
+    done
   fi
 
   if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
@@ -87,11 +90,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
     sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build libqt5-qtbase-common-devel libqt5-qtbase-devel lz4
-  else
-    msg2 "Dependencies are unknown for the target linux distribution."
   fi
 
-  # Force prepare script to avoid Arch specific commands if the user didn't change _distro from "Arch"
+  # Force prepare script to avoid Arch specific commands if the user is using `config`
   if [ "$1" = "config" ]; then
     _distro=""
   fi
@@ -193,10 +194,8 @@ if [ "$1" = "install" ]; then
 
       cd "$_where"
 
-      # Create rpms folder if it doensn't exist
-      if ! [ -d DEBS ]; then
-        mkdir DEBS
-      fi
+      # Create DEBS folder if it doesn't exist
+      mkdir -p DEBS
       
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv "$_where"/*.deb "$_where"/DEBS/
@@ -209,7 +208,8 @@ if [ "$1" = "install" ]; then
         _image_deb="linux-image-${_kernelname}_*.deb"
         _kernel_devel_deb="linux-libc-dev_${_kernelname}*.rpm"
         
-        sudo dpkg -i DEBS/$_headers_deb DEBS/$_image_deb DEBS/$_kernel_devel_deb
+        cd DEBS
+        sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
       fi
     fi
 
@@ -224,10 +224,8 @@ if [ "$1" = "install" ]; then
 
       cd "$_where"
 
-      # Create rpms folder if it doensn't exist
-      if ! [ -d RPMS ]; then
-        mkdir RPMS
-      fi
+      # Create RPMS folder if it doesn't exist
+      mkdir -p RPMS
       
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv ~/rpmbuild/RPMS/x86_64/* "$_where"/RPMS/
@@ -243,19 +241,19 @@ if [ "$1" = "install" ]; then
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
         
+        cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install RPMS/$_headers_rpm RPMS/$_kernel_rpm RPMS/$_kernel_devel_rpm
+          sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
           msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
           msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'" 
-          sudo zypper install --replacefiles --allow-unsigned-rpm RPMS/$_headers_rpm RPMS/$_kernel_rpm RPMS/$_kernel_devel_rpm
+          sudo zypper install --replacefiles --allow-unsigned-rpm $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
         fi
         
         msg2 "Install successful" 
       fi
     fi
   fi
-
 fi
 
 if [ "$1" = "uninstall" ]; then
@@ -275,7 +273,7 @@ if [ "$1" = "uninstall" ]; then
     msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second column"
   elif [ "$_distro" = "Suse" ]; then
-    zypper packages --installed-only | grep kernel.*tkg
+    zypper packages --installed-only | grep "kernel.*tkg"
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo zypper remove --no-clean-deps kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second to last column"
