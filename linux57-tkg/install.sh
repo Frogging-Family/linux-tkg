@@ -194,10 +194,8 @@ if [ "$1" = "install" ]; then
 
       cd "$_where"
 
-      # Create rpms folder if it doensn't exist
-      if ! [ -d DEBS ]; then
-        mkdir DEBS
-      fi
+      # Create DEBS folder if it doesn't exist
+      mkdir -p DEBS
       
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv "$_where"/*.deb "$_where"/DEBS/
@@ -210,7 +208,8 @@ if [ "$1" = "install" ]; then
         _image_deb="linux-image-${_kernelname}_*.deb"
         _kernel_devel_deb="linux-libc-dev_${_kernelname}*.rpm"
         
-        sudo dpkg -i DEBS/$_headers_deb DEBS/$_image_deb DEBS/$_kernel_devel_deb
+        cd DEBS
+        sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
       fi
     fi
 
@@ -225,10 +224,8 @@ if [ "$1" = "install" ]; then
 
       cd "$_where"
 
-      # Create rpms folder if it doensn't exist
-      if ! [ -d RPMS ]; then
-        mkdir RPMS
-      fi
+      # Create RPMS folder if it doesn't exist
+      mkdir -p RPMS
       
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv ~/rpmbuild/RPMS/x86_64/* "$_where"/RPMS/
@@ -244,19 +241,19 @@ if [ "$1" = "install" ]; then
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
         
+        cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install RPMS/$_headers_rpm RPMS/$_kernel_rpm RPMS/$_kernel_devel_rpm
+          sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
           msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
           msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'" 
-          sudo zypper install --replacefiles --allow-unsigned-rpm RPMS/$_headers_rpm RPMS/$_kernel_rpm RPMS/$_kernel_devel_rpm
+          sudo zypper install --replacefiles --allow-unsigned-rpm $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
         fi
         
         msg2 "Install successful" 
       fi
     fi
   fi
-
 fi
 
 if [ "$1" = "uninstall" ]; then
@@ -276,7 +273,7 @@ if [ "$1" = "uninstall" ]; then
     msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second column"
   elif [ "$_distro" = "Suse" ]; then
-    zypper packages --installed-only | grep kernel.*tkg
+    zypper packages --installed-only | grep "kernel.*tkg"
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo zypper remove --no-clean-deps kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second to last column"
