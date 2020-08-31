@@ -28,12 +28,12 @@ _cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch
 
 source customization.cfg
 
-if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall" ]; then
+if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
         - config : shallow clones the linux ${_basekernel}.x git tree into the folder linux-${_basekernel}, then applies on it the extra patches and prepares the .config file 
                    by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
         - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
-        - uninstall : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
+        - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
   exit 0
 fi
 
@@ -256,7 +256,7 @@ if [ "$1" = "install" ]; then
   fi
 fi
 
-if [ "$1" = "uninstall" ]; then
+if [ "$1" = "uninstall-help" ]; then
 
   cd "$_where"
   msg2 "List of installed custom tkg kernels: "
