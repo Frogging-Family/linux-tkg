@@ -29,7 +29,7 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 
 ## Install procedure
 
-### Fedora, Ubuntu and derivatives
+### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux59-rc-tkg

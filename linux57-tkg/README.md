@@ -43,7 +43,7 @@ cd linux-tkg/linux57-tkg
 makepkg -si
 ```
 
-### Fedora, Ubuntu and derivatives
+### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg/linux57-tkg
