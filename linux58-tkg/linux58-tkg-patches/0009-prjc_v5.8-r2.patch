@@ -1,5 +1,5 @@
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index fb95fad81c79..4f058fcd4887 100644
+index fb95fad81c79..6e3f8233600e 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
 @@ -4525,6 +4525,12 @@
@@ -7,7 +7,7 @@ index fb95fad81c79..4f058fcd4887 100644
  	sbni=		[NET] Granch SBNI12 leased line adapter
  
 +	sched_timeslice=
-+			[KNL] Time slice in us for BMQ scheduler.
++			[KNL] Time slice in us for BMQ/PDS scheduler.
 +			Format: <int> (must be >= 1000)
 +			Default: 4000
 +			See Documentation/scheduler/sched-BMQ.txt
@@ -16,7 +16,7 @@ index fb95fad81c79..4f058fcd4887 100644
  
  	schedstats=	[KNL,X86] Enable or disable scheduled statistics.
 diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
-index 83acf5025488..f8d6535ab22e 100644
+index 83acf5025488..313d2124e709 100644
 --- a/Documentation/admin-guide/sysctl/kernel.rst
 +++ b/Documentation/admin-guide/sysctl/kernel.rst
 @@ -1428,3 +1428,13 @@ is 10 seconds.
@@ -27,8 +27,8 @@ index 83acf5025488..f8d6535ab22e 100644
 +yield_type:
 +===========
 +
-+BMQ CPU scheduler only. This determines what type of yield calls to
-+sched_yield will perform.
++BMQ/PDS CPU scheduler only. This determines what type of yield calls
++to sched_yield will perform.
 +
 +  0 - No yield.
 +  1 - Deboost and requeue task. (default)
@@ -149,22 +149,6 @@ index 000000000000..05c84eec0f31
 +spend most of their time blocked awaiting another user event. So they get the
 +priority boost from unblocking while background threads that do most of the
 +processing receive the priority penalty for using their entire timeslice.
-diff --git a/arch/powerpc/platforms/cell/spufs/sched.c b/arch/powerpc/platforms/cell/spufs/sched.c
-index f18d5067cd0f..fe489fc01c73 100644
---- a/arch/powerpc/platforms/cell/spufs/sched.c
-+++ b/arch/powerpc/platforms/cell/spufs/sched.c
-@@ -51,11 +51,6 @@ static struct task_struct *spusched_task;
- static struct timer_list spusched_timer;
- static struct timer_list spuloadavg_timer;
- 
--/*
-- * Priority of a normal, non-rt, non-niced'd process (aka nice level 0).
-- */
--#define NORMAL_PRIO		120
--
- /*
-  * Frequency of the spu scheduler tick.  By default we do one SPU scheduler
-  * tick for every 10 CPU scheduler ticks.
 diff --git a/fs/proc/base.c b/fs/proc/base.c
 index d86c0afc8a85..7f394a6fb9b6 100644
 --- a/fs/proc/base.c
@@ -192,10 +176,18 @@ index 8874f681b056..59eb72bf7d5f 100644
  	[RLIMIT_RTTIME]		= {  RLIM_INFINITY,  RLIM_INFINITY },	\
  }
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 683372943093..efee54cbe711 100644
+index 683372943093..d25f2501daf3 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -650,12 +650,18 @@ struct task_struct {
+@@ -32,6 +32,7 @@
+ #include <linux/posix-timers.h>
+ #include <linux/rseq.h>
+ #include <linux/kcsan.h>
++#include <linux/skip_list.h>
+ 
+ /* task_struct member predeclarations (sorted alphabetically): */
+ struct audit_context;
+@@ -650,12 +651,18 @@ struct task_struct {
  	unsigned int			ptrace;
  
  #ifdef CONFIG_SMP
@@ -215,7 +207,7 @@ index 683372943093..efee54cbe711 100644
  	unsigned int			wakee_flips;
  	unsigned long			wakee_flip_decay_ts;
  	struct task_struct		*last_wakee;
-@@ -669,6 +675,7 @@ struct task_struct {
+@@ -669,6 +676,7 @@ struct task_struct {
  	 */
  	int				recent_used_cpu;
  	int				wake_cpu;
@@ -223,18 +215,26 @@ index 683372943093..efee54cbe711 100644
  #endif
  	int				on_rq;
  
-@@ -677,13 +684,25 @@ struct task_struct {
+@@ -677,13 +685,33 @@ struct task_struct {
  	int				normal_prio;
  	unsigned int			rt_priority;
  
 +#ifdef CONFIG_SCHED_ALT
 +	u64				last_ran;
 +	s64				time_slice;
-+	int				boost_prio;
 +#ifdef CONFIG_SCHED_BMQ
++	int				boost_prio;
 +	int				bmq_idx;
 +	struct list_head		bmq_node;
 +#endif /* CONFIG_SCHED_BMQ */
++#ifdef CONFIG_SCHED_PDS
++	u64				deadline;
++	u64				priodl;
++	/* skip list level */
++	int				sl_level;
++	/* skip list node */
++	struct skiplist_node		sl_node;
++#endif /* CONFIG_SCHED_PDS */
 +	/* sched_clock time spent running */
 +	u64				sched_time;
 +#else /* !CONFIG_SCHED_ALT */
@@ -250,7 +250,7 @@ index 683372943093..efee54cbe711 100644
  
  #ifdef CONFIG_UCLAMP_TASK
  	/* Clamp values requested for a scheduling entity */
-@@ -1326,6 +1345,15 @@ struct task_struct {
+@@ -1326,6 +1354,15 @@ struct task_struct {
  	 */
  };
  
@@ -267,10 +267,10 @@ index 683372943093..efee54cbe711 100644
  {
  	return task->thread_pid;
 diff --git a/include/linux/sched/deadline.h b/include/linux/sched/deadline.h
-index 1aff00b65f3c..da0306d2fedb 100644
+index 1aff00b65f3c..45f0b0f3616c 100644
 --- a/include/linux/sched/deadline.h
 +++ b/include/linux/sched/deadline.h
-@@ -1,5 +1,20 @@
+@@ -1,5 +1,24 @@
  /* SPDX-License-Identifier: GPL-2.0 */
  
 +#ifdef CONFIG_SCHED_ALT
@@ -284,6 +284,10 @@ index 1aff00b65f3c..da0306d2fedb 100644
 +}
 +#endif
 +
++#ifdef CONFIG_SCHED_PDS
++#define __tsk_deadline(p)	((p)->priodl)
++#endif
++
 +#else
 +
 +#define __tsk_deadline(p)	((p)->dl.deadline)
@@ -291,7 +295,7 @@ index 1aff00b65f3c..da0306d2fedb 100644
  /*
   * SCHED_DEADLINE tasks has negative priorities, reflecting
   * the fact that any of them has higher prio than RT and
-@@ -19,6 +34,7 @@ static inline int dl_task(struct task_struct *p)
+@@ -19,6 +38,7 @@ static inline int dl_task(struct task_struct *p)
  {
  	return dl_prio(p->prio);
  }
@@ -300,10 +304,10 @@ index 1aff00b65f3c..da0306d2fedb 100644
  static inline bool dl_time_before(u64 a, u64 b)
  {
 diff --git a/include/linux/sched/prio.h b/include/linux/sched/prio.h
-index 7d64feafc408..1b2ebeeb45eb 100644
+index 7d64feafc408..42730d27ceb5 100644
 --- a/include/linux/sched/prio.h
 +++ b/include/linux/sched/prio.h
-@@ -20,11 +20,17 @@
+@@ -20,11 +20,20 @@
   */
  
  #define MAX_USER_RT_PRIO	100
@@ -313,9 +317,12 @@ index 7d64feafc408..1b2ebeeb45eb 100644
  #define MAX_PRIO		(MAX_RT_PRIO + NICE_WIDTH)
  #define DEFAULT_PRIO		(MAX_RT_PRIO + NICE_WIDTH / 2)
  
-+#ifdef CONFIG_SCHED_ALT
 +/* +/- priority levels from the base priority */
++#ifdef CONFIG_SCHED_BMQ
 +#define MAX_PRIORITY_ADJ	7
++#endif
++#ifdef CONFIG_SCHED_PDS
++#define MAX_PRIORITY_ADJ	0
 +#endif
 +
  /*
@@ -336,11 +343,194 @@ index e5af028c08b4..0a7565d0d3cf 100644
  	return false;
  }
  
+diff --git a/include/linux/skip_list.h b/include/linux/skip_list.h
+new file mode 100644
+index 000000000000..47ca955a451d
+--- /dev/null
++++ b/include/linux/skip_list.h
+@@ -0,0 +1,177 @@
++/*
++ * Copyright (C) 2016 Alfred Chen.
++ *
++ * Code based on Con Kolivas's skip list implementation for BFS, and
++ * which is based on example originally by William Pugh.
++ *
++ * Skip Lists are a probabilistic alternative to balanced trees, as
++ * described in the June 1990 issue of CACM and were invented by
++ * William Pugh in 1987.
++ *
++ * A couple of comments about this implementation:
++ *
++ * This file only provides a infrastructure of skip list.
++ *
++ * skiplist_node is embedded into container data structure, to get rid
++ * the dependency of kmalloc/kfree operation in scheduler code.
++ *
++ * A customized search function should be defined using DEFINE_SKIPLIST_INSERT
++ * macro and be used for skip list insert operation.
++ *
++ * Random Level is also not defined in this file, instead, it should be
++ * customized implemented and set to node->level then pass to the customized
++ * skiplist_insert function.
++ *
++ * Levels start at zero and go up to (NUM_SKIPLIST_LEVEL -1)
++ *
++ * NUM_SKIPLIST_LEVEL in this implementation is 8 instead of origin 16,
++ * considering that there will be 256 entries to enable the top level when using
++ * random level p=0.5, and that number is more than enough for a run queue usage
++ * in a scheduler usage. And it also help to reduce the memory usage of the
++ * embedded skip list node in task_struct to about 50%.
++ *
++ * The insertion routine has been implemented so as to use the
++ * dirty hack described in the CACM paper: if a random level is
++ * generated that is more than the current maximum level, the
++ * current maximum level plus one is used instead.
++ *
++ * BFS Notes: In this implementation of skiplists, there are bidirectional
++ * next/prev pointers and the insert function returns a pointer to the actual
++ * node the value is stored. The key here is chosen by the scheduler so as to
++ * sort tasks according to the priority list requirements and is no longer used
++ * by the scheduler after insertion. The scheduler lookup, however, occurs in
++ * O(1) time because it is always the first item in the level 0 linked list.
++ * Since the task struct stores a copy of the node pointer upon skiplist_insert,
++ * it can also remove it much faster than the original implementation with the
++ * aid of prev<->next pointer manipulation and no searching.
++ */
++#ifndef _LINUX_SKIP_LIST_H
++#define _LINUX_SKIP_LIST_H
++
++#include <linux/kernel.h>
++
++#define NUM_SKIPLIST_LEVEL (8)
++
++struct skiplist_node {
++	int level;	/* Levels in this node */
++	struct skiplist_node *next[NUM_SKIPLIST_LEVEL];
++	struct skiplist_node *prev[NUM_SKIPLIST_LEVEL];
++};
++
++#define SKIPLIST_NODE_INIT(name) { 0,\
++				   {&name, &name, &name, &name,\
++				    &name, &name, &name, &name},\
++				   {&name, &name, &name, &name,\
++				    &name, &name, &name, &name},\
++				 }
++
++static inline void INIT_SKIPLIST_NODE(struct skiplist_node *node)
++{
++	/* only level 0 ->next matters in skiplist_empty() */
++	WRITE_ONCE(node->next[0], node);
++}
++
++/**
++ * FULL_INIT_SKIPLIST_NODE -- fully init a skiplist_node, expecially for header
++ * @node: the skip list node to be inited.
++ */
++static inline void FULL_INIT_SKIPLIST_NODE(struct skiplist_node *node)
++{
++	int i;
++
++	node->level = 0;
++	for (i = 0; i < NUM_SKIPLIST_LEVEL; i++) {
++		WRITE_ONCE(node->next[i], node);
++		node->prev[i] = node;
++	}
++}
++
++/**
++ * skiplist_empty - test whether a skip list is empty
++ * @head: the skip list to test.
++ */
++static inline int skiplist_empty(const struct skiplist_node *head)
++{
++	return READ_ONCE(head->next[0]) == head;
++}
++
++/**
++ * skiplist_entry - get the struct for this entry
++ * @ptr: the &struct skiplist_node pointer.
++ * @type:       the type of the struct this is embedded in.
++ * @member:     the name of the skiplist_node within the struct.
++ */
++#define skiplist_entry(ptr, type, member) \
++	container_of(ptr, type, member)
++
++/**
++ * DEFINE_SKIPLIST_INSERT_FUNC -- macro to define a customized skip list insert
++ * function, which takes two parameters, first one is the header node of the
++ * skip list, second one is the skip list node to be inserted
++ * @func_name: the customized skip list insert function name
++ * @search_func: the search function to be used, which takes two parameters,
++ * 1st one is the itrator of skiplist_node in the list, the 2nd is the skip list
++ * node to be inserted, the function should return true if search should be
++ * continued, otherwise return false.
++ * Returns 1 if @node is inserted as the first item of skip list at level zero,
++ * otherwise 0
++ */
++#define DEFINE_SKIPLIST_INSERT_FUNC(func_name, search_func)\
++static inline int func_name(struct skiplist_node *head, struct skiplist_node *node)\
++{\
++	struct skiplist_node *update[NUM_SKIPLIST_LEVEL];\
++	struct skiplist_node *p, *q;\
++	int k = head->level;\
++\
++	p = head;\
++	do {\
++		while (q = p->next[k], q != head && search_func(q, node))\
++			p = q;\
++		update[k] = p;\
++	} while (--k >= 0);\
++\
++	k = node->level;\
++	if (unlikely(k > head->level)) {\
++		node->level = k = ++head->level;\
++		update[k] = head;\
++	}\
++\
++	do {\
++		p = update[k];\
++		q = p->next[k];\
++		node->next[k] = q;\
++		p->next[k] = node;\
++		node->prev[k] = p;\
++		q->prev[k] = node;\
++	} while (--k >= 0);\
++\
++	return (p == head);\
++}
++
++/**
++ * skiplist_del_init -- delete skip list node from a skip list and reset it's
++ * init state
++ * @head: the header node of the skip list to be deleted from.
++ * @node: the skip list node to be deleted, the caller need to ensure @node is
++ * in skip list which @head represent.
++ * Returns 1 if @node is the first item of skip level at level zero, otherwise 0
++ */
++static inline int
++skiplist_del_init(struct skiplist_node *head, struct skiplist_node *node)
++{
++	int l, m = node->level;
++
++	for (l = 0; l <= m; l++) {
++		node->prev[l]->next[l] = node->next[l];
++		node->next[l]->prev[l] = node->prev[l];
++	}
++	if (m == head->level && m > 0) {
++		while (head->next[m] == head && m > 0)
++			m--;
++		head->level = m;
++	}
++	INIT_SKIPLIST_NODE(node);
++
++	return (node->prev[0] == head);
++}
++#endif /* _LINUX_SKIP_LIST_H */
 diff --git a/init/Kconfig b/init/Kconfig
-index 0498af567f70..3da07510e895 100644
+index 0498af567f70..09a302641ba6 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -742,9 +742,33 @@ config GENERIC_SCHED_CLOCK
+@@ -742,9 +742,39 @@ config GENERIC_SCHED_CLOCK
  
  menu "Scheduler features"
  
@@ -363,6 +553,12 @@ index 0498af567f70..3da07510e895 100644
 +	  responsiveness on the desktop and solid scalability on normal
 +	  hardware and commodity servers.
 +
++config SCHED_PDS
++	bool "PDS CPU scheduler"
++	help
++	  The Priority and Deadline based Skip list multiple queue CPU
++	  Scheduler.
++
 +endchoice
 +
 +endif
@@ -374,7 +570,7 @@ index 0498af567f70..3da07510e895 100644
  	help
  	  This feature enables the scheduler to track the clamped utilization
  	  of each CPU based on RUNNABLE tasks scheduled on that CPU.
-@@ -830,6 +854,7 @@ config NUMA_BALANCING
+@@ -830,6 +860,7 @@ config NUMA_BALANCING
  	depends on ARCH_SUPPORTS_NUMA_BALANCING
  	depends on !ARCH_WANT_NUMA_VARIABLE_LOCALITY
  	depends on SMP && NUMA && MIGRATION
@@ -382,7 +578,7 @@ index 0498af567f70..3da07510e895 100644
  	help
  	  This option adds support for automatic NUMA aware memory/task placement.
  	  The mechanism is quite primitive and is based on migrating memory when
-@@ -916,7 +941,7 @@ menuconfig CGROUP_SCHED
+@@ -916,7 +947,7 @@ menuconfig CGROUP_SCHED
  	  bandwidth allocation to such task groups. It uses cgroups to group
  	  tasks.
  
@@ -391,7 +587,7 @@ index 0498af567f70..3da07510e895 100644
  config FAIR_GROUP_SCHED
  	bool "Group scheduling for SCHED_OTHER"
  	depends on CGROUP_SCHED
-@@ -1172,6 +1197,7 @@ config CHECKPOINT_RESTORE
+@@ -1172,6 +1203,7 @@ config CHECKPOINT_RESTORE
  
  config SCHED_AUTOGROUP
  	bool "Automatic process group scheduling"
@@ -400,7 +596,7 @@ index 0498af567f70..3da07510e895 100644
  	select CGROUP_SCHED
  	select FAIR_GROUP_SCHED
 diff --git a/init/init_task.c b/init/init_task.c
-index 15089d15010a..3310178d4c89 100644
+index 15089d15010a..6bc94553d79a 100644
 --- a/init/init_task.c
 +++ b/init/init_task.c
 @@ -74,9 +74,15 @@ struct task_struct init_task
@@ -419,22 +615,27 @@ index 15089d15010a..3310178d4c89 100644
  	.policy		= SCHED_NORMAL,
  	.cpus_ptr	= &init_task.cpus_mask,
  	.cpus_mask	= CPU_MASK_ALL,
-@@ -86,6 +92,14 @@ struct task_struct init_task
+@@ -86,6 +92,19 @@ struct task_struct init_task
  	.restart_block	= {
  		.fn = do_no_restart_syscall,
  	},
 +#ifdef CONFIG_SCHED_ALT
-+	.boost_prio	= 0,
 +#ifdef CONFIG_SCHED_BMQ
++	.boost_prio	= 0,
 +	.bmq_idx	= 15,
 +	.bmq_node	= LIST_HEAD_INIT(init_task.bmq_node),
++#endif
++#ifdef CONFIG_SCHED_PDS
++	.deadline	= 0,
++	.sl_level	= 0,
++	.sl_node	= SKIPLIST_NODE_INIT(init_task.sl_node),
 +#endif
 +	.time_slice	= HZ,
 +#else
  	.se		= {
  		.group_node 	= LIST_HEAD_INIT(init_task.se.group_node),
  	},
-@@ -93,6 +107,7 @@ struct task_struct init_task
+@@ -93,6 +112,7 @@ struct task_struct init_task
  		.run_list	= LIST_HEAD_INIT(init_task.rt.run_list),
  		.time_slice	= RR_TIMESLICE,
  	},
@@ -516,10 +717,10 @@ index f6310f848f34..4176ad070bc9 100644
  			 "%s: %s:%d is running\n", __func__, task->comm,
  			 task->pid);
 diff --git a/kernel/locking/rtmutex.c b/kernel/locking/rtmutex.c
-index cfdd5b93264d..56ef920b54f0 100644
+index cfdd5b93264d..84c284eb544a 100644
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -227,7 +227,7 @@ static inline bool unlock_rt_mutex_safe(struct rt_mutex *lock,
+@@ -227,15 +227,19 @@ static inline bool unlock_rt_mutex_safe(struct rt_mutex *lock,
   * Only use with rt_mutex_waiter_{less,equal}()
   */
  #define task_to_waiter(p)	\
@@ -528,7 +729,11 @@ index cfdd5b93264d..56ef920b54f0 100644
  
  static inline int
  rt_mutex_waiter_less(struct rt_mutex_waiter *left,
-@@ -236,6 +236,7 @@ rt_mutex_waiter_less(struct rt_mutex_waiter *left,
+ 		     struct rt_mutex_waiter *right)
+ {
++#ifdef CONFIG_SCHED_PDS
++	return (left->deadline < right->deadline);
++#else
  	if (left->prio < right->prio)
  		return 1;
  
@@ -536,15 +741,23 @@ index cfdd5b93264d..56ef920b54f0 100644
  	/*
  	 * If both waiters have dl_prio(), we check the deadlines of the
  	 * associated tasks.
-@@ -244,6 +245,7 @@ rt_mutex_waiter_less(struct rt_mutex_waiter *left,
+@@ -244,17 +248,23 @@ rt_mutex_waiter_less(struct rt_mutex_waiter *left,
  	 */
  	if (dl_prio(left->prio))
  		return dl_time_before(left->deadline, right->deadline);
 +#endif
  
  	return 0;
++#endif
  }
-@@ -255,6 +257,7 @@ rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
+ 
+ static inline int
+ rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
+ 		      struct rt_mutex_waiter *right)
+ {
++#ifdef CONFIG_SCHED_PDS
++	return (left->deadline == right->deadline);
++#else
  	if (left->prio != right->prio)
  		return 0;
  
@@ -552,15 +765,18 @@ index cfdd5b93264d..56ef920b54f0 100644
  	/*
  	 * If both waiters have dl_prio(), we check the deadlines of the
  	 * associated tasks.
-@@ -263,6 +266,7 @@ rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
+@@ -263,8 +273,10 @@ rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
  	 */
  	if (dl_prio(left->prio))
  		return left->deadline == right->deadline;
 +#endif
  
  	return 1;
++#endif
  }
-@@ -678,7 +682,7 @@ static int rt_mutex_adjust_prio_chain(struct task_struct *task,
+ 
+ static void
+@@ -678,7 +690,7 @@ static int rt_mutex_adjust_prio_chain(struct task_struct *task,
  	 * the values of the node being removed.
  	 */
  	waiter->prio = task->prio;
@@ -569,7 +785,7 @@ index cfdd5b93264d..56ef920b54f0 100644
  
  	rt_mutex_enqueue(lock, waiter);
  
-@@ -951,7 +955,7 @@ static int task_blocks_on_rt_mutex(struct rt_mutex *lock,
+@@ -951,7 +963,7 @@ static int task_blocks_on_rt_mutex(struct rt_mutex *lock,
  	waiter->task = task;
  	waiter->lock = lock;
  	waiter->prio = task->prio;
@@ -611,10 +827,10 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..5db1f74f3559
+index 000000000000..76f72292e28a
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,6202 @@
+@@ -0,0 +1,6184 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -662,6 +878,8 @@ index 000000000000..5db1f74f3559
 +#define CREATE_TRACE_POINTS
 +#include <trace/events/sched.h>
 +
++#define ALT_SCHED_VERSION "v5.8-r2"
++
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
 +#define rt_policy(policy)	((policy) == SCHED_FIFO || (policy) == SCHED_RR)
@@ -694,36 +912,6 @@ index 000000000000..5db1f74f3559
 + * 2: Set rq skip task.
 + */
 +int sched_yield_type __read_mostly = 1;
-+
-+#define rq_switch_time(rq)	((rq)->clock - (rq)->last_ts_switch)
-+#define boost_threshold(p)	(sched_timeslice_ns >>\
-+				 (15 - MAX_PRIORITY_ADJ -  (p)->boost_prio))
-+
-+static inline void boost_task(struct task_struct *p)
-+{
-+	int limit;
-+
-+	switch (p->policy) {
-+	case SCHED_NORMAL:
-+		limit = -MAX_PRIORITY_ADJ;
-+		break;
-+	case SCHED_BATCH:
-+	case SCHED_IDLE:
-+		limit = 0;
-+		break;
-+	default:
-+		return;
-+	}
-+
-+	if (p->boost_prio > limit)
-+		p->boost_prio--;
-+}
-+
-+static inline void deboost_task(struct task_struct *p)
-+{
-+	if (p->boost_prio < MAX_PRIORITY_ADJ)
-+		p->boost_prio++;
-+}
 +
 +#ifdef CONFIG_SMP
 +static cpumask_t sched_rq_pending_mask ____cacheline_aligned_in_smp;
@@ -763,13 +951,22 @@ index 000000000000..5db1f74f3559
 +#endif
 +static cpumask_t sched_rq_watermark[SCHED_BITS] ____cacheline_aligned_in_smp;
 +
++#ifdef CONFIG_SCHED_BMQ
++#include "bmq_imp.h"
++#endif
++#ifdef CONFIG_SCHED_PDS
++#include "pds_imp.h"
++#endif
++
 +static inline void update_sched_rq_watermark(struct rq *rq)
 +{
-+	unsigned long watermark = find_first_bit(rq->queue.bitmap, SCHED_BITS);
++	unsigned long watermark = sched_queue_watermark(rq);
 +	unsigned long last_wm = rq->watermark;
 +	unsigned long i;
 +	int cpu;
 +
++	/*printk(KERN_INFO "sched: watermark(%d) %d, last %d\n",
++	       cpu_of(rq), watermark, last_wm);*/
 +	if (watermark == last_wm)
 +		return;
 +
@@ -803,13 +1000,6 @@ index 000000000000..5db1f74f3559
 +	}
 +#endif
 +}
-+
-+static inline int task_sched_prio(struct task_struct *p)
-+{
-+	return (p->prio < MAX_RT_PRIO)? p->prio : MAX_RT_PRIO / 2 + (p->prio + p->boost_prio) / 2;
-+}
-+
-+#include "bmq_imp.h"
 +
 +static inline struct task_struct *rq_runnable_task(struct rq *rq)
 +{
@@ -1073,6 +1263,7 @@ index 000000000000..5db1f74f3559
 +{
 +	lockdep_assert_held(&rq->lock);
 +
++	/*printk(KERN_INFO "sched: dequeue(%d) %px %016llx\n", cpu_of(rq), p, p->priodl);*/
 +	WARN_ONCE(task_rq(p) != rq, "sched: dequeue task reside on cpu%d from cpu%d\n",
 +		  task_cpu(p), cpu_of(rq));
 +
@@ -1090,6 +1281,7 @@ index 000000000000..5db1f74f3559
 +{
 +	lockdep_assert_held(&rq->lock);
 +
++	/*printk(KERN_INFO "sched: enqueue(%d) %px %016llx\n", cpu_of(rq), p, p->priodl);*/
 +	WARN_ONCE(task_rq(p) != rq, "sched: enqueue task reside on cpu%d to cpu%d\n",
 +		  task_cpu(p), cpu_of(rq));
 +
@@ -1115,10 +1307,11 @@ index 000000000000..5db1f74f3559
 +static inline void requeue_task(struct task_struct *p, struct rq *rq)
 +{
 +	lockdep_assert_held(&rq->lock);
++	/*printk(KERN_INFO "sched: requeue(%d) %px %016llx\n", cpu_of(rq), p, p->priodl);*/
 +	WARN_ONCE(task_rq(p) != rq, "sched: cpu[%d] requeue task reside on cpu%d\n",
 +		  cpu_of(rq), task_cpu(p));
 +
-+	__requeue_task(p, rq);
++	__SCHED_REQUEUE_TASK(p, rq, update_sched_rq_watermark(rq));
 +}
 +
 +/*
@@ -2045,7 +2238,7 @@ index 000000000000..5db1f74f3559
 +	return dest_cpu;
 +}
 +
-+static inline int select_task_rq(struct task_struct *p)
++static inline int select_task_rq(struct task_struct *p, struct rq *rq)
 +{
 +	cpumask_t chk_mask, tmp;
 +
@@ -2058,7 +2251,7 @@ index 000000000000..5db1f74f3559
 +#endif
 +	    cpumask_and(&tmp, &chk_mask, &sched_rq_watermark[IDLE_WM]) ||
 +	    cpumask_and(&tmp, &chk_mask,
-+			&sched_rq_watermark[task_sched_prio(p) + 1]))
++			&sched_rq_watermark[task_sched_prio(p, rq) + 1]))
 +		return best_mask_cpu(task_cpu(p), &tmp);
 +
 +	return best_mask_cpu(task_cpu(p), &chk_mask);
@@ -2190,7 +2383,7 @@ index 000000000000..5db1f74f3559
 +
 +#else /* CONFIG_SMP */
 +
-+static inline int select_task_rq(struct task_struct *p)
++static inline int select_task_rq(struct task_struct *p, struct rq *rq)
 +{
 +	return 0;
 +}
@@ -2656,10 +2849,9 @@ index 000000000000..5db1f74f3559
 +	 */
 +	smp_cond_load_acquire(&p->on_cpu, !VAL);
 +
-+	if(this_rq()->clock_task - p->last_ran > sched_timeslice_ns)
-+		boost_task(p);
++	sched_task_ttwu(p);
 +
-+	cpu = select_task_rq(p);
++	cpu = select_task_rq(p, this_rq());
 +
 +	if (cpu != task_cpu(p)) {
 +		wake_flags |= WF_MIGRATED;
@@ -2816,8 +3008,6 @@ index 000000000000..5db1f74f3559
 +		p->sched_reset_on_fork = 0;
 +	}
 +
-+	p->boost_prio = (p->boost_prio < 0) ?
-+		p->boost_prio + MAX_PRIORITY_ADJ : MAX_PRIORITY_ADJ;
 +	/*
 +	 * The child is not yet in the pid-hash so no cgroup attach races,
 +	 * and the cgroup is pinned to this child due to cgroup_fork()
@@ -2833,6 +3023,7 @@ index 000000000000..5db1f74f3559
 +	 */
 +	rq = this_rq();
 +	raw_spin_lock(&rq->lock);
++
 +	rq->curr->time_slice /= 2;
 +	p->time_slice = rq->curr->time_slice;
 +#ifdef CONFIG_SCHED_HRTICK
@@ -2843,6 +3034,7 @@ index 000000000000..5db1f74f3559
 +		p->time_slice = sched_timeslice_ns;
 +		resched_curr(rq);
 +	}
++	sched_task_fork(p, rq);
 +	raw_spin_unlock(&rq->lock);
 +
 +	rseq_migrate(p);
@@ -2955,7 +3147,7 @@ index 000000000000..5db1f74f3559
 +
 +	p->state = TASK_RUNNING;
 +
-+	rq = cpu_rq(select_task_rq(p));
++	rq = cpu_rq(select_task_rq(p, this_rq()));
 +#ifdef CONFIG_SMP
 +	rseq_migrate(p);
 +	/*
@@ -3438,25 +3630,29 @@ index 000000000000..5db1f74f3559
 +void sched_exec(void)
 +{
 +	struct task_struct *p = current;
++	unsigned long flags;
 +	int dest_cpu;
++	struct rq *rq;
 +
-+	if (task_rq(p)->nr_running < 2)
++	raw_spin_lock_irqsave(&p->pi_lock, flags);
++	rq = this_rq();
++
++	if (rq != task_rq(p) || rq->nr_running < 2)
++		goto unlock;
++
++	dest_cpu = select_task_rq(p, task_rq(p));
++	if (dest_cpu == smp_processor_id())
++		goto unlock;
++
++	if (likely(cpu_active(dest_cpu))) {
++		struct migration_arg arg = { p, dest_cpu };
++
++		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
++		stop_one_cpu(task_cpu(p), migration_cpu_stop, &arg);
 +		return;
-+
-+	dest_cpu = cpumask_any_and(p->cpus_ptr, &sched_rq_watermark[IDLE_WM]);
-+	if ( dest_cpu < nr_cpu_ids) {
-+#ifdef CONFIG_SCHED_SMT
-+		int smt = cpumask_any_and(p->cpus_ptr, &sched_sg_idle_mask);
-+		if (smt < nr_cpu_ids)
-+			dest_cpu = smt;
-+#endif
-+		if (likely(cpu_active(dest_cpu))) {
-+			struct migration_arg arg = { p, dest_cpu };
-+
-+			stop_one_cpu(task_cpu(p), migration_cpu_stop, &arg);
-+			return;
-+		}
 +	}
++unlock:
++	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 +}
 +
 +#endif
@@ -3957,6 +4153,23 @@ index 000000000000..5db1f74f3559
 +	schedstat_inc(this_rq()->sched_count);
 +}
 +
++/*
++ * Compile time debug macro
++ * #define ALT_SCHED_DEBUG
++ */
++
++#ifdef ALT_SCHED_DEBUG
++void alt_sched_debug(void)
++{
++	printk(KERN_INFO "sched: pending: 0x%04lx, idle: 0x%04lx, sg_idle: 0x%04lx\n",
++	       sched_rq_pending_mask.bits[0],
++	       sched_rq_watermark[IDLE_WM].bits[0],
++	       sched_sg_idle_mask.bits[0]);
++}
++#else
++inline void alt_sched_debug(void) {}
++#endif
++
 +#ifdef	CONFIG_SMP
 +
 +#define SCHED_RQ_NR_MIGRATION (32UL)
@@ -4051,14 +4264,8 @@ index 000000000000..5db1f74f3559
 +
 +	update_curr(rq, p);
 +
-+	if (p->time_slice < RESCHED_NS) {
-+		p->time_slice = sched_timeslice_ns;
-+		if (SCHED_FIFO != p->policy && task_on_rq_queued(p)) {
-+			if (SCHED_RR != p->policy)
-+				deboost_task(p);
-+			requeue_task(p, rq);
-+		}
-+	}
++	if (p->time_slice < RESCHED_NS)
++		time_slice_expired(p, rq);
 +}
 +
 +static inline struct task_struct *
@@ -4093,6 +4300,7 @@ index 000000000000..5db1f74f3559
 +		if (!take_other_rq_tasks(rq, cpu)) {
 +#endif
 +			schedstat_inc(rq->sched_goidle);
++			/*printk(KERN_INFO "sched: choose_next_task(%d) idle %px\n", cpu, next);*/
 +			return next;
 +#ifdef	CONFIG_SMP
 +		}
@@ -4102,6 +4310,8 @@ index 000000000000..5db1f74f3559
 +#ifdef CONFIG_HIGH_RES_TIMERS
 +	hrtick_start(rq, next->time_slice);
 +#endif
++	/*printk(KERN_INFO "sched: choose_next_task(%d) next %px\n", cpu,
++	 * next);*/
 +	return next;
 +}
 +
@@ -4216,8 +4426,7 @@ index 000000000000..5db1f74f3559
 +			 *
 +			 * After this, schedule() must not care about p->state any more.
 +			 */
-+			if (rq_switch_time(rq) < boost_threshold(prev))
-+				boost_task(prev);
++			sched_task_deactivate(prev, rq);
 +			deactivate_task(prev, rq);
 +
 +			if (prev->in_iowait) {
@@ -4543,7 +4752,7 @@ index 000000000000..5db1f74f3559
 +static inline void check_task_changed(struct rq *rq, struct task_struct *p)
 +{
 +	/* Trigger resched if task sched_prio has been modified. */
-+	if (task_on_rq_queued(p) && sched_task_need_requeue(p)) {
++	if (task_on_rq_queued(p) && sched_task_need_requeue(p, rq)) {
 +		requeue_task(p, rq);
 +		check_preempt_curr(rq);
 +	}
@@ -4631,6 +4840,7 @@ index 000000000000..5db1f74f3559
 +
 +	trace_sched_pi_setprio(p, pi_task);
 +	p->prio = prio;
++	update_task_priodl(p);
 +
 +	check_task_changed(rq, p);
 +out_unlock:
@@ -4669,6 +4879,8 @@ index 000000000000..5db1f74f3559
 +		goto out_unlock;
 +
 +	p->prio = effective_prio(p);
++	update_task_priodl(p);
++
 +	check_task_changed(rq, p);
 +out_unlock:
 +	__task_access_unlock(p, lock);
@@ -4725,21 +4937,6 @@ index 000000000000..5db1f74f3559
 +}
 +
 +#endif
-+
-+/**
-+ * task_prio - return the priority value of a given task.
-+ * @p: the task in question.
-+ *
-+ * Return: The priority value as seen by users in /proc.
-+ * RT tasks are offset by -100. Normal tasks are centered around 1, value goes
-+ * from 0(SCHED_ISO) up to 82 (nice +19 SCHED_IDLE).
-+ */
-+int task_prio(const struct task_struct *p)
-+{
-+	if (p->prio < MAX_RT_PRIO)
-+		return (p->prio - MAX_RT_PRIO);
-+	return (p->prio - MAX_RT_PRIO + p->boost_prio);
-+}
 +
 +/**
 + * idle_cpu - is a given CPU idle currently?
@@ -4832,6 +5029,7 @@ index 000000000000..5db1f74f3559
 +	p->prio = normal_prio(p);
 +	if (keep_boost)
 +		p->prio = rt_effective_prio(p, p->prio);
++	update_task_priodl(p);
 +}
 +
 +/*
@@ -5591,10 +5789,8 @@ index 000000000000..5db1f74f3559
 +	schedstat_inc(rq->yld_count);
 +
 +	if (1 == sched_yield_type) {
-+		if (!rt_task(current)) {
-+			current->boost_prio = MAX_PRIORITY_ADJ;
-+			requeue_task(current, rq);
-+		}
++		if (!rt_task(current))
++			do_sched_yield_type_1(current, rq);
 +	} else if (2 == sched_yield_type) {
 +		if (rq->nr_running > 1)
 +			rq->skip = current;
@@ -5812,6 +6008,8 @@ index 000000000000..5db1f74f3559
 +{
 +	struct task_struct *p;
 +	int retval;
++
++	alt_sched_debug();
 +
 +	if (pid < 0)
 +		return -EINVAL;
@@ -6819,14 +7017,14 @@ index 000000000000..5db1f74f3559
 +#undef CREATE_TRACE_POINTS
 diff --git a/kernel/sched/alt_debug.c b/kernel/sched/alt_debug.c
 new file mode 100644
-index 000000000000..835e6bb98dda
+index 000000000000..1212a031700e
 --- /dev/null
 +++ b/kernel/sched/alt_debug.c
 @@ -0,0 +1,31 @@
 +/*
 + * kernel/sched/alt_debug.c
 + *
-+ * Print the BMQ debugging details
++ * Print the alt scheduler debugging details
 + *
 + * Author: Alfred Chen
 + * Date  : 2020
@@ -6856,10 +7054,10 @@ index 000000000000..835e6bb98dda
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..d8887f377455
+index 000000000000..99be2c51c88d
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,554 @@
+@@ -0,0 +1,555 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -6911,6 +7109,9 @@ index 000000000000..d8887f377455
 +#ifdef CONFIG_SCHED_BMQ
 +#include "bmq.h"
 +#endif
++#ifdef CONFIG_SCHED_PDS
++#include "pds.h"
++#endif
 +
 +/* task_struct::on_rq states: */
 +#define TASK_ON_RQ_QUEUED	1
@@ -6948,6 +7149,9 @@ index 000000000000..d8887f377455
 +
 +#ifdef CONFIG_SCHED_BMQ
 +	struct bmq queue;
++#endif
++#ifdef CONFIG_SCHED_PDS
++	struct skiplist_node sl_header;
 +#endif
 +	unsigned long watermark;
 +
@@ -7396,11 +7600,6 @@ index 000000000000..d8887f377455
 +}
 +#endif
 +
-+static inline int task_running_nice(struct task_struct *p)
-+{
-+	return (p->prio + p->boost_prio > DEFAULT_PRIO + MAX_PRIORITY_ADJ);
-+}
-+
 +#ifdef CONFIG_NUMA
 +extern int sched_numa_find_closest(const struct cpumask *cpus, int cpu);
 +#else
@@ -7416,10 +7615,10 @@ index 000000000000..d8887f377455
 +#endif /* ALT_SCHED_H */
 diff --git a/kernel/sched/bmq.h b/kernel/sched/bmq.h
 new file mode 100644
-index 000000000000..aba3c98759f8
+index 000000000000..aff0bb30a884
 --- /dev/null
 +++ b/kernel/sched/bmq.h
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,20 @@
 +#ifndef BMQ_H
 +#define BMQ_H
 +
@@ -7433,14 +7632,81 @@ index 000000000000..aba3c98759f8
 +	struct list_head heads[SCHED_BITS];
 +};
 +
++
++static inline int task_running_nice(struct task_struct *p)
++{
++	return (p->prio + p->boost_prio > DEFAULT_PRIO + MAX_PRIORITY_ADJ);
++}
++
 +#endif
 diff --git a/kernel/sched/bmq_imp.h b/kernel/sched/bmq_imp.h
 new file mode 100644
-index 000000000000..86d496ec23b3
+index 000000000000..ad9a7c448da7
 --- /dev/null
 +++ b/kernel/sched/bmq_imp.h
-@@ -0,0 +1,86 @@
-+#define ALT_SCHED_VERSION_MSG "sched/bmq: BMQ CPU Scheduler 5.8-r1 by Alfred Chen.\n"
+@@ -0,0 +1,185 @@
++#define ALT_SCHED_VERSION_MSG "sched/bmq: BMQ CPU Scheduler "ALT_SCHED_VERSION" by Alfred Chen.\n"
++
++/*
++ * BMQ only routines
++ */
++#define rq_switch_time(rq)	((rq)->clock - (rq)->last_ts_switch)
++#define boost_threshold(p)	(sched_timeslice_ns >>\
++				 (15 - MAX_PRIORITY_ADJ -  (p)->boost_prio))
++
++static inline void boost_task(struct task_struct *p)
++{
++	int limit;
++
++	switch (p->policy) {
++	case SCHED_NORMAL:
++		limit = -MAX_PRIORITY_ADJ;
++		break;
++	case SCHED_BATCH:
++	case SCHED_IDLE:
++		limit = 0;
++		break;
++	default:
++		return;
++	}
++
++	if (p->boost_prio > limit)
++		p->boost_prio--;
++}
++
++static inline void deboost_task(struct task_struct *p)
++{
++	if (p->boost_prio < MAX_PRIORITY_ADJ)
++		p->boost_prio++;
++}
++
++/*
++ * Common interfaces
++ */
++static inline int task_sched_prio(struct task_struct *p, struct rq *rq)
++{
++	return (p->prio < MAX_RT_PRIO)? p->prio : MAX_RT_PRIO / 2 + (p->prio + p->boost_prio) / 2;
++}
++
++static inline void requeue_task(struct task_struct *p, struct rq *rq);
++
++static inline void time_slice_expired(struct task_struct *p, struct rq *rq)
++{
++	p->time_slice = sched_timeslice_ns;
++
++	if (SCHED_FIFO != p->policy && task_on_rq_queued(p)) {
++		if (SCHED_RR != p->policy)
++			deboost_task(p);
++		requeue_task(p, rq);
++	}
++}
++
++static inline void update_task_priodl(struct task_struct *p) {}
++
++static inline unsigned long sched_queue_watermark(struct rq *rq)
++{
++	return find_first_bit(rq->queue.bitmap, SCHED_BITS);
++}
 +
 +static inline void sched_queue_init(struct rq *rq)
 +{
@@ -7503,28 +7769,66 @@ index 000000000000..86d496ec23b3
 +	sched_info_queued(rq, p);					\
 +	psi_enqueue(p, flags);						\
 +									\
-+	p->bmq_idx = task_sched_prio(p);				\
++	p->bmq_idx = task_sched_prio(p, rq);				\
 +	list_add_tail(&p->bmq_node, &rq->queue.heads[p->bmq_idx]);	\
 +	set_bit(p->bmq_idx, rq->queue.bitmap)
 +
-+static inline void __requeue_task(struct task_struct *p, struct rq *rq)
-+{
-+	int idx = task_sched_prio(p);
-+
-+	list_del(&p->bmq_node);
-+	list_add_tail(&p->bmq_node, &rq->queue.heads[idx]);
-+	if (idx != p->bmq_idx) {
-+		if (list_empty(&rq->queue.heads[p->bmq_idx]))
-+			clear_bit(p->bmq_idx, rq->queue.bitmap);
-+		p->bmq_idx = idx;
-+		set_bit(p->bmq_idx, rq->queue.bitmap);
-+		update_sched_rq_watermark(rq);
-+	}
++#define __SCHED_REQUEUE_TASK(p, rq, func)				\
++{									\
++	int idx = task_sched_prio(p, rq);				\
++\
++	list_del(&p->bmq_node);						\
++	list_add_tail(&p->bmq_node, &rq->queue.heads[idx]);		\
++	if (idx != p->bmq_idx) {					\
++		if (list_empty(&rq->queue.heads[p->bmq_idx]))		\
++			clear_bit(p->bmq_idx, rq->queue.bitmap);	\
++		p->bmq_idx = idx;					\
++		set_bit(p->bmq_idx, rq->queue.bitmap);			\
++		func;							\
++	}								\
 +}
 +
-+static inline bool sched_task_need_requeue(struct task_struct *p)
++static inline bool sched_task_need_requeue(struct task_struct *p, struct rq *rq)
 +{
-+	return (task_sched_prio(p) != p->bmq_idx);
++	return (task_sched_prio(p, rq) != p->bmq_idx);
++}
++
++static void sched_task_fork(struct task_struct *p, struct rq *rq)
++{
++	p->boost_prio = (p->boost_prio < 0) ?
++		p->boost_prio + MAX_PRIORITY_ADJ : MAX_PRIORITY_ADJ;
++}
++
++/**
++ * task_prio - return the priority value of a given task.
++ * @p: the task in question.
++ *
++ * Return: The priority value as seen by users in /proc.
++ * RT tasks are offset by -100. Normal tasks are centered around 1, value goes
++ * from 0(SCHED_ISO) up to 82 (nice +19 SCHED_IDLE).
++ */
++int task_prio(const struct task_struct *p)
++{
++	if (p->prio < MAX_RT_PRIO)
++		return (p->prio - MAX_RT_PRIO);
++	return (p->prio - MAX_RT_PRIO + p->boost_prio);
++}
++
++static void do_sched_yield_type_1(struct task_struct *p, struct rq *rq)
++{
++	p->boost_prio = MAX_PRIORITY_ADJ;
++}
++
++static void sched_task_ttwu(struct task_struct *p)
++{
++	if(this_rq()->clock_task - p->last_ran > sched_timeslice_ns)
++		boost_task(p);
++}
++
++static void sched_task_deactivate(struct task_struct *p, struct rq *rq)
++{
++	if (rq_switch_time(rq) < boost_threshold(p))
++		boost_task(p);
 +}
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
 index 7fbaee24c824..0d7ad05b84fe 100644
@@ -7655,8 +7959,260 @@ index 1ae95b9150d3..f5c3aa20d172 100644
  	.update_curr		= update_curr_idle,
  };
 +#endif
+diff --git a/kernel/sched/pds.h b/kernel/sched/pds.h
+new file mode 100644
+index 000000000000..7fdeace7e8a5
+--- /dev/null
++++ b/kernel/sched/pds.h
+@@ -0,0 +1,14 @@
++#ifndef PDS_H
++#define PDS_H
++
++/* bits:
++ * RT(0-99), (Low prio adj range, nice width, high prio adj range) / 2, cpu idle task */
++#define SCHED_BITS	(MAX_RT_PRIO + 20 + 1)
++#define IDLE_TASK_SCHED_PRIO	(SCHED_BITS - 1)
++
++static inline int task_running_nice(struct task_struct *p)
++{
++	return (p->prio > DEFAULT_PRIO);
++}
++
++#endif
+diff --git a/kernel/sched/pds_imp.h b/kernel/sched/pds_imp.h
+new file mode 100644
+index 000000000000..041827b92910
+--- /dev/null
++++ b/kernel/sched/pds_imp.h
+@@ -0,0 +1,226 @@
++#define ALT_SCHED_VERSION_MSG "sched/bmq: PDS CPU Scheduler "ALT_SCHED_VERSION" by Alfred Chen.\n"
++
++static const u64 user_prio2deadline[NICE_WIDTH] = {
++/* -20 */	  4194304,   4613734,   5075107,   5582617,   6140878,
++/* -15 */	  6754965,   7430461,   8173507,   8990857,   9889942,
++/* -10 */	 10878936,  11966829,  13163511,  14479862,  15927848,
++/*  -5 */	 17520632,  19272695,  21199964,  23319960,  25651956,
++/*   0 */	 28217151,  31038866,  34142752,  37557027,  41312729,
++/*   5 */	 45444001,  49988401,  54987241,  60485965,  66534561,
++/*  10 */	 73188017,  80506818,  88557499,  97413248, 107154572,
++/*  15 */	117870029, 129657031, 142622734, 156885007, 172573507
++};
++
++static const unsigned char dl_level_map[] = {
++/*       0               4               8              12           */
++	19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 18,
++/*      16              20              24              28           */
++	18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 17, 17, 17, 17,
++/*      32              36              40              44           */
++	17, 17, 17, 17, 16, 16, 16, 16, 16, 16, 16, 16, 15, 15, 15, 15,
++/*      48              52              56              60           */
++	15, 15, 15, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 12, 12, 12,
++/*      64              68              72              76           */
++	12, 11, 11, 11, 10, 10, 10,  9,  9,  8,  7,  6,  5,  4,  3,  2,
++/*      80              84              88              92           */
++	 1,  0
++};
++
++static inline int
++task_sched_prio(const struct task_struct *p, const struct rq *rq)
++{
++	size_t delta;
++
++	if (p == rq->idle)
++		return IDLE_TASK_SCHED_PRIO;
++
++	if (p->prio < MAX_RT_PRIO)
++		return p->prio;
++
++	delta = (rq->clock + user_prio2deadline[39] - p->deadline) >> 21;
++	delta = min((size_t)delta, ARRAY_SIZE(dl_level_map) - 1);
++
++	return MAX_RT_PRIO + dl_level_map[delta];
++}
++
++static inline void update_task_priodl(struct task_struct *p)
++{
++	p->priodl = (((u64) (p->prio))<<56) | ((p->deadline)>>8);
++}
++
++static inline void requeue_task(struct task_struct *p, struct rq *rq);
++
++static inline void time_slice_expired(struct task_struct *p, struct rq *rq)
++{
++	/*printk(KERN_INFO "sched: time_slice_expired(%d) - %px\n", cpu_of(rq), p);*/
++	p->time_slice = sched_timeslice_ns;
++
++	if (p->prio >= MAX_RT_PRIO)
++		p->deadline = rq->clock + user_prio2deadline[TASK_USER_PRIO(p)];
++	update_task_priodl(p);
++
++	if (SCHED_FIFO != p->policy && task_on_rq_queued(p))
++		requeue_task(p, rq);
++}
++
++/*
++ * pds_skiplist_task_search -- search function used in PDS run queue skip list
++ * node insert operation.
++ * @it: iterator pointer to the node in the skip list
++ * @node: pointer to the skiplist_node to be inserted
++ *
++ * Returns true if key of @it is less or equal to key value of @node, otherwise
++ * false.
++ */
++static inline bool
++pds_skiplist_task_search(struct skiplist_node *it, struct skiplist_node *node)
++{
++	return (skiplist_entry(it, struct task_struct, sl_node)->priodl <=
++		skiplist_entry(node, struct task_struct, sl_node)->priodl);
++}
++
++/*
++ * Define the skip list insert function for PDS
++ */
++DEFINE_SKIPLIST_INSERT_FUNC(pds_skiplist_insert, pds_skiplist_task_search);
++
++/*
++ * Init the queue structure in rq
++ */
++static inline void sched_queue_init(struct rq *rq)
++{
++	FULL_INIT_SKIPLIST_NODE(&rq->sl_header);
++}
++
++/*
++ * Init idle task and put into queue structure of rq
++ * IMPORTANT: may be called multiple times for a single cpu
++ */
++static inline void sched_queue_init_idle(struct rq *rq, struct task_struct *idle)
++{
++	/*printk(KERN_INFO "sched: init(%d) - %px\n", cpu_of(rq), idle);*/
++	int default_prio = idle->prio;
++
++	idle->prio = MAX_PRIO;
++	idle->deadline = 0ULL;
++	update_task_priodl(idle);
++
++	FULL_INIT_SKIPLIST_NODE(&rq->sl_header);
++
++	idle->sl_node.level = idle->sl_level;
++	pds_skiplist_insert(&rq->sl_header, &idle->sl_node);
++
++	idle->prio = default_prio;
++}
++
++/*
++ * This routine assume that the idle task always in queue
++ */
++static inline struct task_struct *sched_rq_first_task(struct rq *rq)
++{
++	struct skiplist_node *node = rq->sl_header.next[0];
++
++	BUG_ON(node == &rq->sl_header);
++	return skiplist_entry(node, struct task_struct, sl_node);
++}
++
++static inline struct task_struct *
++sched_rq_next_task(struct task_struct *p, struct rq *rq)
++{
++	struct skiplist_node *next = p->sl_node.next[0];
++
++	BUG_ON(next == &rq->sl_header);
++	return skiplist_entry(next, struct task_struct, sl_node);
++}
++
++static inline unsigned long sched_queue_watermark(struct rq *rq)
++{
++	return task_sched_prio(sched_rq_first_task(rq), rq);
++}
++
++#define __SCHED_DEQUEUE_TASK(p, rq, flags, func)		\
++	psi_dequeue(p, flags & DEQUEUE_SLEEP);			\
++	sched_info_dequeued(rq, p);				\
++								\
++	if (skiplist_del_init(&rq->sl_header, &p->sl_node)) {	\
++		func;						\
++	}
++
++#define __SCHED_ENQUEUE_TASK(p, rq, flags)				\
++	sched_info_queued(rq, p);					\
++	psi_enqueue(p, flags);						\
++									\
++	p->sl_node.level = p->sl_level;					\
++	pds_skiplist_insert(&rq->sl_header, &p->sl_node)
++
++/*
++ * Requeue a task @p to @rq
++ */
++#define __SCHED_REQUEUE_TASK(p, rq, func)					\
++{\
++	bool b_first = skiplist_del_init(&rq->sl_header, &p->sl_node);		\
++\
++	p->sl_node.level = p->sl_level;						\
++	if (pds_skiplist_insert(&rq->sl_header, &p->sl_node) || b_first) {	\
++		func;								\
++	}									\
++}
++
++static inline bool sched_task_need_requeue(struct task_struct *p, struct rq *rq)
++{
++	struct skiplist_node *node = p->sl_node.prev[0];
++
++	if (node != &rq->sl_header) {
++		struct task_struct *t = skiplist_entry(node, struct task_struct, sl_node);
++
++		if (t->priodl > p->priodl)
++			return true;
++	}
++
++	node = p->sl_node.next[0];
++	if (node != &rq->sl_header) {
++		struct task_struct *t = skiplist_entry(node, struct task_struct, sl_node);
++
++		if (t->priodl < p->priodl)
++			return true;
++	}
++
++	return false;
++}
++
++static void sched_task_fork(struct task_struct *p, struct rq *rq)
++{
++	if (p->prio >= MAX_RT_PRIO)
++		p->deadline = rq->clock + user_prio2deadline[TASK_USER_PRIO(p)];
++	update_task_priodl(p);
++}
++
++/**
++ * task_prio - return the priority value of a given task.
++ * @p: the task in question.
++ *
++ * Return: The priority value as seen by users in /proc.
++ * RT tasks are offset by -100. Normal tasks are centered around 1, value goes
++ * from 0(SCHED_ISO) up to 82 (nice +19 SCHED_IDLE).
++ */
++int task_prio(const struct task_struct *p)
++{
++	int ret;
++
++	if (p->prio < MAX_RT_PRIO)
++		return (p->prio - MAX_RT_PRIO);
++
++	preempt_disable();
++	ret = task_sched_prio(p, this_rq()) - MAX_RT_PRIO;
++	preempt_enable();
++
++	return ret;
++}
++
++static void do_sched_yield_type_1(struct task_struct *p, struct rq *rq)
++{
++	time_slice_expired(p, rq);
++}
++
++static void sched_task_ttwu(struct task_struct *p) {}
++static void sched_task_deactivate(struct task_struct *p, struct rq *rq) {}
 diff --git a/kernel/sched/pelt.c b/kernel/sched/pelt.c
-index b4b1ff96642f..b7e99a169b79 100644
+index b4b1ff96642f..0ead9625081f 100644
 --- a/kernel/sched/pelt.c
 +++ b/kernel/sched/pelt.c
 @@ -274,6 +274,7 @@ ___update_load_avg(struct sched_avg *sa, unsigned long load)
@@ -7667,14 +8223,17 @@ index b4b1ff96642f..b7e99a169b79 100644
  /*
   * sched_entity:
   *
-@@ -391,6 +392,7 @@ int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
+@@ -391,8 +392,9 @@ int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
  
  	return 0;
  }
 +#endif
  
- #ifdef CONFIG_SCHED_THERMAL_PRESSURE
+-#ifdef CONFIG_SCHED_THERMAL_PRESSURE
++#if defined(CONFIG_SCHED_THERMAL_PRESSURE) && !defined(CONFIG_SCHED_ALT)
  /*
+  * thermal:
+  *
 diff --git a/kernel/sched/pelt.h b/kernel/sched/pelt.h
 index eb034d9f024d..7fefc89b377a 100644
 --- a/kernel/sched/pelt.h
@@ -7971,7 +8530,7 @@ index 165117996ea0..bd8718a51499 100644
  	return false;
  }
 diff --git a/kernel/trace/trace_selftest.c b/kernel/trace/trace_selftest.c
-index b5e3496cf803..cfbae0a21cef 100644
+index b5e3496cf803..65f60c77bc50 100644
 --- a/kernel/trace/trace_selftest.c
 +++ b/kernel/trace/trace_selftest.c
 @@ -1048,10 +1048,15 @@ static int trace_wakeup_test_thread(void *data)
@@ -7979,7 +8538,7 @@ index b5e3496cf803..cfbae0a21cef 100644
  	/* Make this a -deadline thread */
  	static const struct sched_attr attr = {
 +#ifdef CONFIG_SCHED_ALT
-+		/* No deadline on BMQ, use RR */
++		/* No deadline on BMQ/PDS, use RR */
 +		.sched_policy = SCHED_RR,
 +#else
  		.sched_policy = SCHED_DEADLINE,
