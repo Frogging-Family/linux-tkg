@@ -33,17 +33,21 @@ _tkg_initscript() {
   # CPU SCHED selector
   if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
     plain "What CPU sched variant do you want to build/install?"
-    read -rp "`echo $'  > 1.Project C / PDS\n    2.Project C / BMQ\n    3.CFS\nchoice[1-3?]: '`" CONDITION;
+    read -rp "`echo $'  > 1.Undead PDS (TkG)\n    2.Project C / PDS\n    3.Project C / BMQ\n    4.CFS\nchoice[1-3?]: '`" CONDITION;
     if [ "$CONDITION" = "2" ]; then
-      echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
+      echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
     elif [ "$CONDITION" = "3" ]; then
+      echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
+    elif [ "$CONDITION" = "4" ]; then
       echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
     else
-      echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+      echo "_cpusched=\"upds\"" > "$_where"/cpuschedset
     fi
     if [ -n "$_custom_pkgbase" ]; then
       echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "$_where"/cpuschedset
     fi
+  elif [ "$_cpusched" = "upds" ]; then
+    echo "_cpusched=\"upds\"" > "$_where"/cpuschedset
   elif [ "$_cpusched" = "pds" ]; then
     echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
   elif [ "$_cpusched" = "cfs" ]; then
@@ -188,6 +192,19 @@ _tkg_srcprep() {
     msg2 "Applying Glitched PDS patch"
     patch -Np1 -i "$srcdir"/0005-glitched-pds.patch
 
+  elif [ "${_cpusched}" = "upds" ]; then
+    # PDS-mq
+    msg2 "Applying PDS base patch"
+    patch -Np1 -i "$srcdir"/0005-v5.8_undead-pds099o.patch
+
+    if [ "${_aggressive_ondemand}" = "true" ]; then
+      msg2 "Applying PDS agressive ondemand governor patch"
+      patch -Np1 -i "$srcdir"/0005-undead-glitched-ondemand-pds.patch
+    fi
+
+    msg2 "Applying Glitched PDS patch"
+    patch -Np1 -i "$srcdir"/0005-undead-glitched-pds.patch
+
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
     msg2 "Applying Project C / BMQ base patch"
@@ -293,6 +310,9 @@ _tkg_srcprep() {
   if [ "${_cpusched}" = "MuQSS" ]; then
     # MuQSS default config
     echo "CONFIG_SCHED_MUQSS=y" >> ./.config
+  elif [ "${_cpusched}" = "upds" ]; then
+    # PDS default config
+    echo "CONFIG_SCHED_PDS=y" >> ./.config
   elif [ "${_cpusched}" = "pds" ]; then
     # PDS default config
     echo "CONFIG_SCHED_ALT=y" >> ./.config
@@ -305,7 +325,7 @@ _tkg_srcprep() {
     echo "# CONFIG_SCHED_PDS is not set" >> ./.config
   fi
 
-  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ]; then
+  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
     # Disable CFS
     sed -i -e 's/CONFIG_FAIR_GROUP_SCHED=y/# CONFIG_FAIR_GROUP_SCHED is not set/' ./.config
     sed -i -e 's/CONFIG_CFS_BANDWIDTH=y/# CONFIG_CFS_BANDWIDTH is not set/' ./.config
@@ -334,6 +354,8 @@ _tkg_srcprep() {
     if [ "$CONDITION0" = "0" ]; then
       if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+      elif [ "${_cpusched}" = "upds" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/pds.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
       fi
@@ -342,6 +364,8 @@ _tkg_srcprep() {
     elif [ "$CONDITION0" = "2" ]; then
       if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/alt_core.c
+      elif [ "${_cpusched}" = "upds" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/pds.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
       fi
@@ -350,12 +374,16 @@ _tkg_srcprep() {
         msg2 "Using default CPU sched yield type (1)"
       elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+      elif [ "${_cpusched}" = "upds" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/pds.c
+      else
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
       fi
     fi
   fi
 
   # Round Robin interval
-  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ]; then
+  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
     if [ -n "$_rr_interval" ]; then
       CONDITION1="$_rr_interval"
     else
@@ -389,6 +417,8 @@ _tkg_srcprep() {
     if [ "$_rrvalue" != "default" ]; then
       if [ "${_cpusched}" = "MuQSS" ]; then
         sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
+      elif [ "${_cpusched}" = "upds" ]; then
+        sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/pds.c
       elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/alt_core.c
       fi
