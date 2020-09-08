@@ -97,9 +97,9 @@ _tkg_initscript() {
   if [ "$_versel" != "59" ]; then
     if [ -z "$_cpusched" ] && [ ! -e "${_path}"/cpuschedset ]; then
       $plain "What CPU sched variant do you want to build/install?"
-      if [ $_versel >= 58 ]; then
+      if [ "$_versel" = "58" ] || [ "$_versel" = "57" ]; then
         prompt="`echo $'  > 1.Project C / PDS\n    2.Project C / BMQ\n    3.CFS\nchoice[1-3?]: '`"
-      elif [ $_versel >= 54 ]; then
+      elif [ "$_versel" = "54" ]; then
 	prompt="`echo $'  > 1.PDS\n    2.MuQSS\n    3.BMQ\n    4.CFS\nchoice[1-4?]: '`"
       fi
       read -rp "$prompt"  CONDITION;
@@ -240,26 +240,19 @@ _tkg_srcprep() {
     fi
 
     # ARCH Patches
-    if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
+    if [ "${_configfile}" = "config_hardened_${_basekernel}.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
       $msg2 "Using linux hardened patchset"
       patch -Np1 -i "$srcdir"/0012-linux-hardened.patch
     else
-      patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+      patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by_v${_basekernel}.patch
     fi
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
   if [ $_compiler_name != "llvm" ]; then
     $msg2 "Applying graysky's cpu opts patch"
-    if [ "$_versel" = "59" ]; then
-      opt_ver=5.8
-    elif [ "$_versel" = "54" ]; then
-      opt_ver="4.19-v5.4"
-    else
-      opt_ver=${_basekernel}
-    fi
     if [ "${_distro}" = "Arch" ]; then
-      patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}%2B.patch
+      patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch
     elif [ "${_distro}" = "Void" ]; then
       patch -Np1 -i "${wrksrc}"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch
     else
@@ -288,9 +281,16 @@ _tkg_srcprep() {
     fi
   fi
 
-  if [ "$_misc_adds" = "true" ]; then
+  if [ "$_misc_adds" = "true" ] && [ "$_versel" != "54" ]; then
     $msg2 "Applying misc additions patch"
-    patch -Np1 -i "$srcdir"/0012-misc-additions.patch
+    patch -Np1 -i "$srcdir"/0012-misc-additions_v${_basekernel}.patch
+  fi
+
+  # prjc/bmq patch rev
+  if [ "$_versel" = "58" ]; then
+    rev=2
+  elif [ "$_versel" = "57" ]; then
+    rev=3
   fi
 
   if [ "${_cpusched}" = "MuQSS" ]; then
@@ -309,9 +309,15 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "pds" ]; then
     # PDS-mq
     $msg2 "Applying PDS base patch"
-    patch -Np1 -i "$srcdir"/0005-prjc_v${_basekernel}_undead-pds099o.patch
+    if [ "$_versel" != "54" ] && [ "$_versel" != "58" ]; then
+      patch -Np1 -i "$srcdir"/0005-prjc_v${_basekernel}_undead-pds099o.patch
+    elif [ "$_versel" != "58" ]; then
+      patch -Np1 -i "$srcdir"/0005-v${_basekernel}_undead-pds099o.patch
+    else
+      patch -Np1 -i "$srcdir"/0009-prjc_v${_basekernel}-r${rev}.patch
+    fi
 
-    if [ "${_aggressive_ondemand}" = "true" ]; then
+    if [ "${_aggressive_ondemand}" = "true" ] && [ "$_versel" != "54" ] && [ "$_versel" != "58" ]; then
       $msg2 "Applying PDS agressive ondemand governor patch"
       patch -Np1 -i "$srcdir"/0009-glitched-ondemand-pds_v${_basekernel}.patch
     fi
@@ -322,8 +328,7 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
     $msg2 "Applying Project C / BMQ base patch"
-
-    patch -Np1 -i "$srcdir"/0009-prjc_v${_basekernel}-r0.patch
+    patch -Np1 -i "$srcdir"/0009-prjc_v${_basekernel}-r${rev}.patch
 
     if [ "${_aggressive_ondemand}" = "true" ]; then
       $msg2 "Applying BMQ agressive ondemand governor patch"
@@ -359,6 +364,12 @@ _tkg_srcprep() {
   sed -i -e 's/CONFIG_DEFAULT_FQ_CODEL=y/# CONFIG_DEFAULT_FQ_CODEL is not set/' ${_confdir}/.config
   echo "CONFIG_DEFAULT_CAKE=y" >> ${_confdir}/.config
   echo "CONFIG_NR_TTY_DEVICES=63" >> ${_confdir}/.config
+  if [ "$_versel" = "54" ]; then
+    echo "CONFIG_TP_SMAPI=m" >> ${_confdir}/.config
+    echo "CONFIG_RAID6_USE_PREFER_GEN=y" >> ${_confdir}/.config
+    echo "# CONFIG_X86_P6_NOP is not set" >> ${_confdir}/.config
+    sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ${_confdir}/.config
+  fi
   echo "# CONFIG_NTP_PPS is not set" >> ${_confdir}/.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4=m/CONFIG_CRYPTO_LZ4=y/' ${_confdir}/.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4HC=m/CONFIG_CRYPTO_LZ4HC=y/' ${_confdir}/.config
@@ -367,7 +378,6 @@ _tkg_srcprep() {
   sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO is not set/' ${_confdir}/.config
   sed -i -e 's/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4 is not set/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4=y/' ${_confdir}/.config
   sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lzo"/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lz4"/' ${_confdir}/.config
-  #sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ${_confdir}/.config
   sed -i -e 's/# CONFIG_CMDLINE_BOOL is not set/CONFIG_CMDLINE_BOOL=y/' ${_confdir}/.config
   echo "CONFIG_CMDLINE=\"${_custom_commandline}\"" >> ${_confdir}/.config
   echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ${_confdir}/.config
@@ -478,9 +488,14 @@ _tkg_srcprep() {
         read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
       fi
     fi
+    if [ "$_versel" = "54" ]; then
+      _sched=${_cpusched}
+    else
+      _sched="alt_core"
+    fi
     if [ "$CONDITION0" = "0" ]; then
       if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
       fi
@@ -488,7 +503,7 @@ _tkg_srcprep() {
       $msg2 "Using default CPU sched yield type (1)"
     elif [ "$CONDITION0" = "2" ]; then
       if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/alt_core.c
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/${_sched}.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
       fi
@@ -496,7 +511,7 @@ _tkg_srcprep() {
       if [ "${_cpusched}" = "MuQSS" ]; then
         $msg2 "Using default CPU sched yield type (1)"
       elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
       fi
     fi
   fi
@@ -533,15 +548,34 @@ _tkg_srcprep() {
       $msg2 "Using default rr_interval"
       _rrvalue="default"
     fi
-    if [ "$_rrvalue" != "default" ]; then
-      if [ "${_cpusched}" = "MuQSS" ]; then
-        sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
-      elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
-        sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/alt_core.c
+    if [ "$_versel" != "54" ]; then
+      if [ "$_rrvalue" != "default" ]; then
+        if [ "${_cpusched}" = "MuQSS" ]; then
+          sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
+        elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
+          sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/${_sched}.c
+        fi
+        if [ "${_cpusched}" == "bmq" ]; then
+          echo "CONFIG_SCHED_TIMESLICE=2" >> ./.config
+        fi
+      else
+        if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
+          sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (2 * 1000 * 1000);/" ./kernel/sched/${_sched}.c
+        fi
       fi
     else
-      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
-        sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (2 * 1000 * 1000);/" ./kernel/sched/alt_core.c
+      if [ "$_rrvalue" != "default" ]; then
+        if [ "${_cpusched}" == "MuQSS" ]; then
+          sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
+        elif [ "${_cpusched}" == "pds" ]; then
+          sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/"${_cpusched}".c
+        elif [ "${_cpusched}" == "bmq" ]; then
+          echo "CONFIG_SCHED_TIMESLICE=${_rrvalue}" >> ./.config
+        fi
+      else
+        if [ "${_cpusched}" == "bmq" ]; then
+          echo "CONFIG_SCHED_TIMESLICE=2" >> ./.config
+        fi
       fi
     fi
   fi
@@ -555,14 +589,26 @@ _tkg_srcprep() {
 
   # compiler optimization level
   if [ "$_compileroptlevel" = "1" ]; then
-    echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ${_confdir}/.config
+    if [ "$_versel" != "54" ]; then
+      echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ${_confdir}/.config
+    else
+      echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ${_confdir}/.config
+    fi
   elif [ "$_compileroptlevel" = "2" ]; then
     sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ${_confdir}/.config
-    echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> ${_confdir}/.config
+    if [ "$_versel" != "54" ]; then
+      echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> ${_confdir}/.config
+    else
+      echo "CONFIG_CC_OPTIMIZE_HARDER=y" >> ${_confdir}/.config
+    fi
   elif [ "$_compileroptlevel" = "3" ]; then
     sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ${_confdir}/.config
     sed -i -e 's/# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set/CONFIG_CC_OPTIMIZE_FOR_SIZE=y/' ${_confdir}/.config
-    echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ${_confdir}/.config
+    if [ "$_versel" != "54" ]; then
+      echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ${_confdir}/.config
+    else
+      echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ${_confdir}/.config
+    fi
   fi
 
   # cpu opt
@@ -868,22 +914,22 @@ _tkg_srcprep() {
   fi
 
   # bcachefs
-  #if [ -z "$_bcachefs" ]; then
-  #   $plain ""
-  #   $plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
-  #   $plain "https://bcachefs.org/"
-  #   read -rp "`echo $'    > N/y : '`" CONDITION8;
-  #fi
-  #if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
-  #   $msg2 "Patching Bcache filesystem support override"
-  #   patch -Np1 -i "$srcdir"/0008-5.8-bcachefs.patch
-  #   echo "CONFIG_BCACHEFS_FS=m" >> ${_confdir}/.config
-  #   echo "CONFIG_BCACHEFS_QUOTA=y" >> ${_confdir}/.config
-  #   echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ${_confdir}/.config
-  #   echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ${_confdir}/.config
-  #   echo "# CONFIG_BCACHEFS_TESTS is not set" >> ${_confdir}/.config
-  #   echo "# CONFIG_DEBUG_CLOSURES is not set" >> ${_confdir}/.config
-  #fi
+  if [ -z "$_bcachefs" ] && [ "$_versel" = "57" ]; then
+     $plain ""
+     $plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
+     $plain "https://bcachefs.org/"
+     read -rp "`echo $'    > N/y : '`" CONDITION8;
+  fi
+  if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
+     $msg2 "Patching Bcache filesystem support override"
+     patch -Np1 -i "$srcdir"/0008-5.8-bcachefs.patch
+     echo "CONFIG_BCACHEFS_FS=m" >> ${_confdir}/.config
+     echo "CONFIG_BCACHEFS_QUOTA=y" >> ${_confdir}/.config
+     echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ${_confdir}/.config
+     echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ${_confdir}/.config
+     echo "# CONFIG_BCACHEFS_TESTS is not set" >> ${_confdir}/.config
+     echo "# CONFIG_DEBUG_CLOSURES is not set" >> ${_confdir}/.config
+  fi
 
   # fsync support
   if [ "$_versel" != "59" ]; then
@@ -1112,7 +1158,7 @@ exit_cleanup() {
     rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds_sched.h
 
     rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BMQ.txt
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_core.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/${_sched}.c
     rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/sched/alt_debug.c
     rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_sched.h
 
