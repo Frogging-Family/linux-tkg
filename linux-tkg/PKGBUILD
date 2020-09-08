@@ -28,15 +28,18 @@ _where="$PWD" # track basedir as different Arch based distros are moving srcdir 
 source "$_where"/customization.cfg # load default configuration from file
 source "$_where"/linux*-tkg-config/prepare
 
+_distro="Arch"
+
 _tkg_initscript
 
 if [[ "$_sub" = rc* ]]; then
   _srcpath="linux-${_basekernel}-${_sub}"
+  kernel_site="https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
 else
   _srcpath="linux-${_basekernel}"
+  kernel_site="https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
+  patch_site="https://www.kernel.org/pub/linux/kernel/v5.x/patch-${_basekernel}.${_sub}.xz"
 fi
-
-_distro="Arch"
 
 if [ -n "$_custom_pkgbase" ]; then
   pkgbase="${_custom_pkgbase}"
@@ -53,33 +56,47 @@ license=('GPL2')
 makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'pahole' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
 optdepends=('schedtool')
 options=('!strip' 'docs')
-if [[ "$_sub" = rc* ]]; then
-  kernel_site="https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
-  patch_site=
-else
-  kernel_site="https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
-  patch_site="https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
-fi
-if [ "$_versel" = "54" ]; then
-  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
-elif [ "$_versel" = "59" ]; then
-  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
-else
-  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${_basekernel}%2B.patch"
-fi
-if [ "$_versel" != "58" ] || [ "$_versel" != "59" ]; then
+
+#if [ "$_versel" = "54" ]; then
+#  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
+#elif [ "$_versel" = "59" ]; then
+#  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+#else
+#  cpu_opts_patch=""
+#fi
+
+if [ "$_cpusched" = "MuQSS" ]; then
   MuQSS="0004-glitched-ondemand-muqss_v${_basekernel}.patch\n
 	0004-glitched-muqss_v${_basekernel}.patch\n
         0004-${_basekernel}-ck1.patch"
 fi
-if [ "$_versel" != "59" ]; then
+
+if [ "$_versel" != "59" ] && [ "$_versel" != "54" ]; then
   fsync="0007-v${_basekernel}-fsync.patch"
+  if [ "$_versel" = "57" ]; then
+    rev=3
+  elif [ "$_versel" = "58" ]; then
+    rev=2
   prjc="0009-glitched-ondemand-bmq_v${_basekernel}.patch\n
         0009-glitched-bmq_v${_basekernel}.patch\n
-        0009-prjc_v5.9-r0.patch"
+        0009-prjc_v${_basekernel}-r${rev}.patch" 
+elif [ "$_versel" = "54" ]; then
+  bmq="0009-glitched-ondemand-bmq_v${_basekernel}.patch\n
+       0009-glitched-bmq_v${_basekernel}.patch\n
+       0009-bmq_v5.4-r2.patch"
 fi
+
+if [ "$_versel" = "59" ]; then
+  opt_ver=5.8
+elif [ "$_versel" = "54" ]; then
+  opt_ver="4.19-v5.4"
+else
+  opt_ver=${_basekernel}
+fi
+
 source=("$kernel_site"
-	"$cpu_opts_patch"
+        $patch_site
+	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}%2B.patch"
         "config_${_basekernel}.x86_64" # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -97,12 +114,13 @@ source=("$kernel_site"
         0006-add-acs-overrides_iommu.patch
 	$fsync
         #0008-${_basekernel}-bcachefs.patch
+	$bmq
         $prjc
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
-        $patch_site
 )
+
 # variable sums
 case "$_versel" in
 	"54")
@@ -110,43 +128,93 @@ case "$_versel" in
 	kernel_patch_sum='477fe9fb16e89321447978734c80f9a52cd05d018a2538ad77d3d0a2be36b821'
 	cpu_opt_sum='27b7fc535ade94b636c3ec4e809e141831e9465a0ef55215a9852b87048629e2'
 	config_file_sum='55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
+	hardened_config_file_sum='1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
+	arch_patch_sum='31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
+	glitched_base_sum='156a2c75fd228920e3c3da5e04a110afa403951bdfbb85772c2fd4b82fd24d61'
+	glitched_ondemand_muqss_sum='c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
+	glitched_muqss_sum='bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
+	muqss_sum='815974c65f47301d2a5d1577bf95e8a4b54cad7d77f226e0065f83e763837c48'
+	glitched_ondemand_pds_sum='62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+	glitched_pds_sum='eac7e5d6201528e64f4bdf5e286c842511e1afc52e1518dc8e7d11932bbe0a99'
+	undead_pds_sum='db03fbd179ec78941eefe1c0edde4c19071bc603511d0b5c06c04e412994b62e'
+	fsync_sum='2d9260b80b43bbd605cf420d6bd53aa7262103dfd77196ba590ece5600b6dc0d'
+	glitched_bmq_sum='3832f828a9f402b153fc9a6829c5a4eaf6091804bcda3a0423c8e1b57e26420d'
+	bmq_sum='6a6a736cf1b3513d108bfd36f60baf50bb36b33aec21ab0d0ffad13602b7ff75'
+	misc_adds_sum='aeb31404c26ee898d007b1f66cb9572c9884ad8eca14edc4587d68f6cba6de46'
 	;;
         "57")
   	kernel_sum='de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
 	kernel_patch_sum='66a0173a13cd58015f5bf1b14f67bfa15dc1db5d8e7225fcd95ac2e9a5341653'
   	cpu_opt_sum='1f56a2466bd9b4477925682d8f944fabb38727140e246733214fe50aa326fc47'
   	config_file_sum='6313ccad7f8e4d8ce09dd5bdb51b8dfa124d0034d7097ba47008380a14a84f09'
+	hardened_config_file_sum='15ce09447b7e9b28425c1df5961c955378f2829e4115037337eef347b1db3d9d'
+	arch_patch_sum='31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
+	glitched_base_sum='bbf332201423888257c9687bee06916a5dbbac2194f9df5b4126100c40e48d16'
+	muqss_sum='8d8aec86e34dbec6cc3a47f2cd55dc9212e95d36b6cd34d6e637c66731e7d838'
+	glitched_pds_sum='7fd8e776209dac98627453fda754bdf9aff4a09f27cb0b3766d7983612eb3c74'
+	undead_pds_sum='55be5e4c6254da0a9d34bbfac807a70d8b58b3f7b2ec852026195c4db5e263e2'
+	fsync_sum='cd225e86d72eaf6c31ef3d7b20df397f4cc44ddd04389850691292cdf292b204'
+	bcachefs_sum='d2214504c43f9d297a8ef68dffc198143bfebf85614b71637a71978d7a86bd78'
+	glitched_ondemand_bmq_sum='9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+	glitched_bmq_sum='965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
+	prjc_sum='b2a2ae866fc3f1093f67e69ba59738827e336b8f800fb0487599127f7f3ef881'
+	linux_hardened_sum='6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d'
+	misc_adds_sum='bdc60c83cd5fbf9912f9201d6e4fe3c84fe5f634e6823bd8e78264ad606b3a9e'
+
 	;;
 	"58")
   	kernel_sum='e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
 	kernel_patch_sum='d394c98a7031fe2c88009082ccfdd8ec588dfbcf83a8d7969d016c4881e7028d'
   	cpu_opt_sum='5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
   	config_file_sum='ac66686b0e1ed057ea5f099cd00366decc00f999aa1cb19ba8d3ccf9f92d60e2'
+	arch_patch_sum='f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+	glitched_base_sum='d6cde733ad3bd8287528f69c16debfa75e7e43e8bb4c26a8ca9e1a3a7e303a02'
+	glitched_pds_sum='87bca363416655bc865fcb2cc0d1532cb010a61d9b9f625e3c15cd12eeee3a59'
+	fsync_sum='cd225e86d72eaf6c31ef3d7b20df397f4cc44ddd04389850691292cdf292b204'
+	glitched_ondemand_bmq_sum='9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+	glitched_bmq_sum='965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
+	prjc_sum='5d77fae7fd9955b8e057d67ce51bc5a019dee46d003fe7b44dd9a131b01b6abc'
+	misc_adds_sum='98311deeb474b39e821cd1e64198793d5c4d797155b3b8bbcb1938b7f11e8d74'
 	;;
 	"59")
 	kernel_sum='13f9de1afcd547a537c92280a18899f3f1148eb35b98ceeeac1fe85e1b681820'
   	cpu_opt_sum='5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
   	config_file_sum='20da98426048a222adeaf6606c9695d7a36974f4110a5adbe77c482898b59348'
+	arch_patch_sum='f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+	glitched_base_sum='d6cde733ad3bd8287528f69c16debfa75e7e43e8bb4c26a8ca9e1a3a7e303a02'
+	glitched_ondemand_pds_sum='62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+	glitched_pds_sum='b5b0347c18c6217e074890fd109002586fc23f4a45dec89f72e72c5845e73db2'
+	undead_pds_sum='d7726495963bf23ee54958e63b7e7aa00feb3281b10f58cae6567488e7ddc19f'
+	misc_adds_sum='433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e'
+
 	;;
 esac
-sha256sums=("${kernel_sum}"
-            "${cpu_opt_sum}"
-            "${config_file_sum}"
-            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
-            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
-            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
-            'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
-            'd6cde733ad3bd8287528f69c16debfa75e7e43e8bb4c26a8ca9e1a3a7e303a02'
-            '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
-            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
-            'b5b0347c18c6217e074890fd109002586fc23f4a45dec89f72e72c5845e73db2'
-            'd7726495963bf23ee54958e63b7e7aa00feb3281b10f58cae6567488e7ddc19f'
-            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
-if [ "$_versel" != "59" ]; then
-  sha256sums+="${kernel_patch_sum}"
-fi
+
+sha256sums=(${kernel_sum}
+            ${kernel_patch_sum}
+            ${cpu_opt_sum}
+            ${config_file_sum}
+	    ${hardened_config_file_sum}
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898' # cleanup hook
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997' # cleanup
+            ${arch_patch_sum}
+            'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa' # clear linux
+	    ${glitched_base_sum}
+            '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7' # glitched CFS
+	    ${glitched_ondemand_muqss_sum}
+	    ${glitched_muqss_sum}
+	    ${muqss_sum}
+            ${glitched_ondemand_pds_sum}
+            ${glitched_pds_sum}
+            ${undead_pds_sum}
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a' # ACS patch
+	    ${fsync_sum}
+	    ${bcachefs_sum}
+	    ${glitched_ondemand_bmq_sum}
+	    ${glitched_bmq_sum}
+	    ${prjc_sum}
+            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104' # ZFS fix patch
+            ${misc_adds_sum})
 
 
 export KBUILD_BUILD_HOST=archlinux
