@@ -28,13 +28,13 @@ _where="$PWD" # track basedir as different Arch based distros are moving srcdir 
 source "$_where"/customization.cfg # load default configuration from file
 source "$_where"/linux*-tkg-config/prepare
 
+_tkg_initscript
+
 if [[ "$_sub" = rc* ]]; then
   _srcpath="linux-${_basekernel}-${_sub}"
 else
   _srcpath="linux-${_basekernel}"
 fi
-
-_tkg_initscript
 
 _distro="Arch"
 
@@ -53,10 +53,23 @@ license=('GPL2')
 makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'pahole' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
 optdepends=('schedtool')
 options=('!strip' 'docs')
-source=("https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
-        #"https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
-        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${_basekernel}%2B.patch"
-        'config.x86_64' # stock Arch config
+if [[ "$_sub" = rc* ]]; then
+  kernel_site="https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
+  patch_site=
+else
+  kernel_site="https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
+  patch_site="https://www.kernel.org/pub/linux/kernel/v5.x/patch-${pkgver}.xz"
+fi
+if [ "$_versel" = "54" ]; then
+  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
+elif [ "$_versel" = "59" ]; then
+  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+else
+  cpu_opts_patch="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${_basekernel}%2B.patch"
+fi
+source=("$kernel_site"
+	"$cpu_opts_patch"
+        "config_${_basekernel}.x86_64" # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
         cleanup
@@ -81,10 +94,37 @@ source=("https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz"
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
+        $patch_site
 )
-sha256sums=('13f9de1afcd547a537c92280a18899f3f1148eb35b98ceeeac1fe85e1b681820'
-            '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
-            '20da98426048a222adeaf6606c9695d7a36974f4110a5adbe77c482898b59348'
+# variable sums
+case "$_versel" in
+	"54")
+	kernel_sum='bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
+	kernel_patch_sum='477fe9fb16e89321447978734c80f9a52cd05d018a2538ad77d3d0a2be36b821'
+	cpu_opt_sum='27b7fc535ade94b636c3ec4e809e141831e9465a0ef55215a9852b87048629e2'
+	config_file_sum='55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
+	;;
+        "57")
+  	kernel_sum='de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
+	kernel_patch_sum='66a0173a13cd58015f5bf1b14f67bfa15dc1db5d8e7225fcd95ac2e9a5341653'
+  	cpu_opt_sum='1f56a2466bd9b4477925682d8f944fabb38727140e246733214fe50aa326fc47'
+  	config_file_sum='6313ccad7f8e4d8ce09dd5bdb51b8dfa124d0034d7097ba47008380a14a84f09'
+	;;
+	"58")
+  	kernel_sum='e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
+	kernel_patch_sum='d394c98a7031fe2c88009082ccfdd8ec588dfbcf83a8d7969d016c4881e7028d'
+  	cpu_opt_sum='5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
+  	config_file_sum='ac66686b0e1ed057ea5f099cd00366decc00f999aa1cb19ba8d3ccf9f92d60e2'
+	;;
+	"59")
+	kernel_sum='13f9de1afcd547a537c92280a18899f3f1148eb35b98ceeeac1fe85e1b681820'
+  	cpu_opt_sum='5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
+  	config_file_sum='20da98426048a222adeaf6606c9695d7a36974f4110a5adbe77c482898b59348'
+	;;
+esac
+sha256sums=("${kernel_sum}"
+            "${cpu_opt_sum}"
+            "${config_file_sum}"
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -97,6 +137,10 @@ sha256sums=('13f9de1afcd547a537c92280a18899f3f1148eb35b98ceeeac1fe85e1b681820'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
+if [ "$_versel" != "59" ]; then
+  sha256sums+="${kernel_patch_sum}"
+fi
+
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
