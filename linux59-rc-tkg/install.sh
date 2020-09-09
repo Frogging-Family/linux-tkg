@@ -30,7 +30,7 @@ source customization.cfg
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : shallow clones the linux ${_basekernel}.x git tree into the folder linux-${_basekernel}, then applies on it the extra patches and prepares the .config file 
+        - config : Downloads the ${_basekernel}-${_sub} kernel .tar.gz into the folder linux-${_basekernel}-${_sub}, then applies on it the extra patches and prepares the .config file 
                    by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
         - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
         - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
@@ -97,33 +97,19 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     _distro=""
   fi
 
-  if [ -d linux-${_basekernel}.orig ]; then
-    rm -rf linux-${_basekernel}.orig
+  if [ -d linux-${_basekernel}-${_sub}.orig ]; then
+    rm -rf linux-${_basekernel}-${_sub}.orig
   fi
 
-  if [ -d linux-${_basekernel} ]; then
-    msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
-    cd "$_where"/linux-${_basekernel}
-    git checkout --force linux-$_basekernel.y
-    git clean -f -d -x
-    git pull
-    msg2 "Done" 
-    cd "$_where"
+  if [ -d linux-${_basekernel}-${_sub} ]; then
+    echo "You already have the current -rc .tar.gz downloaded"
   else
-    msg2 "Shallow git cloning linux $_basekernel"
-    git clone --branch linux-$_basekernel.y --single-branch --depth=1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
+    msg2 "Downloading linux ${_basekernel}-${_sub}"
+    wget https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz
+    tar xvpf linux-${_basekernel}-${_sub}.tar.gz
     msg2 "Done"
   fi
-
-  # Define current kernel subversion
-  if [ -z $_kernel_subver ]; then
-    cd "$_where"/linux-${_basekernel}
-    _kernelverstr=`git describe`
-    _kernel_subver=${_kernelverstr:5}
-    cd "$_where"
-  fi
-
-
+  
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
@@ -134,7 +120,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
   # cd in linux folder, copy Ubuntu's current config file, update with new params
-  cd "$_where"/linux-${_basekernel}
+  cd "$_where"/linux-${_basekernel}-${_sub}
 
   msg2 "Copying current kernel's config and running make oldconfig..."
   cp /boot/config-`uname -r` .config
@@ -203,7 +189,7 @@ if [ "$1" = "install" ]; then
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
         cd "$_where"
-        _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
+        _kernelname=${_basekernel}-${_sub}-$_kernel_flavor
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
         _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
@@ -236,11 +222,12 @@ if [ "$1" = "install" ]; then
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
         
-        _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
+        _kernelname=${_basekernel}-${_sub}_$_kernel_flavor
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
         
+
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
           sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
