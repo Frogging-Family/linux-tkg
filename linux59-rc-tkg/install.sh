@@ -30,7 +30,7 @@ source customization.cfg
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : Downloads the ${_basekernel}-${_sub} kernel .tar.gz into the folder linux-${_basekernel}-${_sub}, then applies on it the extra patches and prepares the .config file 
+        - config : Downloads the ${_basekernel}-${_sub} kernel .tar.gz and extracts it into the folder linux-${_basekernel}-${_sub}, then applies on it the extra patches and prepares the .config file 
                    by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
         - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
         - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
@@ -105,7 +105,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     echo "You already have the current -rc .tar.gz downloaded"
   else
     msg2 "Downloading linux ${_basekernel}-${_sub}"
-    wget https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz
+    wget https://git.kernel.org/torvalds/t/linux--${_sub}.tar.gz
     tar xvpf linux-${_basekernel}-${_sub}.tar.gz
     msg2 "Done"
   fi
