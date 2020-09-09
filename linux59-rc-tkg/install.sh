@@ -106,9 +106,16 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   msg2 "Building version ${_basekernel}.${_kernel_subver}_${_sub}"
   
   if [ -d linux-${_basekernel}-${_sub} ]; then
-    msg2 "You already have the current -rc .tar.gz downloaded, cleaning up and re-downloading..."
+    msg2 "You already have a linux-${_basekernel}-${_sub} folder, cleaning up..."
+    
+    if [ -f linux-${_basekernel}-${_sub}.tar.gz ]; then
+      msg2 "linux-${_basekernel}-${_sub}.tar.gz already exists, using current"
+    else
+      msg2 "linux-${_basekernel}-${_sub}.tar.gz doesn't exist, downloading"
+      wget https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz
+    fi
+
     rm -r $_where/linux-${_basekernel}-${_sub} 
-    wget https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz
     tar xvpf linux-${_basekernel}-${_sub}.tar.gz
     msg2 "Done"
   else
