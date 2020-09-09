@@ -102,10 +102,14 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   fi
 
   if [ -d linux-${_basekernel}-${_sub} ]; then
-    echo "You already have the current -rc .tar.gz downloaded"
+    msg2 "You already have the current -rc .tar.gz downloaded, cleaning up and re-downloading..."
+    rm -r $_where/linux-${_basekernel}-${_sub} 
+    wget https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz
+    tar xvpf linux-${_basekernel}-${_sub}.tar.gz
+    msg2 "Done"
   else
     msg2 "Downloading linux ${_basekernel}-${_sub}"
-    wget https://git.kernel.org/torvalds/t/linux--${_sub}.tar.gz
+    wget https://git.kernel.org/torvalds/t/linux-${_basekernel}-${_sub}.tar.gz
     tar xvpf linux-${_basekernel}-${_sub}.tar.gz
     msg2 "Done"
   fi
