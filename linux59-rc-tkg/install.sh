@@ -211,7 +211,7 @@ if [ "$1" = "install" ]; then
     _kernel_flavor=${_kernel_flavor//-/_}
 
     # Doesn't seem to include -rc(x) by default, so will have to add it to EXTRAVERSION
-    if make -j ${_thread_num} rpm-pkg EXTRAVERSION="-${_sub}_${_kernel_flavor}"; then
+    if make -j ${_thread_num} rpm-pkg EXTRAVERSION="_${_sub}_${_kernel_flavor}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -227,8 +227,6 @@ if [ "$1" = "install" ]; then
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-      	# I told rpm-pkg to use -$sub_kernel_flavor but it instead uses _$sub_$kernel_flavor
-      	# am I missing something? lol
         _kernelname=${_basekernel}_${_sub}_$_kernel_flavor
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
