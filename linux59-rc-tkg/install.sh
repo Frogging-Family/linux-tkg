@@ -116,7 +116,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     fi
 
     rm -r $_where/linux-${_basekernel}-${_sub} 
-    tar xvpf linux-${_basekernel}-${_sub}.tar.gz
+    tar xpf linux-${_basekernel}-${_sub}.tar.gz
     msg2 "Done"
   else
     msg2 "Downloading linux ${_basekernel}-${_sub}"
