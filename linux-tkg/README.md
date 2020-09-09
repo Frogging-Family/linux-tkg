@@ -4,6 +4,7 @@
 ### MuQSS is not an available option for 5.8.y yet
 ## Nvidia prop drivers need to be patched (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
+
 A custom Linux kernel (5.9 RC, 5.8.y, 5.7.y, 5.4.y) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 MuQSS : http://ck-hack.blogspot.com/
@@ -53,7 +54,7 @@ cd path/to/linux-tkg/linux59-rc-tkg
 ### Void Linux
 ```
 git clone -b tkg https://github.com/Hyper-KVM/void-packages/
-cd void=packages
+cd void-packages
 ./xbps-src binary-bootstrap
 ./xbps-src pkg -j$(nproc) linux-tkg
 ```
