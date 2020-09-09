@@ -12,7 +12,7 @@ _tkg_initscript() {
     _path="${_where}"
   fi
 
-  if [ ! -e "$_path"/versel ] && [ "$_distro" != "Void" ]; then
+  if [ ! -e "$_path"/versel ]; then
     plain "Which kernel version do you want to install?"
     read -rp "`echo $' > 1. 5.8\n   2. 5.9-rc\n   3. 5.7\n   4. 5.4\nchoice[1-4?]'`" _VERSEL;
     case $_VERSEL in
@@ -20,32 +20,51 @@ _tkg_initscript() {
           echo "_basever=58" > "$_path"/versel
           echo "_basekernel=5.8" >> "$_path"/versel
           echo "_sub=7" >> "$_path"/versel
+	  if [ "$_distro" = "Void" ]; then
+	    echo "version=5.8.7" >> "$_path"/versel
+	  fi
           ;;
           "2")
           echo "_basever=59" > "$_path"/versel
           echo "_basekernel=5.9" >> "$_path"/versel
           echo "_sub=rc4" >> "$_path"/versel
+	  if [ "$_distro" = "Void" ]; then
+	    echo "version=5.9.0" >> "$_path"/versel
+	  fi
           ;;
           "3")
           echo "_basever=57" > "$_path"/versel
           echo "_basekernel=5.7" >> "$_path"/versel
           echo "_sub=19" >> "$_path"/versel
+	  if [ "$_distro" = "Void" ]; then
+	    echo "version=5.7.19" >> "$_path"/versel
+	  fi
           ;;
           "4")
 	  echo "_basever=54" > "$_path"/versel
 	  echo "_basekernel=5.4" >> "$_path"/versel
 	  echo "_sub=63" >> "$_path"/versel
+	  if [ "$_distro" = "Void" ]; then
+	    echo "version=5.4.63" >> "$_path"/versel
+	  fi
 	  ;;
           *)
           echo "_basever=58" > "$_path"/versel
           echo "_basekernel=5.8" >> "$_path"/versel
           echo "_sub=7" >> "$_path"/versel
+	  if [ "$_distro" = "Void" ]; then
+	    echo "version=5.8.7" >> "$_path"/versel
+	  fi
           ;;
     esac
   fi
-
-  cp "$_where"/linux-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-  cp "$_where"/linux-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+  if [ "$_distro" != "Void" ]; then
+    cp "$_where"/linux-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+    cp "$_where"/linux-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+  else
+    cp "$_where"/linux-tkg-patches/* "$_path"
+    cp "$_where"/linux-tkg-config/* "$_path"
+  fi
 
   # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
   if [ -e "$_EXT_CONFIG_PATH" ]; then
@@ -130,7 +149,6 @@ _tkg_initscript() {
         exit 1
       fi
     fi
-#  elif [ "$_basever" = "58" ]; then
   else
     if [ -n "$_custom_pkgbase" ]; then
       echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "${_path}"/cpuschedset
@@ -244,6 +262,10 @@ _tkg_srcprep() {
     fi
   fi
 
+  if [ "$_distro" = "Void" ]; then
+    cd ${wrksrc}/linux-${_kern_ver}
+  fi
+
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
   if [ $_compiler_name != "llvm" ]; then
     msg2 "Applying graysky's cpu opts patch"
@@ -256,15 +278,9 @@ _tkg_srcprep() {
     fi
   fi
 
-  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
-    cd ${wrksrc}/linux-${_basekernel}-${_sub}
-  elif [ "$_distro" = "Void" ] && [[ "$_sub" != rc* ]]; then
-    cd ${wrksrc}/linux-${version}
-  fi
-
   # TkG
   msg2 "Applying clear linux patches"
-  patch -Np1 -i "$srcdir"/0002-clear-patches_v${_basekernel}.patch
+  patch -Np1 -i "$srcdir"/0002-clear-patches.patch
 
   msg2 "Applying glitched base patch"
   patch -Np1 -i "$srcdir"/0003-glitched-base_v${_basekernel}.patch
@@ -343,10 +359,8 @@ _tkg_srcprep() {
     patch -Np1 -i "$srcdir"/0003-glitched-cfs_v${_basekernel}.patch
   fi
 
-  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
-    _confdir=${wrksrc}/linux-${_basekernel}-${_sub}
-  elif [ "$_distro" = "Void" ] && [[ "$_sub" != rc* ]]; then
-    _confdir=${wrksrc}/linux-${version}
+  if [ "$_distro" = "Void" ]; then
+    _confdir=${wrksrc}/linux-${_kern_ver}
   else
     _confdir="."
   fi
@@ -395,6 +409,7 @@ _tkg_srcprep() {
     fi
   fi
   # Skip dbg package creation on non-Arch
+  echo $_distro
   if [ "$_distro" != "Arch" ] || [ "$_distro" = "Void" ]; then
     sed -i -e 's/CONFIG_DEBUG_INFO.*/CONFIG_DEBUG_INFO=n/' ${_confdir}/.config
   fi
@@ -1045,6 +1060,7 @@ _tkg_srcprep() {
   fi
 
   # set _menuconfig early for Void
+  # since menuconfig doesn't work with xbps-src
   if [ "$_distro" = "Void" ]; then
     _menuconfig="Void"
   fi
