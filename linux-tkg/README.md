@@ -1,9 +1,18 @@
 **Due to intel_pstate poor performances as of late, I have decided to set it to passive mode to make use of the acpi_cpufreq governors passthrough, keeping full support for turbo frequencies.**
 
-### PDS, MuQSS and BMQ are not yet available options for this revision
+### PDS, MuQSS and BMQ are not yet available options for 5.9 RC
+### MuQSS is not an available option for 5.8.y yet
 ## Nvidia prop drivers need to be patched (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
-A custom Linux kernel 5.9 RC with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+A custom Linux kernel (5.9 RC, 5.8.y, 5.7.y, 5.4.y) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+
+MuQSS : http://ck-hack.blogspot.com/
+
+Project C / BMQ : http://cchalpha.blogspot.com/
+
+PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
+
+While he dropped it with kernel 5.1 in favor of its BMQ evolution/rework, my pretty bad gaming experiences with BMQ up to this point convinced me to keep PDS afloat for as long as it'll make sense/I'll be able to.
 
 Various personalization options available and userpatches support (put your own patches in the same dir as the PKGBUILD, with the ".mypatch" extension). The options built with are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
 
@@ -22,10 +31,8 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 - using vm.max_map_count=524288 by default
 - cherry-picked clear linux patches
 - **optional** overrides for missing ACS capabilities
+- **optional** (<=5.8.y) Fsync support (proton)
 - **optional** ZFS fpu symbols
-
-
-## Install procedure
 
 ## Install procedure
 
@@ -41,6 +48,14 @@ manually, the script can can help out with some useful information:
 ```
 cd path/to/linux-tkg/linux59-rc-tkg
 ./install.sh uninstall-help
+```
+
+### Void Linux
+```
+git clone -b tkg https://github.com/Hyper-KVM/void-packages/
+cd void=packages
+./xbps-src binary-bootstrap
+./xbps-src pkg -j$(nproc) linux-tkg
 ```
 
 ### Other linux distributions
