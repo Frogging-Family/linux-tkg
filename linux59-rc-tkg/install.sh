@@ -227,12 +227,13 @@ if [ "$1" = "install" ]; then
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-        _kernelname=${_basekernel}-${_sub}_$_kernel_flavor
+      	# I told rpm-pkg to use -$sub_kernel_flavor but it instead uses _$sub_$kernel_flavor
+      	# am I missing something? lol
+        _kernelname=${_basekernel}_${_sub}_$_kernel_flavor
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
         
-
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
           sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
