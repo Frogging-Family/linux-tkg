@@ -21,6 +21,8 @@ set -e
 
 _where=`pwd`
 srcdir="$_where"
+# This is an RC, so subver will always be 0
+_kernel_subver=0
 
 source linux*-tkg-config/prepare
 
@@ -100,7 +102,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [ -d linux-${_basekernel}-${_sub}.orig ]; then
     rm -rf linux-${_basekernel}-${_sub}.orig
   fi
-
+  
+  msg2 "Building version ${_basekernel}.${_kernel_subver}_${_sub}"
+  
   if [ -d linux-${_basekernel}-${_sub} ]; then
     msg2 "You already have the current -rc .tar.gz downloaded, cleaning up and re-downloading..."
     rm -r $_where/linux-${_basekernel}-${_sub} 
@@ -227,7 +231,7 @@ if [ "$1" = "install" ]; then
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-        _kernelname=${_basekernel}_${_sub}_$_kernel_flavor
+        _kernelname=${_basekernel}.${_kernel_subver}_${_sub}_$_kernel_flavor
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
