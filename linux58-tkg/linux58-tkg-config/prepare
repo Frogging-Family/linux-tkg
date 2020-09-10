@@ -11,38 +11,23 @@ _tkg_initscript() {
 
   # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
   if [ -e "$_EXT_CONFIG_PATH" ]; then
-    source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && $msg2 ""
+    source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && msg2 ""
   fi
 
-  # create build dir early
-  if [ "$_distro" = "Void" ]; then
-    _path="${XBPS_BUILDDIR}/${wrksrc}"
-    if [ ! -e ${XBPS_BUILDDIR}/${wrksrc} ]; then
-      mkdir ${_path}
-    fi
-  else
-    _path="${_where}"
-  fi
-
-  if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_path"/cpuschedset ]; then
+  if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_where"/cpuschedset ]; then
     # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
     plain "Do you want to use a predefined optimized profile?"
     read -rp "`echo $'  > 1.Custom\n    2.Ryzen Desktop (Performance)\n    3.Other Desktop (Performance)\nchoice[1-3?]: '`" _OPTIPROFILE;
   fi
   if [ "$_OPTIPROFILE" = "2" ]; then
-    source "$_where"/ryzen-desktop-profile.cfg && msg2 "Ryzen Desktop (Performance) profile will be used." && $msg2 ""
+    source "$_where"/ryzen-desktop-profile.cfg && msg2 "Ryzen Desktop (Performance) profile will be used." && msg2 ""
   elif [ "$_OPTIPROFILE" = "3" ]; then
-    source "$_where"/generic-desktop-profile.cfg && msg2 "Generic Desktop (Performance) profile will be used." && $msg2 ""
+    source "$_where"/generic-desktop-profile.cfg && msg2 "Generic Desktop (Performance) profile will be used." && msg2 ""
   fi
 
   # source cpuschedset early if present
-  if [ -e "${_path}"/cpuschedset ]; then
-    source "${_path}"/cpuschedset
-  fi
-
-  # source compilerset early if present
-  if [ -e "${_path}"/compilerset ]; then
-    source "${_path}"/compilerset
+  if [ -e "$_where"/cpuschedset ]; then
+    source "$_where"/cpuschedset
   fi
 
   # CPU SCHED selector
@@ -59,62 +44,30 @@ _tkg_initscript() {
       echo "_cpusched=\"upds\"" > "$_where"/cpuschedset
     fi
     if [ -n "$_custom_pkgbase" ]; then
-      echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "${_path}"/cpuschedset
+      echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "$_where"/cpuschedset
     fi
   elif [ "$_cpusched" = "upds" ]; then
     echo "_cpusched=\"upds\"" > "$_where"/cpuschedset
   elif [ "$_cpusched" = "pds" ]; then
-    echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
   elif [ "$_cpusched" = "cfs" ]; then
-    echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
+    echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
   elif [ "$_cpusched" = "bmq" ]; then
-    echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+    echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
   else
     if [ "$_nofallback" != "true" ]; then
       warning "Something is wrong with your cpusched selection. Do you want to fallback to CFS (default)?"
       read -rp "`echo $'    > N/y : '`" _fallback;
     fi
     if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
-      echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
+      echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
     else
       error "Exiting..."
       exit 1
     fi
   fi
 
-  case $_compileroptlevel in
-	"1")
-	_llvm_compileropt="-O2"
-	;;
-	"2")
-	_llvm_compileropt="-O3"
-	;;
-	"3")
-	_llvm_compileropt="-Os"
-	;;
-	*)
-	# set default optimiztion level
-	_llvm_compileropt="-O2"
-	;;
-  esac
-
-# Compiler selector
-  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ]; then
-    plain "Which compiler do you want to use?"
-    read -rp "`echo $'  > 1.GCC\n    2.Clang/LLVM\nchoice[1-2?]: '`" _CONDITION_LLVM;
-    if [ "$_CONDITION_LLVM" = "2" ];then
-      echo "_compiler_name=\"llvm\"" > ${_path}/compilerset
-      echo "_compiler=\"LLVM=1 CFLAGS='${_llvm_compileropt}' CXXFLAGS='${_llvm_compileropt}'\"" >> ${_path}/compilerset
-    else
-      echo "_compiler_name=\"gcc\"" > ${_path}/compilerset
-    fi
-  elif [ "$_compiler" = "llvm" ]; then
-      echo "_compiler_name=\"llvm\"" > ${_path}/compilerset
-      echo "_compiler=\"LLVM=1 CFLAGS='${_llvm_compileropt}' CXXFLAGS='${_llvm_compileropt}'\"" >> ${_path}/compilerset
-  fi
-
-  source "${_path}"/cpuschedset
-  source "${_path}"/cpuschedset
+  source "$_where"/cpuschedset
 }
 
 user_patcher() {
@@ -169,7 +122,7 @@ _tkg_srcprep() {
   if [ "${_distro}" = "Arch" ]; then
     msg2 "Setting version..."
     scripts/setlocalversion --save-scmversion
-    echo "-$pkgrel-tkg-${_cpusched}-${_compiler_name}" > localversion.10-pkgrel
+    echo "-$pkgrel-tkg-${_cpusched}" > localversion.10-pkgrel
     echo "" > localversion.20-pkgname
 
     # add upstream patch
@@ -186,20 +139,13 @@ _tkg_srcprep() {
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
-  if [ $_compiler_name != "llvm" ]; then
-    msg2 "Applying graysky's cpu opts patch"
-    if [ "${_distro}" = "Arch" ]; then
-      patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch
-    elif [ "${_distro}" = "Void" ]; then
-      patch -Np1 -i "${wrksrc}"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.8+.patch
-    else
-      patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.8+.patch
-    fi
+  msg2 "Applying graysky's cpu opts patch"
+  if [ "${_distro}" = "Arch" ]; then
+    patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch
+  else
+    patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.8+.patch
   fi
 
-  if [ "$_distro" = "Void" ]; then
-    cd ${wrksrc}/linux-${version}
-  fi
   # TkG
   msg2 "Applying clear linux patches"
   patch -Np1 -i "$srcdir"/0002-clear-patches.patch
@@ -278,17 +224,14 @@ _tkg_srcprep() {
     patch -Np1 -i "$srcdir"/0003-glitched-cfs.patch
   fi
 
-  if [ $_distro = "Void" ]; then
-    cd ${wrksrc}/linux-${_kern_ver}
-  fi
-
-  if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
+  if [ "${_distro}" = "Arch" ]; then
     if [ -z "${_configfile}" ]; then
     _configfile="config.x86_64"
     fi
 
     cat "${srcdir}/${_configfile}" > ./.config
   fi
+
 
   # Set some -tkg defaults
   echo "# CONFIG_DYNAMIC_FAULT is not set" >> ./.config
@@ -309,19 +252,12 @@ _tkg_srcprep() {
   echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ./.config
   echo "# CONFIG_X86_P6_NOP is not set" >> ./.config
   if [ "$_noccache" != "true" ]; then
-    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }\
-	    || { [ "$_distro" = "Void" ] && xbps-query -s ccache > /dev/null; } ; then
+    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }; then
       sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
-    fi
-    # Void uses LibreSSL
-    if [ "$_distro" = "Void" ]; then
-      sed -i -e 's/CONFIG_MODULE_SIG_SHA512=y/# CONFIG_MODULE_SIG_SHA512 is not set/' ./.config
-      sed -i -e 's/# CONFIG_MODULE_SIG_SHA1 is not set/CONFIG_MODULE_SIG_SHA1=y/' ./.config
-      sed -i -e 's/CONFIG_MODULE_SIG_HASH="sha512"/CONFIG_MODULE_SIG_HASH="sha1"/' ./.config
     fi
   fi
   # Skip dbg package creation on non-Arch
-  if [ "$_distro" != "Arch" ] || [ "$_distro" = "Void" ]; then
+  if [ "$_distro" != "Arch" ]; then
     sed -i -e 's/CONFIG_DEBUG_INFO.*/CONFIG_DEBUG_INFO=n/' ./.config
   fi
 
@@ -330,36 +266,34 @@ _tkg_srcprep() {
   fi
 
   # Inject cpuopts options
-  if [ "$_compiler_name" != "llvm" ]; then
-    echo "# CONFIG_MK8SSE3 is not set" >> ./.config
-    echo "# CONFIG_MK10 is not set" >> ./.config
-    echo "# CONFIG_MBARCELONA is not set" >> ./.config
-    echo "# CONFIG_MBOBCAT is not set" >> ./.config
-    echo "# CONFIG_MJAGUAR is not set" >> ./.config
-    echo "# CONFIG_MBULLDOZER is not set" >> ./.config
-    echo "# CONFIG_MPILEDRIVER is not set" >> ./.config
-    echo "# CONFIG_MSTEAMROLLER is not set" >> ./.config
-    echo "# CONFIG_MEXCAVATOR is not set" >> ./.config
-    echo "# CONFIG_MZEN is not set" >> ./.config
-    echo "# CONFIG_MZEN2 is not set" >> ./.config
-    echo "# CONFIG_MATOM is not set" >> ./.config
-    echo "# CONFIG_MNEHALEM is not set" >> ./.config
-    echo "# CONFIG_MWESTMERE is not set" >> ./.config
-    echo "# CONFIG_MSILVERMONT is not set" >> ./.config
-    echo "# CONFIG_MSANDYBRIDGE is not set" >> ./.config
-    echo "# CONFIG_MIVYBRIDGE is not set" >> ./.config
-    echo "# CONFIG_MHASWELL is not set" >> ./.config
-    echo "# CONFIG_MBROADWELL is not set" >> ./.config
-    echo "# CONFIG_MSKYLAKE is not set" >> ./.config
-    echo "# CONFIG_MSKYLAKEX is not set" >> ./.config
-    echo "# CONFIG_MCANNONLAKE is not set" >> ./.config
-    echo "# CONFIG_MICELAKE is not set" >> ./.config
-    echo "# CONFIG_MGOLDMONT is not set" >> ./.config
-    echo "# CONFIG_MGOLDMONTPLUS is not set" >> ./.config
-    echo "# CONFIG_MCASCADELAKE is not set" >> ./.config
-    echo "# CONFIG_MCOOPERLAKE is not set" >> ./.config
-    echo "# CONFIG_MTIGERLAKE is not set" >> ./.config
-  fi
+  echo "# CONFIG_MK8SSE3 is not set" >> ./.config
+  echo "# CONFIG_MK10 is not set" >> ./.config
+  echo "# CONFIG_MBARCELONA is not set" >> ./.config
+  echo "# CONFIG_MBOBCAT is not set" >> ./.config
+  echo "# CONFIG_MJAGUAR is not set" >> ./.config
+  echo "# CONFIG_MBULLDOZER is not set" >> ./.config
+  echo "# CONFIG_MPILEDRIVER is not set" >> ./.config
+  echo "# CONFIG_MSTEAMROLLER is not set" >> ./.config
+  echo "# CONFIG_MEXCAVATOR is not set" >> ./.config
+  echo "# CONFIG_MZEN is not set" >> ./.config
+  echo "# CONFIG_MZEN2 is not set" >> ./.config
+  echo "# CONFIG_MATOM is not set" >> ./.config
+  echo "# CONFIG_MNEHALEM is not set" >> ./.config
+  echo "# CONFIG_MWESTMERE is not set" >> ./.config
+  echo "# CONFIG_MSILVERMONT is not set" >> ./.config
+  echo "# CONFIG_MSANDYBRIDGE is not set" >> ./.config
+  echo "# CONFIG_MIVYBRIDGE is not set" >> ./.config
+  echo "# CONFIG_MHASWELL is not set" >> ./.config
+  echo "# CONFIG_MBROADWELL is not set" >> ./.config
+  echo "# CONFIG_MSKYLAKE is not set" >> ./.config
+  echo "# CONFIG_MSKYLAKEX is not set" >> ./.config
+  echo "# CONFIG_MCANNONLAKE is not set" >> ./.config
+  echo "# CONFIG_MICELAKE is not set" >> ./.config
+  echo "# CONFIG_MGOLDMONT is not set" >> ./.config
+  echo "# CONFIG_MGOLDMONTPLUS is not set" >> ./.config
+  echo "# CONFIG_MCASCADELAKE is not set" >> ./.config
+  echo "# CONFIG_MCOOPERLAKE is not set" >> ./.config
+  echo "# CONFIG_MTIGERLAKE is not set" >> ./.config
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then
@@ -899,9 +833,7 @@ _tkg_srcprep() {
     read -rp "`echo $'    > N/y : '`" CONDITIONMPDB;
   fi
   if [[ "$CONDITIONMPDB" =~ [yY] ]] || [ "$_modprobeddb" = "true" ]; then
-    if [ "$_distro" != "Void" ]; then
-      sudo modprobed-db recall
-    fi
+    sudo modprobed-db recall
     yes "" | make localmodconfig
   fi
 
@@ -934,13 +866,8 @@ _tkg_srcprep() {
     fi
   fi
 
-  # set _menuconfig early for Void
-  if [ "$_distro" = "Void" ]; then
-    _menuconfig="Void"
-  fi
-
   # menuconfig / nconfig
-  if [ -z "$_menunconfig" ] && [ "$_distro" != "Void" ]; then
+  if [ -z "$_menunconfig" ]; then
     plain ""
     plain "*Optional* For advanced users - Do you want to use make menuconfig or nconfig"
     plain "to configure the kernel before building it?"
@@ -961,12 +888,6 @@ _tkg_srcprep() {
   else
     # rewrite configuration
     yes "" | make config >/dev/null
-    # .config resets...
-    if [ "$_compiler_name" = "llvm" ]; then
-      echo 'CONFIG_INIT_STACK_ALL=y' >> ./.config
-      sed -i -e 's/# CONFIG_INIT_ON_FREE_DEFAULT_ON is not set/CONFIG_INIT_ON_FREE_DEFAULT_ON=y/' ./.config
-      sed -i -e 's/CONFIG_INIT_STACK_NONE=y/CONFIG_INIT_STACK_NONE=n/' ./.config
-    fi
   fi
   if [ 1 = "$_menunconfig" ] || [ 2 = "$_menunconfig" ] || [ 3 = "$_menunconfig" ]; then
     if [ -z "${_diffconfig}" ]; then
@@ -1009,7 +930,6 @@ _tkg_srcprep() {
 exit_cleanup() {
   # Remove state tracker
   rm -f "$_where"/cpuschedset
-  rm -f "$_where"/compilerset
 
   # Remove temporarily copied files
   rm -rf "$_where"/*.patch
@@ -1086,6 +1006,5 @@ exit_cleanup() {
     msg2 "compilation time : \n$_runtime"
   fi
 }
-if [ "$_distro" != "Void" ]; then
-  trap exit_cleanup EXIT
-fi
+
+trap exit_cleanup EXIT
