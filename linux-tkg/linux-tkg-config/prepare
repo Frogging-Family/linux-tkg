@@ -19,42 +19,27 @@ _tkg_initscript() {
           "1")
           echo "_basever=58" > "$_path"/versel
           echo "_basekernel=5.8" >> "$_path"/versel
-          echo "_sub=7" >> "$_path"/versel
-	  if [ "$_distro" = "Void" ]; then
-	    echo "version=5.8.7" >> "$_path"/versel
-	  fi
+          echo "_sub=8" >> "$_path"/versel
           ;;
           "2")
           echo "_basever=59" > "$_path"/versel
           echo "_basekernel=5.9" >> "$_path"/versel
           echo "_sub=rc4" >> "$_path"/versel
-	  if [ "$_distro" = "Void" ]; then
-	    echo "version=5.9.0" >> "$_path"/versel
-	  fi
           ;;
           "3")
           echo "_basever=57" > "$_path"/versel
           echo "_basekernel=5.7" >> "$_path"/versel
           echo "_sub=19" >> "$_path"/versel
-	  if [ "$_distro" = "Void" ]; then
-	    echo "version=5.7.19" >> "$_path"/versel
-	  fi
           ;;
           "4")
 	  echo "_basever=54" > "$_path"/versel
 	  echo "_basekernel=5.4" >> "$_path"/versel
-	  echo "_sub=63" >> "$_path"/versel
-	  if [ "$_distro" = "Void" ]; then
-	    echo "version=5.4.63" >> "$_path"/versel
-	  fi
+	  echo "_sub=64" >> "$_path"/versel
 	  ;;
           *)
           echo "_basever=58" > "$_path"/versel
           echo "_basekernel=5.8" >> "$_path"/versel
           echo "_sub=7" >> "$_path"/versel
-	  if [ "$_distro" = "Void" ]; then
-	    echo "version=5.8.7" >> "$_path"/versel
-	  fi
           ;;
     esac
   fi
@@ -173,7 +158,7 @@ _tkg_initscript() {
   esac
 
 # Compiler selector
-  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ]; then
+  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ] && [ "$_basever" != "57" ]; then
     plain "Which compiler do you want to use?"
     read -rp "`echo $'  > 1.GCC\n    2.Clang/LLVM\nchoice[1-2?]: '`" _CONDITION_LLVM;
     if [ "$_CONDITION_LLVM" = "2" ];then
@@ -185,6 +170,8 @@ _tkg_initscript() {
   elif [ "$_compiler" = "llvm" ]; then
       echo "_compiler_name=\"llvm\"" > ${_path}/compilerset
       echo "_compiler=\"LLVM=1 CFLAGS='${_llvm_compileropt}' CXXFLAGS='${_llvm_compileropt}'\"" >> ${_path}/compilerset
+  elif [ "$_basever" = "57" ]; then
+      echo "_compiler_name=\"gcc\"" > ${_path}/compilerset
   fi
 
   source "${_path}"/cpuschedset
@@ -262,7 +249,9 @@ _tkg_srcprep() {
     fi
   fi
 
-  if [ "$_distro" = "Void" ]; then
+  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
+    cd ${wrksrc}/linux-${_rc_kern_ver}
+  elif [ "$_distro" = "Void" ]; then
     cd ${wrksrc}/linux-${_kern_ver}
   fi
 
@@ -359,8 +348,10 @@ _tkg_srcprep() {
     patch -Np1 -i "$srcdir"/0003-glitched-cfs_v${_basekernel}.patch
   fi
 
-  if [ "$_distro" = "Void" ]; then
-    _confdir=${wrksrc}/linux-${_kern_ver}
+  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
+    _confdir=${wrksrc}/linux-${_basekernel}-${_sub}
+  elif [ "$_distro" = "Void" ] && [[ "$_sub" != rc* ]]; then
+    _confdir=${wrksrc}/linux-${version}
   else
     _confdir="."
   fi
@@ -798,6 +789,7 @@ _tkg_srcprep() {
       echo "# CONFIG_HZ_500_NODEF is not set" >> ${_confdir}/.config
       echo "# CONFIG_HZ_250_NODEF is not set" >> ${_confdir}/.config
       echo "# CONFIG_HZ_300_NODEF is not set" >> ${_confdir}/.config
+      echo TIMES
       echo "CONFIG_HZ_100=y" >> ${_confdir}/.config
       echo "CONFIG_HZ_100_NODEF=y" >> ${_confdir}/.config
   else
@@ -1059,7 +1051,6 @@ _tkg_srcprep() {
   fi
 
   # set _menuconfig early for Void
-  # since menuconfig doesn't work with xbps-src
   if [ "$_distro" = "Void" ]; then
     _menuconfig="Void"
   fi
