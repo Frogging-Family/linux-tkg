@@ -101,6 +101,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   if [ "$_compiler_name" = "llvm" ]; then
     clang_deps="llvm clang lld"
+  fi
   if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
