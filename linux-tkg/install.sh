@@ -24,7 +24,25 @@ srcdir="$_where"
 
 source linux*-tkg-config/prepare
 
-_cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"  
+# Run init script that is also run in PKGBUILD, it will define some env vars that we will use
+_tkg_initscript
+
+case "$_basever" in
+	"54")
+	opt_ver="4.19-v5.4"
+	;;
+	"57")
+	opt_ver="5.7%2B"
+	;;
+	"58")
+	opt_ver="5.8%2B"
+	;;
+	"59")
+	opt_ver="5.8%2B"
+	;;
+esac
+
+_cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch"  
 
 source customization.cfg
 
@@ -122,10 +140,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     _kernel_subver=${_kernelverstr:5}
     cd "$_where"
   fi
-
-
-  # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
-  _tkg_initscript
 
   cd "$_where"
   msg2 "Downloading Graysky2's CPU optimisations patch"
