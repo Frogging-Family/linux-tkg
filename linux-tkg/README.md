@@ -5,13 +5,13 @@
 ## Nvidia prop drivers need to be patched (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
 
-A custom Linux kernel (5.9 RC, 5.8.y, 5.7.y, 5.4.y) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) (5.9 RC, 5.8.y (Undead PDS, Project C / PDS & BMQ), 5.7.y (MuQSS, PDS, Project C / BMQ), 5.4.y (MuQSS, PDS, BMQ)) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 MuQSS : http://ck-hack.blogspot.com/
 
-Project C / BMQ : http://cchalpha.blogspot.com/
+Project C / PDS & BMQ : http://cchalpha.blogspot.com/
 
-PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
+Undead PDS: PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
 
 While he dropped it with kernel 5.1 in favor of its BMQ evolution/rework, my pretty bad gaming experiences with BMQ up to this point convinced me to keep PDS afloat for as long as it'll make sense/I'll be able to.
 

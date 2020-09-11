@@ -12,7 +12,7 @@ _tkg_initscript() {
     _path="${_where}"
   fi
 
-  if [ ! -e "$_path"/versel ]; then
+  if [ -z "$_version" ] && [ ! -e "$_path"/versel ]; then
     plain "Which kernel version do you want to install?"
     read -rp "`echo $'  > 1. 5.8\n    2. 5.9-rc\n    3. 5.7\n    4. 5.4\nchoice[1-4?]'`" _VERSEL;
     case $_VERSEL in
@@ -37,6 +37,32 @@ _tkg_initscript() {
           echo "_sub=8" >> "$_path"/versel
           ;;
     esac
+  elif [ -n "$_version" ];then
+    case "$_version" in
+		"5.4")
+		echo "_basever=54" > "$_path"/versel
+		echo "_basekernel=5.4" >> "$_path"/versel
+		echo "_sub=64" >> "$_path"/versel
+		;;
+		"5.7")
+		echo "_basever=57" > "$_path"/versel
+		echo "_basekernel=5.7" >> "$_path"/versel
+		echo "_sub=19" >> "$_path"/versel
+		;;
+		"5.8")
+		echo "_basever=58" > "$_path"/versel
+		echo "_basekernel=5.8" >> "$_path"/versel
+		echo "_sub=8" >> "$_path"/versel
+		;;
+		"5.9")
+		echo "_basever=59" > "$_path"/versel
+		echo "_basekernel=5.9" >> "$_path"/versel
+		echo "_sub=rc4" >> "$_path"/versel
+		;;
+		*)
+		error "There is something wrong with your kernel version selection, exiting..."
+		exit 1
+	esac
   fi
   if [ "$_distro" != "Void" ]; then
     cp "$_where"/linux-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
@@ -165,6 +191,17 @@ _tkg_initscript() {
       echo "_compiler_name=\"gcc\"" > ${_path}/compilerset
   elif [ "$_basever" = "57" ]; then
       echo "_compiler_name=\"gcc\"" > ${_path}/compilerset
+  else
+    if [ "$_nofallback" != "true" ]; then
+      warning "Something is wrong with your compiler selection. Do you want to fallback to GCC (default)?"
+      read -rp "`echo $'    > N/y : '`" _fallback;
+    fi
+    if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
+      echo "_compiler_name=\"gcc\"" > "${_path}"/compilerset
+    else
+      error "Exiting..."
+      exit 1
+    fi
   fi
 
   source "${_path}"/cpuschedset
@@ -379,7 +416,6 @@ _tkg_srcprep() {
   if [ "$_basever" = "54" ]; then
     echo "CONFIG_TP_SMAPI=m" >> ./.config
     echo "CONFIG_RAID6_USE_PREFER_GEN=y" >> ./.config
-    echo "# CONFIG_X86_P6_NOP is not set" >> ./.config
     sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
   fi
   echo "# CONFIG_NTP_PPS is not set" >> ./.config
