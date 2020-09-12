@@ -22,7 +22,7 @@ set -e
 _where=`pwd`
 srcdir="$_where"
 
-source linux*-tkg-config/prepare
+source linux-tkg-config/prepare
 
 # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
 _tkg_initscript
