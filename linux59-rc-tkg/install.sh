@@ -191,7 +191,7 @@ if [ "$1" = "install" ]; then
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
     # Doesn't seem to include -rc(x) by default, so will have to add it to LOCALVERSION
-    if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_sub}-${_kernel_flavor}; then
+    if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -205,7 +205,7 @@ if [ "$1" = "install" ]; then
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
         cd "$_where"
-        _kernelname=${_basekernel}-${_sub}-$_kernel_flavor
+        _kernelname=${_basekernel}.0-${_sub}-$_kernel_flavor
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
         _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
