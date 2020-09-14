@@ -140,6 +140,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   cp /boot/config-`uname -r` .config
   if [ "$_distro" = "Debian" ]; then #Help Debian cert problem.
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
+    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/debian-uefi-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
   yes '' | make oldconfig
   msg2 "Done"
