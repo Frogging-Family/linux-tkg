@@ -21,6 +21,8 @@ set -e
 
 _where=`pwd`
 srcdir="$_where"
+# This is an RC, so subver will always be 0
+_kernel_subver=0
 
 source linux*-tkg-config/prepare
 
@@ -30,7 +32,7 @@ source customization.cfg
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : shallow clones the linux ${_basekernel}.x git tree into the folder linux-${_basekernel}, then applies on it the extra patches and prepares the .config file 
+        - config : shallow clones the linux main git tree into the folder linux-main, then applies on it the extra patches and prepares the .config file 
                    by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
         - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
         - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
@@ -97,32 +99,29 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     _distro=""
   fi
 
-  if [ -d linux-${_basekernel}.orig ]; then
-    rm -rf linux-${_basekernel}.orig
+  if [ -d linux-main.orig ]; then
+    rm -rf linux-main.orig
   fi
 
-  if [ -d linux-${_basekernel} ]; then
+  if [ -d linux-main ]; then
     msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
-    cd "$_where"/linux-${_basekernel}
-    git checkout --force linux-$_basekernel.y
+    cd "$_where"/linux-main
+    git reset --hard HEAD
     git clean -f -d -x
+    git checkout master
     git pull
-    msg2 "Done" 
-    cd "$_where"
+    git checkout "v${_basekernel}-${_sub}"
+    msg2 "Done"
   else
-    msg2 "Shallow git cloning linux $_basekernel"
-    git clone --branch linux-$_basekernel.y --single-branch --depth=1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
+    msg2 "Shallow git cloning linux kernel master branch"
+    # Shallow clone the past 3 weeks
+    _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
+    git clone --branch master --single-branch --shallow-since=$_clone_start_date https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$_where"/linux-main
+    cd "$_where"/linux-main
+    git checkout "v${_basekernel}-${_sub}"
     msg2 "Done"
   fi
-
-  # Define current kernel subversion
-  if [ -z $_kernel_subver ]; then
-    cd "$_where"/linux-${_basekernel}
-    _kernelverstr=`git describe`
-    _kernel_subver=${_kernelverstr:5}
-    cd "$_where"
-  fi
-
+  cd "$_where"
 
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
@@ -134,12 +133,13 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
   # cd in linux folder, copy Ubuntu's current config file, update with new params
-  cd "$_where"/linux-${_basekernel}
+  cd "$_where"/linux-main
 
   msg2 "Copying current kernel's config and running make oldconfig..."
   cp /boot/config-`uname -r` .config
   if [ "$_distro" = "Debian" ]; then #Help Debian cert problem.
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
+    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/debian-uefi-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
   yes '' | make oldconfig
   msg2 "Done"
@@ -203,7 +203,7 @@ if [ "$1" = "install" ]; then
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
         cd "$_where"
-        _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
+        _kernelname=$_basekernel.$_kernel_subver-$_sub-$_kernel_flavor
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
         _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
@@ -219,7 +219,8 @@ if [ "$1" = "install" ]; then
     # Se we can actually refer properly to the rpm files.
     _kernel_flavor=${_kernel_flavor//-/_}
 
-    if make -j ${_thread_num} rpm-pkg EXTRAVERSION="_${_kernel_flavor}"; then
+# Doesn't seem to include -rc(x) by default, so will have to add it to EXTRAVERSION
+    if make -j ${_thread_num} rpm-pkg EXTRAVERSION="_${_sub}_${_kernel_flavor}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -236,7 +237,7 @@ if [ "$1" = "install" ]; then
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
         
-        _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
+        _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
