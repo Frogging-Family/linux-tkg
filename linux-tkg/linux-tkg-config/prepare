@@ -1,5 +1,10 @@
 #!/bin/bash
 
+ver54=68
+ver57=19
+ver58=12
+ver59=rc7
+
 _tkg_initscript() {
 
   # create build dir early
@@ -19,22 +24,22 @@ _tkg_initscript() {
           "2")
           echo "_basever=59" > "$_path"/versel
           echo "_basekernel=5.9" >> "$_path"/versel
-          echo "_sub=rc4" >> "$_path"/versel
+          echo "_sub=${ver59}" >> "$_path"/versel
           ;;
           "3")
           echo "_basever=57" > "$_path"/versel
           echo "_basekernel=5.7" >> "$_path"/versel
-          echo "_sub=19" >> "$_path"/versel
+          echo "_sub=${ver57}" >> "$_path"/versel
           ;;
           "4")
 	  echo "_basever=54" > "$_path"/versel
 	  echo "_basekernel=5.4" >> "$_path"/versel
-	  echo "_sub=64" >> "$_path"/versel
+	  echo "_sub=${ver54}" >> "$_path"/versel
 	  ;;
           *)
           echo "_basever=58" > "$_path"/versel
           echo "_basekernel=5.8" >> "$_path"/versel
-          echo "_sub=8" >> "$_path"/versel
+          echo "_sub=${ver58}" >> "$_path"/versel
           ;;
     esac
   elif [ -n "$_version" ];then
@@ -42,22 +47,22 @@ _tkg_initscript() {
 		"5.4")
 		echo "_basever=54" > "$_path"/versel
 		echo "_basekernel=5.4" >> "$_path"/versel
-		echo "_sub=64" >> "$_path"/versel
+		echo "_sub=${ver54}" >> "$_path"/versel
 		;;
 		"5.7")
 		echo "_basever=57" > "$_path"/versel
 		echo "_basekernel=5.7" >> "$_path"/versel
-		echo "_sub=19" >> "$_path"/versel
+		echo "_sub=${ver57}" >> "$_path"/versel
 		;;
 		"5.8")
 		echo "_basever=58" > "$_path"/versel
 		echo "_basekernel=5.8" >> "$_path"/versel
-		echo "_sub=8" >> "$_path"/versel
+		echo "_sub=${ver58}" >> "$_path"/versel
 		;;
 		"5.9")
 		echo "_basever=59" > "$_path"/versel
 		echo "_basekernel=5.9" >> "$_path"/versel
-		echo "_sub=rc4" >> "$_path"/versel
+		echo "_sub=${ver59}" >> "$_path"/versel
 		;;
 		*)
 		error "There is something wrong with your kernel version selection, exiting..."
@@ -175,30 +180,30 @@ _tkg_initscript() {
   esac
 
 # Compiler selector
-  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ] && [ "$_basever" != "57" ]; then
+  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ] && [[ "$_basever" != "57" && "$_distro" = "Void" ]]; then
     plain "Which compiler do you want to use?"
     read -rp "`echo $'  > 1.GCC (recommended)\n    2.Clang/LLVM\nchoice[1-2?]: '`" _CONDITION_CMPLR;
     if [ "$_CONDITION_CMPLR" = "2" ];then
-      echo "_compiler_name=\"llvm\"" > ${_path}/compilerset
-      echo "_compiler_opt=\"LLVM=1 CFLAGS='${_llvm_compileropt}' CXXFLAGS='${_llvm_compileropt}'\"" >> ${_path}/compilerset
+      echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
+      echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
     else
-      echo "_compiler_name=\"gcc\"" > ${_path}/compilerset
+      echo "_compiler_name=" >> ${_path}/compilerset
     fi
   elif [ "$_compiler" = "llvm" ]; then
-      echo "_compiler_name=\"llvm\"" > ${_path}/compilerset
-      echo "_compiler_opt=\"LLVM=1 CFLAGS='${_llvm_compileropt}' CXXFLAGS='${_llvm_compileropt}'\"" >> ${_path}/compilerset
-  elif [ "$_compiler" = "gcc" ] || [ "$_compiler_name" = "gcc" ]; then
-      echo "_compiler_name=\"gcc\"" > ${_path}/compilerset
-  elif [ "$_basever" = "57" ]; then
-      echo "_compiler_name=\"gcc\"" > ${_path}/compilerset
+      echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
+      echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
   else
-    if [ "$_nofallback" != "true" ] && [ -z "$_compiler_opt" ]; then
+    if [ "$_basever" = "57" ] && [ "$_distro" = "Void" ]; then
+      echo "_compiler_name=" >> ${_path}/compilerset
+    fi
+    if [ "$_nofallback" != "true" ] && [ ! -e "${_path}"/compilerset ] && [ "$_compiler" != "llvm" ]; then
       warning "Something is wrong with your compiler selection. Do you want to fallback to GCC (default)?"
       read -rp "`echo $'    > N/y : '`" _fallback;
     fi
     if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
-      echo "_compiler_name=\"gcc\"" > "${_path}"/compilerset
-    elif [ -z "$_compiler_opt" ]; then
+      echo "_compiler_name=" >> "${_path}"/compilerset 
+    fi
+    if [ ! -e "${_path}"/compilerset ]; then
       error "Exiting..."
       exit 1
     fi
@@ -290,7 +295,7 @@ _tkg_srcprep() {
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
-  if [ $_compiler_name != "llvm" ]; then
+  if [ $_compiler_name != "-llvm" ]; then
     msg2 "Applying graysky's cpu opts patch"
     if [ "${_distro}" = "Arch" ]; then
       patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch
@@ -306,11 +311,7 @@ _tkg_srcprep() {
   patch -Np1 -i "$srcdir"/0002-clear-patches.patch
 
   msg2 "Applying glitched base patch"
-  if [ "$_basever" != "58" ] && [ "$_basever" != "59" ]; then
-    patch -Np1 -i "$srcdir"/0003-glitched-base_v${_basekernel}.patch
-  else
-    patch -Np1 -i "$srcdir"/0003-glitched-base_v5.8+.patch
-  fi
+  patch -Np1 -i "$srcdir"/0003-glitched-base_v${_basekernel}.patch
 
   if [ -z $_misc_adds ]; then
     plain "Enable misc additions ? May contain temporary fixes pending upstream or changes that can break on non-Arch. "
@@ -351,7 +352,6 @@ _tkg_srcprep() {
     if [ "${_cpusched}" = "upds" ] || [ "$_basever" != "58" ]; then
       patch -Np1 -i "$srcdir"/0005-v${_basekernel}_undead-pds099o.patch
     else
-      echo "Project C!"
       patch -Np1 -i "$srcdir"/0009-prjc_v${_basekernel}-r${rev}.patch
     fi
 
@@ -446,13 +446,23 @@ _tkg_srcprep() {
   if [ "$_distro" != "Arch" ]; then
     sed -i -e 's/CONFIG_DEBUG_INFO.*/CONFIG_DEBUG_INFO=n/' ./.config
   fi
+  if [ "$_compiler_name" = "-llvm" ]; then
+    if [ "$_basever" = "59" ]; then
+      echo 'CONFIG_INIT_STACK_ALL_PATTERN=n' >> ./.config
+    else
+      echo 'CONFIG_INIT_STACK_ALL=n' >> ./.config
+    fi
+    sed -i -e 's/# CONFIG_INIT_ON_FREE_DEFAULT_ON is not set/CONFIG_INIT_ON_FREE_DEFAULT_ON=y/' ./.config
+    sed -i -e 's/CONFIG_INIT_STACK_NONE=y/CONFIG_INIT_STACK_NONE=n/' ./.config
+    echo "CONFIG_INIT_STACK_ALL_ZERO=y" >> ./.config
+  fi
 
   if [ "$_font_autoselect" != "false" ]; then
     sed -i -e 's/CONFIG_FONT_TER16x32=y/# CONFIG_FONT_TER16x32 is not set\nCONFIG_FONT_AUTOSELECT=y/' ./.config
   fi
 
   # Inject cpuopts options
-  if [ "$_compiler_name" != "llvm" ]; then
+  if [ "$_compiler_name" != "-llvm" ]; then
     echo "# CONFIG_MK8SSE3 is not set" >> ./.config
     echo "# CONFIG_MK10 is not set" >> ./.config
     echo "# CONFIG_MBARCELONA is not set" >> ./.config
@@ -1048,7 +1058,7 @@ _tkg_srcprep() {
     sed -i '2iexit 0' scripts/depmod.sh
 
     # get kernel version
-    make prepare
+    make prepare ${llvm_opt}
   fi
 
   # modprobed-db
@@ -1064,7 +1074,7 @@ _tkg_srcprep() {
     if [ "$_distro" != "Void" ]; then
       sudo modprobed-db recall
     fi
-    yes "" | make localmodconfig
+    yes "" | make localmodconfig ${llvm_opt}
   fi
 
   if [ true = "$_config_fragments" ]; then
@@ -1113,30 +1123,16 @@ _tkg_srcprep() {
   fi
   if [ 1 = "$_menunconfig" ]; then
     cp .config .config.orig
-    make menuconfig
+    make menuconfig ${llvm_opt}
   elif [ 2 = "$_menunconfig" ]; then
     cp .config .config.orig
-    make nconfig
+    make nconfig ${llvm_opt}
   elif [ 3 = "$_menunconfig" ]; then
     cp .config .config.orig
-    make xconfig
+    make xconfig ${llvm_opt}
   else
     # rewrite configuration
-    yes "" | make config >/dev/null
-    # .config resets...
-    if [ "$_compiler_name" = "llvm" ]; then
-      if [ "$_basever" = "59" ]; then
-        echo 'CONFIG_INIT_STACK_ALL_PATTERN=n' >> ./.config
-	echo 'CONFIG_GCOV_KERNEL=n' >> ./.config
-      else
-        echo 'CONFIG_INIT_STACK_ALL=n' >> ./.config
-      fi
-      sed -i -e 's/# CONFIG_INIT_ON_FREE_DEFAULT_ON is not set/CONFIG_INIT_ON_FREE_DEFAULT_ON=y/' ./.config
-      sed -i -e 's/CONFIG_INIT_STACK_NONE=y/CONFIG_INIT_STACK_NONE=n/' ./.config
-      echo "CONFIG_INIT_STACK_ALL_ZERO=y" >> ./.config
-      # seems there's a problem with AMD's DCN 3.0 and llvm
-      sed -i -e 's/CONFIG_DRM_AMD_DC_DCN3_0=y/CONFIG_DRM_AMD_DC_DCN3_0=n/' ./.config
-    fi
+    yes "" | make config ${llvm_opt} >/dev/null
   fi
   if [ 1 = "$_menunconfig" ] || [ 2 = "$_menunconfig" ] || [ 3 = "$_menunconfig" ]; then
     if [ -z "${_diffconfig}" ]; then
