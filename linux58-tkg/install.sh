@@ -81,9 +81,16 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     exit 0
   fi
 
-  if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
+  if [ "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev -y
+  elif [ "$_distro" = "Debian" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git build-essential po-debconf gettext bc xmlto m4 libsigsegv2 fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev docbook-xsl libxml2-utils xsltproc intltool-debian  libcroco3 libncurses-dev rsync libelf-dev -y
+    TEMP_DEB="$(mktemp)" &&
+    wget -O "$TEMP_DEB" 'http://archive.ubuntu.com/ubuntu/pool/universe/k/kernel-package/kernel-package_13.018+nmu2_all.deb' &&
+    sudo dpkg -i "$TEMP_DEB"
+    rm -f "$TEMP_DEB"
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
     sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build -y
