@@ -30,14 +30,14 @@ You can optionally enable support for it at the beginning of the PKGBUILD file. 
 ### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
-cd linux-tkg/linux58-tkg
+cd linux-tkg/linux59-tkg
 # Optional: edit customization.cfg file
 ./install.sh install
 ```
 Uninstalling custom kernels installed through the script has to be done manually.
 The script can can help out with some useful information:
 ```
-cd path/to/linux-tkg/linux58-tkg
+cd path/to/linux-tkg/linux59-tkg
 ./install.sh uninstall-help
 ```
 
