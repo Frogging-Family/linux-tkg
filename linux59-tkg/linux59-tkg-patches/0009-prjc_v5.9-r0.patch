@@ -8422,15 +8422,6 @@ diff --git a/kernel/sched/pelt.c b/kernel/sched/pelt.c
 index 2c613e1cff3a..0103b2a7201d 100644
 --- a/kernel/sched/pelt.c
 +++ b/kernel/sched/pelt.c
-@@ -83,6 +83,8 @@ static u32 __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3)
-  return c1 + c2 + c3;
- }
- 
-+#define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
-+
- /*
-  * Accumulate the three separate parts of the sum; d1 the remainder
-  * of the last (incomplete) period, d2 the span of full periods and d3
 @@ -270,6 +270,7 @@ ___update_load_avg(struct sched_avg *sa, unsigned long load)
  	WRITE_ONCE(sa->util_avg, sa->util_sum / divider);
  }
@@ -8450,18 +8441,6 @@ index 2c613e1cff3a..0103b2a7201d 100644
  /*
   * thermal:
   *
-@@ -388,10 +393,8 @@ int update_irq_load_avg(struct rq *rq, u64 running)
- 				1,
- 				1);
- 
--	if (ret) {
-+	if (ret)
- 		___update_load_avg(&rq->avg_irq, 1);
--		trace_pelt_irq_tp(rq);
--	}
- 
- 	return ret;
- }
 diff --git a/kernel/sched/pelt.h b/kernel/sched/pelt.h
 index 795e43e02afc..856163dac896 100644
 --- a/kernel/sched/pelt.h
@@ -8777,3 +8756,54 @@ index b5e3496cf803..65f60c77bc50 100644
  	};
  	struct wakeup_test_data *x = data;
  
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index f36264fea75c6ca7c34eaa259c0bff829cbf6ac0..d43ca62fd00fe442bda9b4ad548fae432a7436de 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -11,6 +11,10 @@
+  *		scheduler by Alfred Chen.
+  *  2019-02-20	BMQ(BitMap Queue) kernel scheduler by Alfred Chen.
+  */
++#define CREATE_TRACE_POINTS
++#include <trace/events/sched.h>
++#undef CREATE_TRACE_POINTS
++
+ #include "sched.h"
+ 
+ #include <linux/sched/rt.h>
+@@ -42,8 +46,11 @@
+ #include "pelt.h"
+ #include "smp.h"
+ 
+-#define CREATE_TRACE_POINTS
+-#include <trace/events/sched.h>
++/*
++ * Export tracepoints that act as a bare tracehook (ie: have no trace event
++ * associated with them) to allow external modules to probe them.
++ */
++EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
+ 
+ #define ALT_SCHED_VERSION "v5.9-r0"
+ 
+diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
+index 99be2c51c88d0406cced20b36d7230da12930a5c..03f8b8b1aa27eeb15989af25b4050c767da12aad 100644
+--- a/kernel/sched/alt_sched.h
++++ b/kernel/sched/alt_sched.h
+@@ -46,6 +46,8 @@
+ 
+ #include "cpupri.h"
+ 
++#include <trace/events/sched.h>
++
+ #ifdef CONFIG_SCHED_BMQ
+ #include "bmq.h"
+ #endif
+@@ -496,6 +498,8 @@ static inline int sched_tick_offload_init(void) { return 0; }
+ 
+ extern void schedule_idle(void);
+ 
++#define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
++
+ /*
+  * !! For sched_setattr_nocheck() (kernel) only !!
+  *
