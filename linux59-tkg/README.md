@@ -3,7 +3,7 @@
 ### PDS, MuQSS and BMQ are not yet available options for this revision
 ## Nvidia prop drivers need to be patched (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
-A custom Linux kernel 5.9 RC with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+A custom Linux kernel 5.9.y with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 Various personalization options available and userpatches support (put your own patches in the same dir as the PKGBUILD, with the ".mypatch" extension). The options built with are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
 
