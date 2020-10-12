@@ -2,7 +2,7 @@
 
 _basever=59
 _basekernel=5.9
-_sub=rc8
+_sub=0
 
 _tkg_initscript() {
 
@@ -31,35 +31,37 @@ _tkg_initscript() {
   fi
 
   # CPU SCHED selector
-  #if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
-  #  plain "What CPU sched variant do you want to build/install?"
-  #  read -rp "`echo $'  > 1.PDS\n    2.CFS\nchoice[1-2?]: '`" CONDITION;
-  #  if [ "$CONDITION" = "2" ]; then
-  #    echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
-  #  else
-  #    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
-  #  fi
+  if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
+    plain "What CPU sched variant do you want to build/install?"
+    read -rp "`echo $'  > 1.Project C / PDS\n    2.Project C / BMQ\n    3.CFS\nchoice[1-3?]: '`" CONDITION;
+    if [ "$CONDITION" = "2" ]; then
+      echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
+    elif [ "$CONDITION" = "3" ]; then
+      echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+    else
+      echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+    fi
     if [ -n "$_custom_pkgbase" ]; then
       echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "$_where"/cpuschedset
     fi
-  #elif [ "$_cpusched" = "muqss" ] || [ "$_cpusched" = "MuQSS" ]; then
-  #  echo "_cpusched=\"MuQSS\"" > "$_where"/cpuschedset
-  #elif [ "$_cpusched" = "pds" ]; then
-  #  echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
-  #elif [ "$_cpusched" = "bmq" ]; then
-  #  echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
-  #else
-  #  if [ "$_nofallback" != "true" ]; then
-  #    warning "Something is wrong with your cpusched selection. Do you want to fallback to CFS (default)?"
-  #    read -rp "`echo $'    > N/y : '`" _fallback;
-  #  fi
-  #  if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
+  elif [ "$_cpusched" = "pds" ]; then
+    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+  elif [ "$_cpusched" = "cfs" ]; then
+    echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+  elif [ "$_cpusched" = "bmq" ]; then
+    echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
+  else
+    if [ "$_nofallback" != "true" ]; then
+      warning "Something is wrong with your cpusched selection. Do you want to fallback to CFS (default)?"
+      read -rp "`echo $'    > N/y : '`" _fallback;
+    fi
+    if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
       echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
-  #  else
-  #    error "Exiting..."
-  #    exit 1
-  #  fi
-  #fi
+    else
+      error "Exiting..."
+      exit 1
+    fi
+  fi
 
   source "$_where"/cpuschedset
 }
@@ -117,7 +119,7 @@ _tkg_srcprep() {
     msg2 "Setting version..."
     scripts/setlocalversion --save-scmversion
     echo "-$pkgrel-tkg-${_cpusched}" > localversion.10-pkgrel
-    echo "" > localversion.20-pkgname   
+    echo "" > localversion.20-pkgname
 
     # add upstream patch
     #msg2 "Patching from $_basekernel to $pkgver"
@@ -164,7 +166,7 @@ _tkg_srcprep() {
     # MuQSS
     msg2 "Applying MuQSS base patch"
     patch -Np1 -i "$srcdir"/0004-5.9-ck1.patch
-    
+
     if [ "${_aggressive_ondemand}" = "true" ]; then
       msg2 "Applying MuQSS agressive ondemand governor patch"
       patch -Np1 -i "$srcdir"/0004-glitched-ondemand-muqss.patch
@@ -172,24 +174,24 @@ _tkg_srcprep() {
 
     msg2 "Applying Glitched MuQSS patch"
     patch -Np1 -i "$srcdir"/0004-glitched-muqss.patch
-  
+
   elif [ "${_cpusched}" = "pds" ]; then
     # PDS-mq
     msg2 "Applying PDS base patch"
-    patch -Np1 -i "$srcdir"/0005-v5.9_undead-pds099o.patch
+    patch -Np1 -i "$srcdir"/0009-prjc_v5.9-r0.patch
 
     if [ "${_aggressive_ondemand}" = "true" ]; then
       msg2 "Applying PDS agressive ondemand governor patch"
-      patch -Np1 -i "$srcdir"/0005-glitched-ondemand-pds.patch
+      patch -Np1 -i "$srcdir"/0009-glitched-ondemand-bmq.patch
     fi
 
     msg2 "Applying Glitched PDS patch"
     patch -Np1 -i "$srcdir"/0005-glitched-pds.patch
-  
+
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
     msg2 "Applying Project C / BMQ base patch"
-    
+
     patch -Np1 -i "$srcdir"/0009-prjc_v5.9-r0.patch
 
     if [ "${_aggressive_ondemand}" = "true" ]; then
@@ -211,7 +213,7 @@ _tkg_srcprep() {
     fi
 
     cat "${srcdir}/${_configfile}" > ./.config
-  fi 
+  fi
 
 
   # Set some -tkg defaults
@@ -227,12 +229,17 @@ _tkg_srcprep() {
   sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO is not set/' ./.config
   sed -i -e 's/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4 is not set/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4=y/' ./.config
   sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lzo"/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lz4"/' ./.config
-  #sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
+  sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
   sed -i -e 's/# CONFIG_CMDLINE_BOOL is not set/CONFIG_CMDLINE_BOOL=y/' ./.config
   echo "CONFIG_CMDLINE=\"${_custom_commandline}\"" >> ./.config
   echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ./.config
   echo "# CONFIG_X86_P6_NOP is not set" >> ./.config
-  if [ "$_noccache" != "true" ]; then 
+
+  # openrgb
+  echo "CONFIG_I2C_NCT6775=m" >> ./.config
+
+  # ccache fix
+  if [ "$_noccache" != "true" ]; then
     if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }; then
       sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
     fi
@@ -293,10 +300,14 @@ _tkg_srcprep() {
     echo "CONFIG_SCHED_MUQSS=y" >> ./.config
   elif [ "${_cpusched}" = "pds" ]; then
     # PDS default config
+    echo "CONFIG_SCHED_ALT=y" >> ./.config
     echo "CONFIG_SCHED_PDS=y" >> ./.config
+    echo "# CONFIG_SCHED_BMQ is not set" >> ./.config
   elif [ "${_cpusched}" = "bmq" ]; then
     # BMQ default config
     echo "CONFIG_SCHED_ALT=y" >> ./.config
+    echo "CONFIG_SCHED_BMQ=y" >> ./.config
+    echo "# CONFIG_SCHED_PDS is not set" >> ./.config
   fi
 
   if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ]; then
@@ -326,7 +337,7 @@ _tkg_srcprep() {
       fi
     fi
     if [ "$CONDITION0" = "0" ]; then
-      if [ "${_cpusched}" = "bmq" ]; then
+      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
@@ -334,7 +345,7 @@ _tkg_srcprep() {
     elif [ "$CONDITION0" = "1" ]; then
       msg2 "Using default CPU sched yield type (1)"
     elif [ "$CONDITION0" = "2" ]; then
-      if [ "${_cpusched}" = "bmq" ]; then
+      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/alt_core.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
@@ -342,7 +353,7 @@ _tkg_srcprep() {
     else
       if [ "${_cpusched}" = "MuQSS" ]; then
         msg2 "Using default CPU sched yield type (1)"
-      elif [ "${_cpusched}" = "bmq" ]; then
+      elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
@@ -385,13 +396,11 @@ _tkg_srcprep() {
     if [ "$_rrvalue" != "default" ]; then
       if [ "${_cpusched}" = "MuQSS" ]; then
         sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
-      elif [ "${_cpusched}" = "pds" ]; then
-        sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/"${_cpusched}".c
-      elif [ "${_cpusched}" = "bmq" ]; then
+      elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/alt_core.c
       fi
     else
-      if [ "${_cpusched}" = "bmq" ]; then
+      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
         sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (2 * 1000 * 1000);/" ./kernel/sched/alt_core.c
       fi
     fi
@@ -727,7 +736,7 @@ _tkg_srcprep() {
   #fi
   #if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
   #   msg2 "Patching Bcache filesystem support override"
-  #   patch -Np1 -i "$srcdir"/0008-5.9-bcachefs.patch
+  #   patch -Np1 -i "$srcdir"/0008-5.8-bcachefs.patch
   #   echo "CONFIG_BCACHEFS_FS=m" >> ./.config
   #   echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
   #   echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
@@ -745,7 +754,7 @@ _tkg_srcprep() {
   #fi
   #if [[ "$CONDITION9" =~ [yY] ]] || [ "$_fsync" = "true" ]; then
   #  msg2 "Patching Fsync support"
-  #  patch -Np1 -i "$srcdir"/0007-v5.9-fsync.patch
+  #  patch -Np1 -i "$srcdir"/0007-v5.8-fsync.patch
   #fi
 
   # ZFS fix
@@ -790,7 +799,7 @@ _tkg_srcprep() {
     # get kernel version
     make prepare
   fi
- 
+
   # modprobed-db
   if [ -z "$_modprobeddb" ]; then
     plain ""
@@ -965,7 +974,7 @@ exit_cleanup() {
       rm -f "$srcdir"/linux-${_basekernel}/lib/sradix-tree.c
       rm -f "$srcdir"/linux-${_basekernel}/mm/uksm.c
     fi
-
+      
     remove_deps
   fi
 
