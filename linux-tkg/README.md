@@ -1,11 +1,10 @@
 **Due to intel_pstate poor performances as of late, I have decided to set it to passive mode to make use of the acpi_cpufreq governors passthrough, keeping full support for turbo frequencies.**
 
-### PDS, MuQSS and BMQ are not yet available options for 5.9 RC
 ### MuQSS is not an available option for 5.8+ yet
 ## Nvidia prop drivers need to be patched (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
 
-Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) (5.9 RC, 5.8.y (Undead PDS, Project C / PDS & BMQ), 5.7.y (MuQSS, PDS, Project C / BMQ), 5.4.y (MuQSS, PDS, BMQ)) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) (5.9.y (Project C / PDS & BMQ), 5.8.y (Undead PDS, Project C / PDS & BMQ), 5.7.y (MuQSS, PDS, Project C / BMQ), 5.4.y (MuQSS, PDS, BMQ)) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
 MuQSS : http://ck-hack.blogspot.com/
 
@@ -19,7 +18,7 @@ Various personalization options available and userpatches support (put your own 
 
 Comes with a slightly modified Arch config asking for a few core personalization settings at compilation time.
 If you want to streamline your kernel config for lower footprint and faster compilations : https://wiki.archlinux.org/index.php/Modprobed-db
-You can enable support for it at the beginning of the PKGBUILD file. Make sure to read everything you need to know about it.
+You can optionally enable support for it at the beginning of the PKGBUILD file. **Make sure to read everything you need to know about it as there are big caveats making it NOT recommended for most users**.
 
 ## Other stuff included:
 - Graysky's per-CPU-arch native optimizations - https://github.com/graysky2/kernel_gcc_patch
@@ -32,22 +31,22 @@ You can enable support for it at the beginning of the PKGBUILD file. Make sure t
 - using vm.max_map_count=524288 by default
 - cherry-picked clear linux patches
 - **optional** overrides for missing ACS capabilities
-- **optional** (<=5.8.y) Fsync support (proton)
-- **optional** ZFS fpu symbols
+- **optional** Fsync support (proton)
+- **optional** ZFS fpu symbols (<5.9)
 
 ## Install procedure
 
 ### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
-cd linux-tkg/linux59-rc-tkg
+cd linux-tkg/linux-tkg
 # Optional: edit customization.cfg file
 ./install.sh install
 ```
 Uninstalling custom kernels installed through the script has to be done 
-manually, the script can can help out with some useful information:
+manually. The script can can help out with some useful information:
 ```
-cd path/to/linux-tkg/linux59-rc-tkg
+cd path/to/linux-tkg/linux-tkg
 ./install.sh uninstall-help
 ```
 
