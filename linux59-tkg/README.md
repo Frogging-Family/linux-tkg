@@ -24,6 +24,7 @@ You can optionally enable support for it at the beginning of the PKGBUILD file. 
 - using vm.max_map_count=524288 by default
 - cherry-picked clear linux patches
 - **optional** overrides for missing ACS capabilities
+- **optional** Fsync support (proton)
 
 ## Install procedure
 
