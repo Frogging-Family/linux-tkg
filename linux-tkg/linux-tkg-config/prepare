@@ -1,9 +1,9 @@
 #!/bin/bash
 
-ver54=70
+ver54=71
 ver57=19
-ver58=14
-ver59=0
+ver58=15
+ver59=1
 
 _tkg_initscript() {
   # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
@@ -73,12 +73,18 @@ _tkg_initscript() {
 		exit 1
 	esac
   fi
+
+  # source versel early if present
+  if [ -e "${_path}"/versel ]; then
+    source "${_path}"/versel
+  fi
+
   if [ "$_distro" != "Void" ]; then
-    cp "$_where"/linux-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-    cp "$_where"/linux-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
   else
-    cp "$_where"/linux-tkg-patches/* "$_path"
-    cp "$_where"/linux-tkg-config/* "$_path"
+    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_path"
+    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_path"
   fi
 
   if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_path"/cpuschedset ]; then
@@ -102,18 +108,13 @@ _tkg_initscript() {
     source "${_path}"/compilerset
   fi
 
-  # source versel early if present
-  if [ -e "${_path}"/versel ]; then
-    source "${_path}"/versel
-  fi
-
   # CPU SCHED selector
   if [ -z "$_cpusched" ] && [ ! -e "${_path}"/cpuschedset ]; then
     plain "What CPU sched variant do you want to build/install?"
     if [ "$_basever" = "58" ]; then
       prompt="`echo $'  > 1.Undead PDS (TkG)\n    2.Project C / PDS\n    3.Project C / BMQ\n    4.CFS\nchoice[1-4?]: '`"
     elif [ "$_basever" = "59" ]; then
-      prompt="`echo $'  > 1.Project C / PDS\n    2.Project C / BMQ\n    3.CFS\nchoice[1-3?]: '`"
+      prompt="`echo $'  > 1.Project C / PDS\n    2.Project C / BMQ\n    3.MuQSS\n    4.CFS\nchoice[1-3?]: '`"
     else
 	prompt="`echo $'  > 1.PDS\n    2.MuQSS\n    3.BMQ\n    4.CFS\nchoice[1-4?]: '`"
     fi
@@ -130,7 +131,7 @@ _tkg_initscript() {
 	if [ "$_basever" != "59" ]; then
         echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
 	else
-	  echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
+	  echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
 	fi
     elif [ "$CONDITION" = "4" ]; then
       echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
@@ -183,7 +184,7 @@ _tkg_initscript() {
   esac
 
 # Compiler selector
-  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ] && [[ "$_basever" != "57" && "$_distro" = "Void" ]]; then
+  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ]; then
     plain "Which compiler do you want to use?"
     read -rp "`echo $'  > 1.GCC (recommended)\n    2.Clang/LLVM\nchoice[1-2?]: '`" _CONDITION_CMPLR;
     if [ "$_CONDITION_CMPLR" = "2" ];then
@@ -196,9 +197,7 @@ _tkg_initscript() {
       echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
       echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
   else
-    if [ "$_basever" = "57" ] && [ "$_distro" = "Void" ]; then
-      echo "_compiler_name=" >> ${_path}/compilerset
-    fi
+    echo "_compiler_name=" >> ${_path}/compilerset
     if [ "$_nofallback" != "true" ] && [ ! -e "${_path}"/compilerset ] && [ "$_compiler" != "llvm" ]; then
       warning "Something is wrong with your compiler selection. Do you want to fallback to GCC (default)?"
       read -rp "`echo $'    > N/y : '`" _fallback;
@@ -283,11 +282,7 @@ _tkg_srcprep() {
       msg2 "Using linux hardened patchset"
       patch -Np1 -i "$srcdir"/0012-linux-hardened.patch
     else
-      if [ "$_basever" != "58" ] && [ "$_basever" != "59" ]; then
-        patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by_v5.4-5.7.patch
-      else
-        patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by_v5.8+.patch
-      fi
+      patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
     fi
   fi
 
@@ -298,7 +293,7 @@ _tkg_srcprep() {
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
-  if [ $_compiler_name != "-llvm" ]; then
+  if [ "$_compiler_name" != "-llvm" ]; then
     msg2 "Applying graysky's cpu opts patch"
     if [ "${_distro}" = "Arch" ]; then
       patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch
@@ -314,7 +309,7 @@ _tkg_srcprep() {
   patch -Np1 -i "$srcdir"/0002-clear-patches.patch
 
   msg2 "Applying glitched base patch"
-  patch -Np1 -i "$srcdir"/0003-glitched-base_v${_basekernel}.patch
+  patch -Np1 -i "$srcdir"/0003-glitched-base.patch
 
   if [ -z $_misc_adds ]; then
     plain "Enable misc additions ? May contain temporary fixes pending upstream or changes that can break on non-Arch. "
@@ -326,7 +321,7 @@ _tkg_srcprep() {
 
   if [ "$_misc_adds" = "true" ] && [ "$_basever" != "54" ]; then
     msg2 "Applying misc additions patch"
-    patch -Np1 -i "$srcdir"/0012-misc-additions_v${_basekernel}.patch
+    patch -Np1 -i "$srcdir"/0012-misc-additions.patch
   fi
 
   # prjc/bmq patch rev
@@ -352,9 +347,9 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "upds" ] || [ "${_cpusched}" = "pds" ]; then
     # PDS-mq
     msg2 "Applying PDS base patch"
-    if [ "${_cpusched}" = "upds" ] || [ "$_basever" != "58" ]; then
+    if [ "${_cpusched}" = "upds" ] && [ "$_basever" != "59" ]; then
       patch -Np1 -i "$srcdir"/0005-v${_basekernel}_undead-pds099o.patch
-    else
+    elif [ "$_basever" != "54" ]; then
       patch -Np1 -i "$srcdir"/0009-prjc_v${_basekernel}-r${rev}.patch
     fi
 
@@ -369,7 +364,7 @@ _tkg_srcprep() {
     fi
 
     msg2 "Applying Glitched PDS patch"
-    patch -Np1 -i "$srcdir"/0005${doa}-glitched-pds_v${_basekernel}.patch
+    patch -Np1 -i "$srcdir"/0005${doa}-glitched-pds.patch
 
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
@@ -386,11 +381,7 @@ _tkg_srcprep() {
     fi
 
     msg2 "Applying Glitched BMQ patch"
-    if [ "$_basever" != "59" ] && [ "$_basever" != "54" ]; then
-      patch -Np1 -i "$srcdir"/0009-glitched-bmq_v5.7-5.8.patch
-    else
-      patch -Np1 -i "$srcdir"/0009-glitched-bmq_v${_basekernel}.patch
-    fi
+    patch -Np1 -i "$srcdir"/0009-glitched-bmq.patch
 
   elif [ "${_cpusched}" = "cfs" ]; then
     msg2 "Applying Glitched CFS patch"
@@ -405,7 +396,7 @@ _tkg_srcprep() {
 
   if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
     if [ -z "${_configfile}" ]; then
-      _configfile="config_${_basekernel}.x86_64"
+      _configfile="config.x86_64"
     fi
 
     cat "${srcdir}/${_configfile}" > ./.config
@@ -562,7 +553,7 @@ _tkg_srcprep() {
         read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
       fi
     fi
-    if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] || [ "$_basever" = "59" ] && [ "$_cpusched" != "bmq" ]; then
+    if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "$_cpusched" != "bmq" ]; then
       _sched=${_cpusched}
     else
       _sched="alt_core"
