@@ -4,11 +4,11 @@
 ## Nvidia prop drivers need to be patched (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
 
-Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel)
+Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 - 5.9.y (Project C / PDS & BMQ, MuQSS)
 - 5.8.y (Undead PDS, Project C / PDS & BMQ)
 - 5.7.y (MuQSS, PDS, Project C / BMQ)
-- 5.4.y (MuQSS, PDS, BMQ)) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+- 5.4.y (MuQSS, PDS, BMQ)
 
 MuQSS : http://ck-hack.blogspot.com/
 
