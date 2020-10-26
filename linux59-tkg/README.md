@@ -1,8 +1,8 @@
 **Due to intel_pstate poor performances as of late, I have decided to set it to passive mode to make use of the acpi_cpufreq governors passthrough, keeping full support for turbo frequencies.**
 
-### MuQSS is not an available option for this revision yet
+A custom Linux kernel 5.9.y with specific MuQSS, Project C / PDS & BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
 
-A custom Linux kernel 5.9.y with specific Undead PDS, Project C / PDS & BMQ CPU schedulers related patchsets selector (stock CFS is also an option) and added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+- MuQSS : http://ck-hack.blogspot.com/
 
 - Project C / PDS & BMQ : http://cchalpha.blogspot.com/
 
