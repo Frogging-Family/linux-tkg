@@ -5,6 +5,7 @@
 
 
 Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
+- 5.10rc (Project C / PDS & BMQ, MuQSS)
 - 5.9.y (Project C / PDS & BMQ, MuQSS)
 - 5.8.y (Undead PDS, Project C / PDS & BMQ)
 - 5.7.y (MuQSS, PDS, Project C / BMQ)
@@ -17,6 +18,7 @@ Project C / PDS & BMQ : http://cchalpha.blogspot.com/
 Undead PDS: PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
 
 While he dropped it with kernel 5.1 in favor of its BMQ evolution/rework, my pretty bad gaming experiences with BMQ up to this point convinced me to keep PDS afloat for as long as it'll make sense/I'll be able to.
+Update: Alfred has revived PDS through Project C as of kernel 5.8.0 release.
 
 Various personalization options available and userpatches support (put your own patches in the same dir as the PKGBUILD, with the ".mypatch" extension). The options built with are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
 
