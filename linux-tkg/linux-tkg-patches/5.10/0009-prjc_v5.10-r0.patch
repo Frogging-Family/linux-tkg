@@ -827,10 +827,10 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..f36264fea75c
+index 000000000000..fa0ba0d55503
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,6360 @@
+@@ -0,0 +1,6418 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -844,6 +844,10 @@ index 000000000000..f36264fea75c
 + *		scheduler by Alfred Chen.
 + *  2019-02-20	BMQ(BitMap Queue) kernel scheduler by Alfred Chen.
 + */
++#define CREATE_TRACE_POINTS
++#include <trace/events/sched.h>
++#undef CREATE_TRACE_POINTS
++
 +#include "sched.h"
 +
 +#include <linux/sched/rt.h>
@@ -875,10 +879,13 @@ index 000000000000..f36264fea75c
 +#include "pelt.h"
 +#include "smp.h"
 +
-+#define CREATE_TRACE_POINTS
-+#include <trace/events/sched.h>
++/*
++ * Export tracepoints that act as a bare tracehook (ie: have no trace event
++ * associated with them) to allow external modules to probe them.
++ */
++EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
 +
-+#define ALT_SCHED_VERSION "v5.9-r0"
++#define ALT_SCHED_VERSION "v5.9-r1"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -918,7 +925,6 @@ index 000000000000..f36264fea75c
 +
 +DEFINE_PER_CPU(cpumask_t [NR_CPU_AFFINITY_CHK_LEVEL], sched_cpu_affinity_masks);
 +DEFINE_PER_CPU(cpumask_t *, sched_cpu_affinity_end_mask);
-+DEFINE_PER_CPU(cpumask_t *, sched_cpu_llc_mask);
 +
 +#ifdef CONFIG_SCHED_SMT
 +DEFINE_STATIC_KEY_FALSE(sched_smt_present);
@@ -931,6 +937,59 @@ index 000000000000..f36264fea75c
 + * domain, see cpus_share_cache().
 + */
 +DEFINE_PER_CPU(int, sd_llc_id);
++
++enum {
++	LLC_LEVEL = 1,
++	NR_BEST_CPU_LEVEL
++};
++
++#define NR_BEST_CPU_MASK (1 << (NR_BEST_CPU_LEVEL - 1))
++
++static cpumask_t
++sched_best_cpu_masks[NR_CPUS][NR_BEST_CPU_MASK] ____cacheline_aligned_in_smp;
++
++#if NR_CPUS <= 64
++static inline unsigned int sched_cpumask_first_and(const struct cpumask *srcp,
++						   const struct cpumask *andp)
++{
++	unsigned long t = srcp->bits[0] & andp->bits[0];
++
++	if (t)
++		return __ffs(t);
++
++	return nr_cpu_ids;
++}
++
++static inline unsigned int sched_best_cpu(const unsigned int cpu,
++					  const struct cpumask *m)
++{
++	cpumask_t *chk = sched_best_cpu_masks[cpu];
++	unsigned long t;
++
++	while ((t = chk->bits[0] & m->bits[0]) == 0UL)
++		chk++;
++
++	return __ffs(t);
++}
++#else
++static inline unsigned int sched_cpumask_first_and(const struct cpumask *srcp,
++						   const struct cpumask *andp)
++{
++	return cpumask_first_and(srcp, andp);
++}
++
++static inline unsigned int sched_best_cpu(const unsigned int cpu,
++					  const struct cpumask *m)
++{
++	cpumask_t t, *chk = sched_best_cpu_masks[cpu];
++
++	while (!cpumask_and(&t, chk, m))
++		chk++;
++
++	return cpumask_any(t);
++}
++#endif
++
 +#endif /* CONFIG_SMP */
 +
 +static DEFINE_MUTEX(sched_hotcpu_mutex);
@@ -1626,7 +1685,7 @@ index 000000000000..f36264fea75c
 +		default_cpu = cpu;
 +	}
 +
-+	for (mask = &(per_cpu(sched_cpu_affinity_masks, cpu)[0]);
++	for (mask = per_cpu(sched_cpu_affinity_masks, cpu);
 +	     mask < per_cpu(sched_cpu_affinity_end_mask, cpu); mask++)
 +		for_each_cpu_and(i, mask, housekeeping_cpumask(HK_FLAG_TIMER))
 +			if (!idle_cpu(i))
@@ -2346,9 +2405,9 @@ index 000000000000..f36264fea75c
 +	    cpumask_and(&tmp, &chk_mask, &sched_rq_watermark[IDLE_WM]) ||
 +	    cpumask_and(&tmp, &chk_mask,
 +			&sched_rq_watermark[task_sched_prio(p, rq) + 1]))
-+		return best_mask_cpu(task_cpu(p), &tmp);
++		return sched_best_cpu(task_cpu(p), &tmp);
 +
-+	return best_mask_cpu(task_cpu(p), &chk_mask);
++	return sched_best_cpu(task_cpu(p), &chk_mask);
 +}
 +
 +void sched_set_stop_task(int cpu, struct task_struct *stop)
@@ -3920,8 +3979,8 @@ index 000000000000..f36264fea75c
 +{
 +	struct rq *rq = this_rq();
 +	struct task_struct *p = data;
-+	cpumask_t tmp;
 +	unsigned long flags;
++	int dcpu;
 +
 +	local_irq_save(flags);
 +
@@ -3931,12 +3990,9 @@ index 000000000000..f36264fea75c
 +	rq->active_balance = 0;
 +	/* _something_ may have changed the task, double check again */
 +	if (task_on_rq_queued(p) && task_rq(p) == rq &&
-+	    cpumask_and(&tmp, p->cpus_ptr, &sched_sg_idle_mask)) {
-+		int cpu = cpu_of(rq);
-+		int dcpu = __best_mask_cpu(cpu, &tmp,
-+					   per_cpu(sched_cpu_llc_mask, cpu));
++	    (dcpu = sched_cpumask_first_and(p->cpus_ptr, &sched_sg_idle_mask)) <
++	    nr_cpu_ids)
 +		rq = move_queued_task(rq, p, dcpu);
-+	}
 +
 +	raw_spin_unlock(&rq->lock);
 +	raw_spin_unlock(&p->pi_lock);
@@ -4350,7 +4406,7 @@ index 000000000000..f36264fea75c
 +	if (cpumask_empty(&sched_rq_pending_mask))
 +		return 0;
 +
-+	affinity_mask = &(per_cpu(sched_cpu_affinity_masks, cpu)[0]);
++	affinity_mask = per_cpu(sched_cpu_affinity_masks, cpu);
 +	end_mask = per_cpu(sched_cpu_affinity_end_mask, cpu);
 +	do {
 +		int i;
@@ -6698,11 +6754,13 @@ index 000000000000..f36264fea75c
 +			cpumask_copy(tmp, cpu_possible_mask);
 +			cpumask_clear_cpu(cpu, tmp);
 +		}
-+		per_cpu(sched_cpu_llc_mask, cpu) =
-+			&(per_cpu(sched_cpu_affinity_masks, cpu)[0]);
 +		per_cpu(sched_cpu_affinity_end_mask, cpu) =
 +			&(per_cpu(sched_cpu_affinity_masks, cpu)[1]);
 +		/*per_cpu(sd_llc_id, cpu) = cpu;*/
++
++		for (level = 0; level < NR_BEST_CPU_MASK; level++)
++			cpumask_copy(&sched_best_cpu_masks[cpu][level],
++				     cpu_possible_mask);
 +	}
 +}
 +
@@ -6729,7 +6787,6 @@ index 000000000000..f36264fea75c
 +		TOPOLOGY_CPUMASK(smt, topology_sibling_cpumask(cpu), false);
 +#endif
 +		per_cpu(sd_llc_id, cpu) = cpumask_first(cpu_coregroup_mask(cpu));
-+		per_cpu(sched_cpu_llc_mask, cpu) = chk;
 +		TOPOLOGY_CPUMASK(coregroup, cpu_coregroup_mask(cpu), false);
 +
 +		TOPOLOGY_CPUMASK(core, topology_core_cpumask(cpu), false);
@@ -6737,10 +6794,11 @@ index 000000000000..f36264fea75c
 +		TOPOLOGY_CPUMASK(others, cpu_online_mask, true);
 +
 +		per_cpu(sched_cpu_affinity_end_mask, cpu) = chk;
-+		printk(KERN_INFO "sched: cpu#%02d llc_id = %d, llc_mask idx = %d\n",
-+		       cpu, per_cpu(sd_llc_id, cpu),
-+		       (int) (per_cpu(sched_cpu_llc_mask, cpu) -
-+			      &(per_cpu(sched_cpu_affinity_masks, cpu)[0])));
++		printk(KERN_INFO "sched: cpu#%02d llc_id = %d\n",
++		       cpu, per_cpu(sd_llc_id, cpu));
++
++		cpumask_copy(sched_best_cpu_masks[cpu],
++			     cpu_coregroup_mask(cpu));
 +	}
 +}
 +#endif
@@ -7230,10 +7288,10 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..99be2c51c88d
+index 000000000000..fee65eeb1405
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,555 @@
+@@ -0,0 +1,545 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -7281,6 +7339,8 @@ index 000000000000..99be2c51c88d
 +#endif
 +
 +#include "cpupri.h"
++
++#include <trace/events/sched.h>
 +
 +#ifdef CONFIG_SCHED_BMQ
 +#include "bmq.h"
@@ -7458,20 +7518,6 @@ index 000000000000..99be2c51c88d
 +};
 +
 +DECLARE_PER_CPU(cpumask_t [NR_CPU_AFFINITY_CHK_LEVEL], sched_cpu_affinity_masks);
-+
-+static inline int __best_mask_cpu(int cpu, const cpumask_t *cpumask,
-+				  const cpumask_t *mask)
-+{
-+	while ((cpu = cpumask_any_and(cpumask, mask)) >= nr_cpu_ids)
-+		mask++;
-+	return cpu;
-+}
-+
-+static inline int best_mask_cpu(int cpu, const cpumask_t *cpumask)
-+{
-+	return cpumask_test_cpu(cpu, cpumask)? cpu :
-+		__best_mask_cpu(cpu, cpumask, &(per_cpu(sched_cpu_affinity_masks, cpu)[0]));
-+}
 +
 +extern void flush_smp_call_function_from_idle(void);
 +
@@ -7731,6 +7777,8 @@ index 000000000000..99be2c51c88d
 +#endif
 +
 +extern void schedule_idle(void);
++
++#define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
 +
 +/*
 + * !! For sched_setattr_nocheck() (kernel) only !!
@@ -8157,7 +8205,7 @@ index 000000000000..7fdeace7e8a5
 +#endif
 diff --git a/kernel/sched/pds_imp.h b/kernel/sched/pds_imp.h
 new file mode 100644
-index 000000000000..6baee5e961b9
+index 000000000000..e1f98a83cfcb
 --- /dev/null
 +++ b/kernel/sched/pds_imp.h
 @@ -0,0 +1,257 @@
@@ -8355,11 +8403,9 @@ index 000000000000..6baee5e961b9
 + * pds_skiplist_random_level -- Returns a pseudo-random level number for skip
 + * list node which is used in PDS run queue.
 + *
-+ * In current implementation, based on testing, the first 8 bits in microseconds
-+ * of niffies are suitable for random level population.
-+ * find_first_bit() is used to satisfy p = 0.5 between each levels, and there
-+ * should be platform hardware supported instruction(known as ctz/clz) to speed
-+ * up this function.
++ * __ffs() is used to satisfy p = 0.5 between each levels, and there should be
++ * platform instruction(known as ctz/clz) for acceleration.
++ *
 + * The skiplist level for a task is populated when task is created and doesn't
 + * change in task's life time. When task is being inserted into run queue, this
 + * skiplist level is set to task's sl_node->level, the skiplist insert function
@@ -8367,8 +8413,6 @@ index 000000000000..6baee5e961b9
 + */
 +static inline int pds_skiplist_random_level(const struct task_struct *p)
 +{
-+	long unsigned int randseed;
-+
 +	/*
 +	 * 1. Some architectures don't have better than microsecond resolution
 +	 * so mask out ~microseconds as a factor of the random seed for skiplist
@@ -8376,9 +8420,13 @@ index 000000000000..6baee5e961b9
 +	 * 2. Use address of task structure pointer as another factor of the
 +	 * random seed for task burst forking scenario.
 +	 */
-+	randseed = (task_rq(p)->clock ^ (long unsigned int)p) >> 10;
++	unsigned long randseed = (task_rq(p)->clock ^ (unsigned long)p) >> 10;
 +
-+	return find_first_bit(&randseed, NUM_SKIPLIST_LEVEL - 1);
++	randseed &= __GENMASK(NUM_SKIPLIST_LEVEL - 1, 0);
++	if (randseed)
++		return __ffs(randseed);
++
++	return (NUM_SKIPLIST_LEVEL - 1);
 +}
 +
 +static void sched_task_fork(struct task_struct *p, struct rq *rq)
@@ -8547,7 +8595,7 @@ index 750fb3c67eed..108422ebc7bf 100644
  	}
  	return 0;
 diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index 1bd7e3af904f..cc946a9bd550 100644
+index 1bd7e3af904f..bbd96ce88008 100644
 --- a/kernel/sched/topology.c
 +++ b/kernel/sched/topology.c
 @@ -4,6 +4,7 @@
@@ -8585,7 +8633,7 @@ index 1bd7e3af904f..cc946a9bd550 100644
  #ifdef CONFIG_NUMA
  
  static const struct cpumask *sd_numa_mask(int cpu)
-@@ -2316,3 +2321,17 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
+@@ -2316,3 +2321,25 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
  	partition_sched_domains_locked(ndoms_new, doms_new, dattr_new);
  	mutex_unlock(&sched_domains_mutex);
  }
@@ -8599,7 +8647,15 @@ index 1bd7e3af904f..cc946a9bd550 100644
 +
 +int sched_numa_find_closest(const struct cpumask *cpus, int cpu)
 +{
-+	return best_mask_cpu(cpu, cpus);
++	const cpumask_t *mask;
++
++	if (cpumask_test_cpu(cpu, cpus))
++		return cpu;
++
++	mask = per_cpu(sched_cpu_affinity_masks, cpu);
++	while ((cpu = cpumask_any_and(cpus, mask)) >= nr_cpu_ids)
++		mask++;
++	return cpu;
 +}
 +#endif /* CONFIG_NUMA */
 +#endif
@@ -8757,53 +8813,15 @@ index b5e3496cf803..65f60c77bc50 100644
  	struct wakeup_test_data *x = data;
  
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index f36264fea75c6ca7c34eaa259c0bff829cbf6ac0..d43ca62fd00fe442bda9b4ad548fae432a7436de 100644
+index fa0ba0d55503ba7116fc4e2ec870e2b7e27517b5..edba089affc00bf5e84652d3e6f6004e5294b197 100644
 --- a/kernel/sched/alt_core.c
 +++ b/kernel/sched/alt_core.c
-@@ -11,6 +11,10 @@
-  *		scheduler by Alfred Chen.
-  *  2019-02-20	BMQ(BitMap Queue) kernel scheduler by Alfred Chen.
-  */
-+#define CREATE_TRACE_POINTS
-+#include <trace/events/sched.h>
-+#undef CREATE_TRACE_POINTS
-+
- #include "sched.h"
+@@ -153,7 +153,7 @@ static inline unsigned int sched_best_cpu(const unsigned int cpu,
+ 	while (!cpumask_and(&t, chk, m))
+ 		chk++;
  
- #include <linux/sched/rt.h>
-@@ -42,8 +46,11 @@
- #include "pelt.h"
- #include "smp.h"
- 
--#define CREATE_TRACE_POINTS
--#include <trace/events/sched.h>
-+/*
-+ * Export tracepoints that act as a bare tracehook (ie: have no trace event
-+ * associated with them) to allow external modules to probe them.
-+ */
-+EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
- 
- #define ALT_SCHED_VERSION "v5.9-r0"
- 
-diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
-index 99be2c51c88d0406cced20b36d7230da12930a5c..03f8b8b1aa27eeb15989af25b4050c767da12aad 100644
---- a/kernel/sched/alt_sched.h
-+++ b/kernel/sched/alt_sched.h
-@@ -46,6 +46,8 @@
- 
- #include "cpupri.h"
- 
-+#include <trace/events/sched.h>
-+
- #ifdef CONFIG_SCHED_BMQ
- #include "bmq.h"
+-	return cpumask_any(t);
++	return cpumask_any(&t);
+ }
  #endif
-@@ -496,6 +498,8 @@ static inline int sched_tick_offload_init(void) { return 0; }
  
- extern void schedule_idle(void);
- 
-+#define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
-+
- /*
-  * !! For sched_setattr_nocheck() (kernel) only !!
-  *
