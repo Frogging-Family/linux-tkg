@@ -1,20 +1,101 @@
 #!/bin/bash
 
-_basever=57
-_basekernel=5.7
-_sub=19
+ver54=72
+ver57=19
+ver58=16
+ver59=1
+ver510=rc1
 
 _tkg_initscript() {
-
-  cp "$_where"/linux"$_basever"-tkg-patches/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-  cp "$_where"/linux"$_basever"-tkg-config/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-
   # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
   if [ -e "$_EXT_CONFIG_PATH" ]; then
     source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && msg2 ""
   fi
 
-  if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_where"/cpuschedset ]; then
+  # create build dir early
+  if [ "$_distro" = "Void" ]; then
+    _path="${XBPS_BUILDDIR}/${wrksrc}"
+  else
+    _path="${_where}"
+  fi
+
+  if [ -z "$_version" ] && [ ! -e "$_path"/versel ]; then
+    plain "Which kernel version do you want to install?"
+    read -rp "`echo $'    1. 5.4 LTS\n    2. 5.7\n    3. 5.8\n  > 4. 5.9\n    5. 5.10 RC\nchoice[1-5?]'`" _VERSEL;
+    case $_VERSEL in
+          "1")
+          echo "_basever=54" > "$_path"/versel
+          echo "_basekernel=5.4" >> "$_path"/versel
+          echo "_sub=${ver54}" >> "$_path"/versel
+          ;;
+          "2")
+          echo "_basever=57" > "$_path"/versel
+          echo "_basekernel=5.7" >> "$_path"/versel
+          echo "_sub=${ver57}" >> "$_path"/versel
+          ;;
+          "3")
+          echo "_basever=58" > "$_path"/versel
+          echo "_basekernel=5.8" >> "$_path"/versel
+          echo "_sub=${ver58}" >> "$_path"/versel
+          ;;
+          "5")
+          echo "_basever=510" > "$_path"/versel
+          echo "_basekernel=5.10" >> "$_path"/versel
+          echo "_sub=${ver510}" >> "$_path"/versel
+          ;;
+          *)
+          echo "_basever=59" > "$_path"/versel
+          echo "_basekernel=5.9" >> "$_path"/versel
+          echo "_sub=${ver59}" >> "$_path"/versel
+          ;;
+    esac
+  elif [ -n "$_version" ];then
+    case "$_version" in
+		"5.4")
+		echo "_basever=54" > "$_path"/versel
+		echo "_basekernel=5.4" >> "$_path"/versel
+		echo "_sub=${ver54}" >> "$_path"/versel
+		;;
+		"5.7")
+		echo "_basever=57" > "$_path"/versel
+		echo "_basekernel=5.7" >> "$_path"/versel
+		echo "_sub=${ver57}" >> "$_path"/versel
+		;;
+		"5.8")
+		echo "_basever=58" > "$_path"/versel
+		echo "_basekernel=5.8" >> "$_path"/versel
+		echo "_sub=${ver58}" >> "$_path"/versel
+		;;
+		"5.9")
+		echo "_basever=59" > "$_path"/versel
+		echo "_basekernel=5.9" >> "$_path"/versel
+		echo "_sub=${ver59}" >> "$_path"/versel
+		;;
+		"5.10")
+		echo "_basever=510" > "$_path"/versel
+		echo "_basekernel=5.10" >> "$_path"/versel
+		echo "_sub=${ver510}" >> "$_path"/versel
+		;;
+		*)
+		error "There is something wrong with your kernel version selection, exiting..."
+		exit 1
+	esac
+  fi
+
+  # source versel early if present
+  if [ -e "${_path}"/versel ]; then
+    source "${_path}"/versel
+  fi
+
+  if [ "$_distro" != "Void" ]; then
+    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+  else
+    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_path"
+    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_path"
+  fi
+
+  if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_path"/cpuschedset ]; then
     # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
     plain "Do you want to use a predefined optimized profile?"
     read -rp "`echo $'  > 1.Custom\n    2.Ryzen Desktop (Performance)\n    3.Other Desktop (Performance)\nchoice[1-3?]: '`" _OPTIPROFILE;
@@ -26,46 +107,121 @@ _tkg_initscript() {
   fi
 
   # source cpuschedset early if present
-  if [ -e "$_where"/cpuschedset ]; then
-    source "$_where"/cpuschedset
+  if [ -e "${_path}"/cpuschedset ]; then
+    source "${_path}"/cpuschedset
+  fi
+
+  # source compilerset early if present
+  if [ -e "${_path}"/compilerset ]; then
+    source "${_path}"/compilerset
   fi
 
   # CPU SCHED selector
-  if [ -z "$_cpusched" ] && [ ! -e "$_where"/cpuschedset ]; then
+  if [ -z "$_cpusched" ] && [ ! -e "${_path}"/cpuschedset ]; then
     plain "What CPU sched variant do you want to build/install?"
-    read -rp "`echo $'  > 1.PDS\n    2.MuQSS\n    3.BMQ\n    4.CFS\nchoice[1-4?]: '`" CONDITION;
-    if [ "$CONDITION" = "2" ]; then
-      echo "_cpusched=\"MuQSS\"" > "$_where"/cpuschedset
-    elif [ "$CONDITION" = "3" ]; then
-      echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
-    elif [ "$CONDITION" = "4" ]; then
-      echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+    if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
+      prompt="`echo $'  > 1.PDS\n    2.MuQSS\n    3.BMQ\n    4.CFS\nchoice[1-4?]: '`"
+    elif [ "$_basever" = "58" ]; then
+      prompt="`echo $'  > 1.Undead PDS (TkG)\n    2.Project C / PDS\n    3.Project C / BMQ\n    4.CFS\nchoice[1-4?]: '`"
     else
-      echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+      prompt="`echo $'  > 1.Project C / PDS\n    2.Project C / BMQ\n    3.MuQSS\n    4.CFS\nchoice[1-4?]: '`"
+    fi
+    read -rp "$prompt"  CONDITION;
+    if [ "$CONDITION" = "2" ];then
+      if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
+        echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
+      elif [ "$_basever" = "58" ]; then
+        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+      else
+        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+      fi
+    elif [ "$CONDITION" = "3" ]; then
+      if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] || [ "$_basever" = "58" ]; then
+        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+      else
+        echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
+      fi
+    elif [ "$CONDITION" = "4" ]; then
+      echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
+    else
+      if [ "$_basever" = "58" ]; then
+        echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
+      else
+        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+      fi
     fi
     if [ -n "$_custom_pkgbase" ]; then
-      echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "$_where"/cpuschedset
+      echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "${_path}"/cpuschedset
     fi
-  elif [ "$_cpusched" = "muqss" ] || [ "$_cpusched" = "MuQSS" ]; then
-    echo "_cpusched=\"MuQSS\"" > "$_where"/cpuschedset
+  elif [ "$_cpusched" = "upds" ]; then
+    echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
   elif [ "$_cpusched" = "pds" ]; then
-    echo "_cpusched=\"pds\"" > "$_where"/cpuschedset
+    echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+  elif [ "$_cpusched" = "cfs" ]; then
+    echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
   elif [ "$_cpusched" = "bmq" ]; then
-    echo "_cpusched=\"bmq\"" > "$_where"/cpuschedset
+    echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+  elif [ "$_cpusched" = "muqss" ] || [ "$_cpusched" = "MuQSS" ]; then
+    echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
   else
     if [ "$_nofallback" != "true" ]; then
       warning "Something is wrong with your cpusched selection. Do you want to fallback to CFS (default)?"
       read -rp "`echo $'    > N/y : '`" _fallback;
     fi
     if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
-      echo "_cpusched=\"cfs\"" > "$_where"/cpuschedset
+      echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
     else
       error "Exiting..."
       exit 1
     fi
   fi
+  if [ -n "$_custom_pkgbase" ]; then
+    echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "${_path}"/cpuschedset
+  fi
 
-  source "$_where"/cpuschedset
+  case $_compileroptlevel in
+	"2")
+	_compileropt="-O3"
+	;;
+	"3")
+	_compileropt="-Os"
+	;;
+	*)
+	_compileropt="-O2"
+	;;
+  esac
+
+# Compiler selector
+  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ]; then
+    plain "Which compiler do you want to use?"
+    read -rp "`echo $'  > 1.GCC (recommended)\n    2.Clang/LLVM\nchoice[1-2?]: '`" _CONDITION_CMPLR;
+    if [ "$_CONDITION_CMPLR" = "2" ];then
+      echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
+      echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
+    else
+      echo "_compiler_name=" >> ${_path}/compilerset
+    fi
+  elif [ "$_compiler" = "llvm" ]; then
+      echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
+      echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
+  else
+    echo "_compiler_name=" >> ${_path}/compilerset
+    if [ "$_nofallback" != "true" ] && [ ! -e "${_path}"/compilerset ] && [ "$_compiler" != "llvm" ]; then
+      warning "Something is wrong with your compiler selection. Do you want to fallback to GCC (default)?"
+      read -rp "`echo $'    > N/y : '`" _fallback;
+    fi
+    if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
+      echo "_compiler_name=" >> "${_path}"/compilerset 
+    fi
+    if [ ! -e "${_path}"/compilerset ]; then
+      error "Exiting..."
+      exit 1
+    fi
+  fi
+
+  source "${_path}"/cpuschedset
+  source "${_path}"/compilerset
+  source "${_path}"/versel
 }
 
 user_patcher() {
@@ -115,41 +271,66 @@ user_patcher() {
 	fi
 }
 
+_tkg_patcher() {
+  if [ -e "$tkgpatch" ]; then
+    patch -Np1 -i "$tkgpatch"
+  else
+    msg2 "Patch either not found, not available for this kernel version or not needed. Skipping..."
+  fi
+}
+
 _tkg_srcprep() {
+
+  if [ "${_distro}" = "Void" ] && [ -e ${srcdir}/sum_failed ]; then
+    exit 1
+  fi
 
   if [ "${_distro}" = "Arch" ]; then
     msg2 "Setting version..."
     scripts/setlocalversion --save-scmversion
-    echo "-$pkgrel-tkg-${_cpusched}" > localversion.10-pkgrel
-    echo "" > localversion.20-pkgname   
+    echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
+    echo "" > localversion.20-pkgname
 
     # add upstream patch
-    msg2 "Patching from $_basekernel to $pkgver"
-    patch -p1 -i "$srcdir"/patch-"${pkgver}"
+    if [ "$_sub" != "0" ]; then
+      msg2 "Patching from $_basekernel to $pkgver"
+      tkgpatch="$srcdir/patch-${pkgver}" && _tkg_patcher
+    fi
 
     # ARCH Patches
-    if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
+    if [ "${_configfile}" = "config_hardened_${_basekernel}.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
       msg2 "Using linux hardened patchset"
-      patch -Np1 -i "$srcdir"/0012-linux-hardened.patch
+      tkgpatch="$srcdir/0012-linux-hardened.patch" && _tkg_patcher
     else
-      patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+      tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" && _tkg_patcher
     fi
   fi
 
+  pwd
+  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
+    cd ${wrksrc}/linux-${_rc_kern_ver}
+  elif [ "$_distro" = "Void" ]; then
+    cd ${wrksrc}/linux-${_kern_ver}
+  fi
+
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
-  msg2 "Applying graysky's cpu opts patch"
-  if [ "${_distro}" = "Arch" ]; then
-    patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch
-  else
-    patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.7+.patch
+  if [ "$_compiler_name" != "-llvm" ]; then
+    msg2 "Applying graysky's cpu opts patch"
+    if [ "${_distro}" = "Arch" ]; then
+      tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch" && _tkg_patcher
+    elif [ "${_distro}" = "Void" ]; then
+      tkgpatch="${wrksrc}/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch" && _tkg_patcher
+    else
+      tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch" && _tkg_patcher
+    fi
   fi
 
   # TkG
   msg2 "Applying clear linux patches"
-  patch -Np1 -i "$srcdir"/0002-clear-patches.patch
+  tkgpatch="$srcdir/0002-clear-patches.patch" && _tkg_patcher
 
   msg2 "Applying glitched base patch"
-  patch -Np1 -i "$srcdir"/0003-glitched-base.patch
+  tkgpatch="$srcdir/0003-glitched-base.patch" && _tkg_patcher
 
   if [ -z $_misc_adds ]; then
     plain "Enable misc additions ? May contain temporary fixes pending upstream or changes that can break on non-Arch. "
@@ -159,70 +340,103 @@ _tkg_srcprep() {
     fi
   fi
 
-  if [ "$_misc_adds" = "true" ]; then
+  if [ "$_misc_adds" = "true" ] && [ "$_basever" != "54" ]; then
     msg2 "Applying misc additions patch"
-    patch -Np1 -i "$srcdir"/0012-misc-additions.patch
+    tkgpatch="$srcdir/0012-misc-additions.patch" && _tkg_patcher
+  fi
+
+  # prjc/bmq patch rev
+  if [ "$_basever" = "58" ] || [ "$_basever" = "57" ]; then
+    rev=3
+  elif [ "$_basever" = "59" ]; then
+    rev=1
+  else
+    rev=0
   fi
 
   if [ "${_cpusched}" = "MuQSS" ]; then
     # MuQSS
     msg2 "Applying MuQSS base patch"
-    patch -Np1 -i "$srcdir"/0004-5.7-ck1.patch
-    
+    tkgpatch="$srcdir/0004-${_basekernel}-ck1.patch" && _tkg_patcher
+
     if [ "${_aggressive_ondemand}" = "true" ]; then
       msg2 "Applying MuQSS agressive ondemand governor patch"
-      patch -Np1 -i "$srcdir"/0004-glitched-ondemand-muqss.patch
+      tkgpatch="$srcdir/0004-glitched-ondemand-muqss.patch" && _tkg_patcher
     fi
 
     msg2 "Applying Glitched MuQSS patch"
-    patch -Np1 -i "$srcdir"/0004-glitched-muqss.patch
-  
-  elif [ "${_cpusched}" = "pds" ]; then
+    tkgpatch="$srcdir/0004-glitched-muqss.patch" && _tkg_patcher
+
+  elif [ "${_cpusched}" = "upds" ] || [ "${_cpusched}" = "pds" ]; then
     # PDS-mq
     msg2 "Applying PDS base patch"
-    patch -Np1 -i "$srcdir"/0005-v5.7_undead-pds099o.patch
+    if [ "${_cpusched}" = "upds" ] && [ "$_basever" != "59" ]; then
+      tkgpatch="$srcdir/0005-v${_basekernel}_undead-pds099o.patch" && _tkg_patcher
+    elif [ "$_basever" != "54" ]; then
+      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
+    fi
 
-    if [ "${_aggressive_ondemand}" = "true" ]; then
+    # ondemand patches don't exist for 5.4
+    if [ "$_basever" = "58" ] && [ "${_cpusched}" = "upds" ];then
+      # is it dead or alive
+      doa="-undead"
+    fi
+    if [ "${_aggressive_ondemand}" = "true" ] && [ "$_basever" != "54" ] && [ "${_cpusched}" = "upds" ]; then
       msg2 "Applying PDS agressive ondemand governor patch"
-      patch -Np1 -i "$srcdir"/0005-glitched-ondemand-pds.patch
+      tkgpatch="$srcdir/0005${doa}-glitched-ondemand-pds.patch" && _tkg_patcher
     fi
 
     msg2 "Applying Glitched PDS patch"
-    patch -Np1 -i "$srcdir"/0005-glitched-pds.patch
-  
+    tkgpatch="$srcdir/0005${doa}-glitched-pds.patch" && _tkg_patcher
+
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
     msg2 "Applying Project C / BMQ base patch"
-    
-    patch -Np1 -i "$srcdir"/0009-prjc_v5.7-r3.patch
+    if [ "$_basever" != "54" ]; then
+      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
+    else
+      tkgpatch="$srcdir/0009-bmq_v5.4-r2.patch" && _tkg_patcher
+    fi
 
-    if [ "${_aggressive_ondemand}" = "true" ]; then
+    if [ "${_aggressive_ondemand}" = "true" ] && [ "$_basever" != "54" ]; then
       msg2 "Applying BMQ agressive ondemand governor patch"
-      patch -Np1 -i "$srcdir"/0009-glitched-ondemand-bmq.patch
+      tkgpatch="$srcdir/0009-glitched-ondemand-bmq.patch" && _tkg_patcher
     fi
 
     msg2 "Applying Glitched BMQ patch"
-    patch -Np1 -i "$srcdir"/0009-glitched-bmq.patch
+    tkgpatch="$srcdir/0009-glitched-bmq.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "cfs" ]; then
     msg2 "Applying Glitched CFS patch"
-    patch -Np1 -i "$srcdir"/0003-glitched-cfs.patch
+    tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
   fi
 
-  if [ "${_distro}" = "Arch" ]; then
+  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
+    cd ${wrksrc}/linux-${_rc_kern_ver}
+  elif [ "$_distro" = "Void" ] && [[ "$_sub" != rc* ]]; then
+    cd ${wrksrc}/linux-${_kern_ver}
+  fi
+
+  if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
     if [ -z "${_configfile}" ]; then
-    _configfile="config.x86_64"
+      _configfile="config.x86_64"
     fi
 
     cat "${srcdir}/${_configfile}" > ./.config
-  fi 
-
+  fi
 
   # Set some -tkg defaults
   echo "# CONFIG_DYNAMIC_FAULT is not set" >> ./.config
   sed -i -e 's/CONFIG_DEFAULT_FQ_CODEL=y/# CONFIG_DEFAULT_FQ_CODEL is not set/' ./.config
   echo "CONFIG_DEFAULT_CAKE=y" >> ./.config
   echo "CONFIG_NR_TTY_DEVICES=63" >> ./.config
+  if [ "$_basever" = "54" ]; then
+    echo "CONFIG_TP_SMAPI=m" >> ./.config
+    echo "CONFIG_RAID6_USE_PREFER_GEN=y" >> ./.config
+  fi
+  if [ "$_basever" = "54" ] || [ "$_basever" = "59" ]; then
+    sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
+  fi
   echo "# CONFIG_NTP_PPS is not set" >> ./.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4=m/CONFIG_CRYPTO_LZ4=y/' ./.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4HC=m/CONFIG_CRYPTO_LZ4HC=y/' ./.config
@@ -231,19 +445,40 @@ _tkg_srcprep() {
   sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO is not set/' ./.config
   sed -i -e 's/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4 is not set/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4=y/' ./.config
   sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lzo"/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lz4"/' ./.config
-  #sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
   sed -i -e 's/# CONFIG_CMDLINE_BOOL is not set/CONFIG_CMDLINE_BOOL=y/' ./.config
   echo "CONFIG_CMDLINE=\"${_custom_commandline}\"" >> ./.config
   echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ./.config
   echo "# CONFIG_X86_P6_NOP is not set" >> ./.config
-  if [ "$_noccache" != "true" ]; then 
-    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }; then
+  
+  # openrgb
+  echo "CONFIG_I2C_NCT6775=m" >> ./.config
+
+  # ccache fix
+  if [ "$_noccache" != "true" ]; then
+    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }\
+	    || { [ "$_distro" = "Void" ] && xbps-query -s ccache > /dev/null; } ; then
       sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
+    fi
+    # Void uses LibreSSL
+    if [ "$_distro" = "Void" ]; then
+      sed -i -e 's/CONFIG_MODULE_SIG_SHA512=y/# CONFIG_MODULE_SIG_SHA512 is not set/' ./.config
+      sed -i -e 's/# CONFIG_MODULE_SIG_SHA1 is not set/CONFIG_MODULE_SIG_SHA1=y/' ./.config
+      sed -i -e 's/CONFIG_MODULE_SIG_HASH="sha512"/CONFIG_MODULE_SIG_HASH="sha1"/' ./.config
     fi
   fi
   # Skip dbg package creation on non-Arch
   if [ "$_distro" != "Arch" ]; then
     sed -i -e 's/CONFIG_DEBUG_INFO.*/CONFIG_DEBUG_INFO=n/' ./.config
+  fi
+  if [ "$_compiler_name" = "-llvm" ]; then
+    if [ "$_basever" = "59" ]; then
+      echo 'CONFIG_INIT_STACK_ALL_PATTERN=n' >> ./.config
+    else
+      echo 'CONFIG_INIT_STACK_ALL=n' >> ./.config
+    fi
+    sed -i -e 's/# CONFIG_INIT_ON_FREE_DEFAULT_ON is not set/CONFIG_INIT_ON_FREE_DEFAULT_ON=y/' ./.config
+    sed -i -e 's/CONFIG_INIT_STACK_NONE=y/CONFIG_INIT_STACK_NONE=n/' ./.config
+    echo "CONFIG_INIT_STACK_ALL_ZERO=y" >> ./.config
   fi
 
   if [ "$_font_autoselect" != "false" ]; then
@@ -251,34 +486,36 @@ _tkg_srcprep() {
   fi
 
   # Inject cpuopts options
-  echo "# CONFIG_MK8SSE3 is not set" >> ./.config
-  echo "# CONFIG_MK10 is not set" >> ./.config
-  echo "# CONFIG_MBARCELONA is not set" >> ./.config
-  echo "# CONFIG_MBOBCAT is not set" >> ./.config
-  echo "# CONFIG_MJAGUAR is not set" >> ./.config
-  echo "# CONFIG_MBULLDOZER is not set" >> ./.config
-  echo "# CONFIG_MPILEDRIVER is not set" >> ./.config
-  echo "# CONFIG_MSTEAMROLLER is not set" >> ./.config
-  echo "# CONFIG_MEXCAVATOR is not set" >> ./.config
-  echo "# CONFIG_MZEN is not set" >> ./.config
-  echo "# CONFIG_MZEN2 is not set" >> ./.config
-  echo "# CONFIG_MATOM is not set" >> ./.config
-  echo "# CONFIG_MNEHALEM is not set" >> ./.config
-  echo "# CONFIG_MWESTMERE is not set" >> ./.config
-  echo "# CONFIG_MSILVERMONT is not set" >> ./.config
-  echo "# CONFIG_MSANDYBRIDGE is not set" >> ./.config
-  echo "# CONFIG_MIVYBRIDGE is not set" >> ./.config
-  echo "# CONFIG_MHASWELL is not set" >> ./.config
-  echo "# CONFIG_MBROADWELL is not set" >> ./.config
-  echo "# CONFIG_MSKYLAKE is not set" >> ./.config
-  echo "# CONFIG_MSKYLAKEX is not set" >> ./.config
-  echo "# CONFIG_MCANNONLAKE is not set" >> ./.config
-  echo "# CONFIG_MICELAKE is not set" >> ./.config
-  echo "# CONFIG_MGOLDMONT is not set" >> ./.config
-  echo "# CONFIG_MGOLDMONTPLUS is not set" >> ./.config
-  echo "# CONFIG_MCASCADELAKE is not set" >> ./.config
-  echo "# CONFIG_MCOOPERLAKE is not set" >> ./.config
-  echo "# CONFIG_MTIGERLAKE is not set" >> ./.config
+  if [ "$_compiler_name" != "-llvm" ]; then
+    echo "# CONFIG_MK8SSE3 is not set" >> ./.config
+    echo "# CONFIG_MK10 is not set" >> ./.config
+    echo "# CONFIG_MBARCELONA is not set" >> ./.config
+    echo "# CONFIG_MBOBCAT is not set" >> ./.config
+    echo "# CONFIG_MJAGUAR is not set" >> ./.config
+    echo "# CONFIG_MBULLDOZER is not set" >> ./.config
+    echo "# CONFIG_MPILEDRIVER is not set" >> ./.config
+    echo "# CONFIG_MSTEAMROLLER is not set" >> ./.config
+    echo "# CONFIG_MEXCAVATOR is not set" >> ./.config
+    echo "# CONFIG_MZEN is not set" >> ./.config
+    echo "# CONFIG_MZEN2 is not set" >> ./.config
+    echo "# CONFIG_MATOM is not set" >> ./.config
+    echo "# CONFIG_MNEHALEM is not set" >> ./.config
+    echo "# CONFIG_MWESTMERE is not set" >> ./.config
+    echo "# CONFIG_MSILVERMONT is not set" >> ./.config
+    echo "# CONFIG_MSANDYBRIDGE is not set" >> ./.config
+    echo "# CONFIG_MIVYBRIDGE is not set" >> ./.config
+    echo "# CONFIG_MHASWELL is not set" >> ./.config
+    echo "# CONFIG_MBROADWELL is not set" >> ./.config
+    echo "# CONFIG_MSKYLAKE is not set" >> ./.config
+    echo "# CONFIG_MSKYLAKEX is not set" >> ./.config
+    echo "# CONFIG_MCANNONLAKE is not set" >> ./.config
+    echo "# CONFIG_MICELAKE is not set" >> ./.config
+    echo "# CONFIG_MGOLDMONT is not set" >> ./.config
+    echo "# CONFIG_MGOLDMONTPLUS is not set" >> ./.config
+    echo "# CONFIG_MCASCADELAKE is not set" >> ./.config
+    echo "# CONFIG_MCOOPERLAKE is not set" >> ./.config
+    echo "# CONFIG_MTIGERLAKE is not set" >> ./.config
+  fi
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then
@@ -297,19 +534,29 @@ _tkg_srcprep() {
     echo "CONFIG_SCHED_MUQSS=y" >> ./.config
   elif [ "${_cpusched}" = "pds" ]; then
     # PDS default config
+    echo "CONFIG_SCHED_ALT=y" >> ./.config
+    echo "CONFIG_SCHED_PDS=y" >> ./.config
+    echo "# CONFIG_SCHED_BMQ is not set" >> ./.config
+  elif [ "${_cpusched}" = "upds" ]; then
+    # PDS default config
     echo "CONFIG_SCHED_PDS=y" >> ./.config
   elif [ "${_cpusched}" = "bmq" ]; then
     # BMQ default config
     echo "CONFIG_SCHED_ALT=y" >> ./.config
+    echo "CONFIG_SCHED_BMQ=y" >> ./.config
+    echo "# CONFIG_SCHED_PDS is not set" >> ./.config
   fi
 
-  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ]; then
+  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
     # Disable CFS
     sed -i -e 's/CONFIG_FAIR_GROUP_SCHED=y/# CONFIG_FAIR_GROUP_SCHED is not set/' ./.config
     sed -i -e 's/CONFIG_CFS_BANDWIDTH=y/# CONFIG_CFS_BANDWIDTH is not set/' ./.config
     # sched yield type
     if [ -n "$_sched_yield_type" ]; then
       CONDITION0="$_sched_yield_type"
+    # in customization.cfg for linux59-tkg _sched_yield_type is set to 0
+    elif [ "$_basever" = "59" ]; then
+      CONDITION0="0"
     else
       plain ""
       plain "CPU sched_yield_type - Choose what sort of yield sched_yield will perform."
@@ -329,25 +576,34 @@ _tkg_srcprep() {
         read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
       fi
     fi
+    if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "$_cpusched" != "bmq" ]; then
+      _sched=${_cpusched}
+    else
+      _sched="alt_core"
+    fi
     if [ "$CONDITION0" = "0" ]; then
-      if [ "${_cpusched}" = "bmq" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]  && [ "$_basever" != "54" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
       fi
     elif [ "$CONDITION0" = "1" ]; then
       msg2 "Using default CPU sched yield type (1)"
     elif [ "$CONDITION0" = "2" ]; then
-      if [ "${_cpusched}" = "bmq" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/alt_core.c
+      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ] && [ "$_basever" != "54" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/${_sched}.c
+      elif [ "${_cpusched}" = "upds" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/pds.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
       fi
     else
       if [ "${_cpusched}" = "MuQSS" ]; then
         msg2 "Using default CPU sched yield type (1)"
-      elif [ "${_cpusched}" = "bmq" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/alt_core.c
+      elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ] && [ "$_basever" != "54" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
+      elif [ "${_cpusched}" = "upds" ]; then
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/pds.c
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
       fi
@@ -355,7 +611,7 @@ _tkg_srcprep() {
   fi
 
   # Round Robin interval
-  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ]; then
+  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
     if [ -n "$_rr_interval" ]; then
       CONDITION1="$_rr_interval"
     else
@@ -386,17 +642,36 @@ _tkg_srcprep() {
       msg2 "Using default rr_interval"
       _rrvalue="default"
     fi
-    if [ "$_rrvalue" != "default" ]; then
-      if [ "${_cpusched}" = "MuQSS" ]; then
-        sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
-      elif [ "${_cpusched}" = "pds" ]; then
-        sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/"${_cpusched}".c
-      elif [ "${_cpusched}" = "bmq" ]; then
-        sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/alt_core.c
+    if [ "$_basever" != "54" ]; then
+      if [ "$_rrvalue" != "default" ]; then
+        if [ "${_cpusched}" = "MuQSS" ]; then
+          sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
+	elif [ "${_cpusched}" = "upds" ]; then
+	  sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/pds.c
+        elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
+          sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/${_sched}.c
+        fi
+        if [ "${_cpusched}" == "bmq" ]; then
+          echo "CONFIG_SCHED_TIMESLICE=2" >> ./.config
+        fi
+      else
+        if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
+          sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (2 * 1000 * 1000);/" ./kernel/sched/${_sched}.c
+        fi
       fi
     else
-      if [ "${_cpusched}" = "bmq" ]; then
-        sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (2 * 1000 * 1000);/" ./kernel/sched/alt_core.c
+      if [ "$_rrvalue" != "default" ]; then
+        if [ "${_cpusched}" == "MuQSS" ]; then
+          sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
+        elif [ "${_cpusched}" == "pds" ]; then
+          sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/"${_cpusched}".c
+        elif [ "${_cpusched}" == "bmq" ]; then
+          echo "CONFIG_SCHED_TIMESLICE=${_rrvalue}" >> ./.config
+        fi
+      else
+        if [ "${_cpusched}" == "bmq" ]; then
+          echo "CONFIG_SCHED_TIMESLICE=2" >> ./.config
+        fi
       fi
     fi
   fi
@@ -410,14 +685,26 @@ _tkg_srcprep() {
 
   # compiler optimization level
   if [ "$_compileroptlevel" = "1" ]; then
-    echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+    if [ "$_basever" != "54" ]; then
+      echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+    else
+      echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ./.config
+    fi
   elif [ "$_compileroptlevel" = "2" ]; then
     sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ./.config
-    echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> ./.config
+    if [ "$_basever" != "54" ]; then
+      echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> ./.config
+    else
+      echo "CONFIG_CC_OPTIMIZE_HARDER=y" >> ./.config
+    fi
   elif [ "$_compileroptlevel" = "3" ]; then
     sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ./.config
     sed -i -e 's/# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set/CONFIG_CC_OPTIMIZE_FOR_SIZE=y/' ./.config
-    echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+    if [ "$_basever" != "54" ]; then
+      echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+    else
+      echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ./.config
+    fi
   fi
 
   # cpu opt
@@ -719,27 +1006,26 @@ _tkg_srcprep() {
   fi
   if [[ "$CONDITION7" =~ [yY] ]] || [ "$_acs_override" = "true" ]; then
     msg2 "Patching ACS override"
-    patch -Np1 -i "$srcdir"/0006-add-acs-overrides_iommu.patch
+    tkgpatch="$srcdir/0006-add-acs-overrides_iommu.patch" && _tkg_patcher
   fi
 
   # bcachefs
-  if [ -z "$_bcachefs" ]; then
+  if [ -z "$_bcachefs" ] && [ "$_basever" != "54" ]; then
      plain ""
      plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
      plain "https://bcachefs.org/"
      read -rp "`echo $'    > N/y : '`" CONDITION8;
-   fi
-   if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
+  fi
+  if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
      msg2 "Patching Bcache filesystem support override"
-     patch -Np1 -i "$srcdir"/0008-5.7-bcachefs.patch
-
+     tkgpatch="$srcdir/0008-${_basekernel}-bcachefs.patch" && _tkg_patcher
      echo "CONFIG_BCACHEFS_FS=m" >> ./.config
      echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
      echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
      echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ./.config
      echo "# CONFIG_BCACHEFS_TESTS is not set" >> ./.config
      echo "# CONFIG_DEBUG_CLOSURES is not set" >> ./.config
-   fi
+  fi
 
   # fsync support
   if [ -z "$_fsync" ]; then
@@ -750,25 +1036,27 @@ _tkg_srcprep() {
   fi
   if [[ "$CONDITION9" =~ [yY] ]] || [ "$_fsync" = "true" ]; then
     msg2 "Patching Fsync support"
-    patch -Np1 -i "$srcdir"/0007-v5.7-fsync.patch
+    tkgpatch="$srcdir/0007-v${_basekernel}-fsync.patch" && _tkg_patcher
   fi
 
   # ZFS fix
-  if [ -z "$_zfsfix" ]; then
-    plain ""
-    plain "Add back missing symbol for AES-NI/AVX support on ZFS"
-    plain "https://github.com/NixOS/nixpkgs/blob/master/pkgs/os-specific/linux/kernel/export_kernel_fpu_functions_5_3.patch"
-    read -rp "`echo $'    > N/y : '`" CONDITION11;
-  fi
-  if [[ "$CONDITION11" =~ [yY] ]] || [ "$_zfsfix" = "true" ]; then
-    msg2 "Patching missing symbol for AES-NI/AVX support on ZFS"
-    patch -Np1 -i "$srcdir"/0011-ZFS-fix.patch
+  if [ "$_basever" != "59" ]; then
+    if [ -z "$_zfsfix" ]; then
+      plain ""
+      plain "Add back missing symbol for AES-NI/AVX support on ZFS"
+      plain "https://github.com/NixOS/nixpkgs/blob/master/pkgs/os-specific/linux/kernel/export_kernel_fpu_functions_5_3.patch"
+      read -rp "`echo $'    > N/y : '`" CONDITION11;
+    fi
+    if [[ "$CONDITION11" =~ [yY] ]] || [ "$_zfsfix" = "true" ]; then
+      msg2 "Patching missing symbol for AES-NI/AVX support on ZFS"
+      tkgpatch="$srcdir/0011-ZFS-fix.patch" && _tkg_patcher
+    fi
   fi
 
   # Community patches
   if [ -n "$_community_patches" ]; then
     if [ ! -d "$_where/../../community-patches" ]; then
-      cd "$_where/../.." && git clone https://github.com/Frogging-Family/community-patches.git && cd "${srcdir}/linux-${_basekernel}"
+      cd "$_where/../.." && git clone https://github.com/Frogging-Family/community-patches.git && cd "${srcdir}/${_srcpath}"
     fi
     _community_patches=($_community_patches)
     for _p in ${_community_patches[@]}; do
@@ -788,14 +1076,14 @@ _tkg_srcprep() {
     rm -f "$_where"/$_p
   done
 
-  if [ "$_distro" = "Arch" ]; then
+  if [ "$_distro" = "Arch" ] || [ "$_distro" = "Void" ]; then
     # don't run depmod on 'make install'. We'll do this ourselves in packaging
     sed -i '2iexit 0' scripts/depmod.sh
 
     # get kernel version
-    make prepare
+    make prepare ${llvm_opt}
   fi
- 
+
   # modprobed-db
   if [ -z "$_modprobeddb" ]; then
     plain ""
@@ -806,8 +1094,10 @@ _tkg_srcprep() {
     read -rp "`echo $'    > N/y : '`" CONDITIONMPDB;
   fi
   if [[ "$CONDITIONMPDB" =~ [yY] ]] || [ "$_modprobeddb" = "true" ]; then
-    sudo modprobed-db recall
-    yes "" | make localmodconfig
+    if [ "$_distro" != "Void" ]; then
+      sudo modprobed-db recall
+    fi
+    yes "" | make localmodconfig ${llvm_opt}
   fi
 
   if [ true = "$_config_fragments" ]; then
@@ -839,8 +1129,13 @@ _tkg_srcprep() {
     fi
   fi
 
+  # set _menuconfig early for Void
+  if [ "$_distro" = "Void" ]; then
+    _menuconfig="Void"
+  fi
+
   # menuconfig / nconfig
-  if [ -z "$_menunconfig" ]; then
+  if [ -z "$_menunconfig" ] && [ "$_distro" != "Void" ]; then
     plain ""
     plain "*Optional* For advanced users - Do you want to use make menuconfig or nconfig"
     plain "to configure the kernel before building it?"
@@ -851,16 +1146,16 @@ _tkg_srcprep() {
   fi
   if [ 1 = "$_menunconfig" ]; then
     cp .config .config.orig
-    make menuconfig
+    make menuconfig ${llvm_opt}
   elif [ 2 = "$_menunconfig" ]; then
     cp .config .config.orig
-    make nconfig
+    make nconfig ${llvm_opt}
   elif [ 3 = "$_menunconfig" ]; then
     cp .config .config.orig
-    make xconfig
+    make xconfig ${llvm_opt}
   else
     # rewrite configuration
-    yes "" | make config >/dev/null
+    yes "" | make config ${llvm_opt} >/dev/null
   fi
   if [ 1 = "$_menunconfig" ] || [ 2 = "$_menunconfig" ] || [ 3 = "$_menunconfig" ]; then
     if [ -z "${_diffconfig}" ]; then
@@ -903,6 +1198,8 @@ _tkg_srcprep() {
 exit_cleanup() {
   # Remove state tracker
   rm -f "$_where"/cpuschedset
+  rm -f "$_where"/compilerset
+  rm -f "$_where"/versel
 
   # Remove temporarily copied files
   rm -rf "$_where"/*.patch
@@ -917,60 +1214,60 @@ exit_cleanup() {
     rm -f "$_where"/"$_p"
   done
 
+  if [ "$_NUKR" = "true" ] && [ "$_where" != "$srcdir" ]; then
+    rm -rf "$_where"/src/*
+    # Double tap
+    rm -rf "$srcdir"/linux-*
+    rm -rf "$srcdir"/*.xz
+    rm -rf "$srcdir"/*.patch
+    rm -rf "$srcdir"/*-profile.cfg
+    rm -f "$srcdir"/config.x86_64
+    rm -f "$srcdir"/customization.cfg
+  else
+    # Meh
+    rm -rf "$srcdir"/linux-${_basekernel}/Documentation/filesystems/aufs/*
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/ABI/testing/*-aufs
+    rm -rf "$srcdir"/linux-${_basekernel}/fs/aufs/*
+    rm -f "$srcdir"/linux-${_basekernel}/include/uapi/linux/aufs*
+
+    rm -f "$srcdir"/linux-${_basekernel}/mm/prfile.c
+
+    rm -f "$srcdir"/linux-${_basekernel}/block/bfq*
+
+    rm -rf "$srcdir"/linux-${_basekernel}/drivers/scsi/vhba/*
+
+    rm -rf "$srcdir"/linux-${_basekernel}/fs/exfat/*
+    rm -f "$srcdir"/linux-${_basekernel}/include/trace/events/fs.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-PDS-mq.txt
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/skip_list.h
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds_sched.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BMQ.txt
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/${_sched}.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/sched/alt_debug.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_sched.h
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BFS.txt
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-MuQSS.txt
+    rm -rf "$srcdir"/linux-${_basekernel}/arch/blackfin/*
+    rm -f "$srcdir"/linux-${_basekernel}/arch/powerpc/configs/c2k_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/score/configs/spct6600_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilegx_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilepro_defconfig
+    rm -f "$srcdir"/linux-${_basekernel}/drivers/staging/lustre/lnet/lnet/lib-eq.c
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/MuQSS*
+    rm -f "$srcdir"/linux-${_basekernel}/kernel/skip_list.c
+
+    rm -f "$srcdir"/linux-${_basekernel}/Documentation/vm/uksm.txt
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/sradix-tree.h
+    rm -f "$srcdir"/linux-${_basekernel}/include/linux/uksm.h
+    rm -f "$srcdir"/linux-${_basekernel}/lib/sradix-tree.c
+    rm -f "$srcdir"/linux-${_basekernel}/mm/uksm.c
+  fi
+
   if [ "${_distro}" = "Arch" ]; then
-    if [ "$_NUKR" = "true" ] && [ "$_where" != "$srcdir" ]; then
-      rm -rf "$_where"/src/*
-      # Double tap
-      rm -rf "$srcdir"/linux-*
-      rm -rf "$srcdir"/*.xz
-      rm -rf "$srcdir"/*.patch
-      rm -rf "$srcdir"/*-profile.cfg
-      rm -f "$srcdir"/config.x86_64
-      rm -f "$srcdir"/customization.cfg
-    else
-      # Meh
-      rm -rf "$srcdir"/linux-${_basekernel}/Documentation/filesystems/aufs/*
-      rm -f "$srcdir"/linux-${_basekernel}/Documentation/ABI/testing/*-aufs
-      rm -rf "$srcdir"/linux-${_basekernel}/fs/aufs/*
-      rm -f "$srcdir"/linux-${_basekernel}/include/uapi/linux/aufs*
-
-      rm -f "$srcdir"/linux-${_basekernel}/mm/prfile.c
-
-      rm -f "$srcdir"/linux-${_basekernel}/block/bfq*
-
-      rm -rf "$srcdir"/linux-${_basekernel}/drivers/scsi/vhba/*
-
-      rm -rf "$srcdir"/linux-${_basekernel}/fs/exfat/*
-      rm -f "$srcdir"/linux-${_basekernel}/include/trace/events/fs.h
-
-      rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-PDS-mq.txt
-      rm -f "$srcdir"/linux-${_basekernel}/include/linux/skip_list.h
-      rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds.c
-      rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds_sched.h
-
-      rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BMQ.txt
-      rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_core.c
-      rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/sched/alt_debug.c
-      rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_sched.h
-
-      rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BFS.txt
-      rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-MuQSS.txt
-      rm -rf "$srcdir"/linux-${_basekernel}/arch/blackfin/*
-      rm -f "$srcdir"/linux-${_basekernel}/arch/powerpc/configs/c2k_defconfig
-      rm -f "$srcdir"/linux-${_basekernel}/arch/score/configs/spct6600_defconfig
-      rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilegx_defconfig
-      rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilepro_defconfig
-      rm -f "$srcdir"/linux-${_basekernel}/drivers/staging/lustre/lnet/lnet/lib-eq.c
-      rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/MuQSS*
-      rm -f "$srcdir"/linux-${_basekernel}/kernel/skip_list.c
-
-      rm -f "$srcdir"/linux-${_basekernel}/Documentation/vm/uksm.txt
-      rm -f "$srcdir"/linux-${_basekernel}/include/linux/sradix-tree.h
-      rm -f "$srcdir"/linux-${_basekernel}/include/linux/uksm.h
-      rm -f "$srcdir"/linux-${_basekernel}/lib/sradix-tree.c
-      rm -f "$srcdir"/linux-${_basekernel}/mm/uksm.c
-    fi
-
     remove_deps
   fi
 
@@ -979,5 +1276,6 @@ exit_cleanup() {
     msg2 "compilation time : \n$_runtime"
   fi
 }
-
-trap exit_cleanup EXIT
+if [ "$_distro" != "Void" ]; then
+  trap exit_cleanup EXIT
+fi
