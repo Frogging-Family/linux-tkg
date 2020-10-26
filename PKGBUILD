@@ -361,7 +361,7 @@ build() {
   fi
 
   if [ "$_force_all_threads" = "true" ]; then
-    _force_all_threads="-j$((`nproc`*2))"
+    _force_all_threads="-j$((`nproc`+1))"
   else
     _force_all_threads="${MAKEFLAGS}"
   fi
