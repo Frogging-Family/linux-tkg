@@ -4,6 +4,7 @@ ver54=72
 ver57=19
 ver58=16
 ver59=1
+ver510=rc1
 
 _tkg_initscript() {
   # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
@@ -20,27 +21,32 @@ _tkg_initscript() {
 
   if [ -z "$_version" ] && [ ! -e "$_path"/versel ]; then
     plain "Which kernel version do you want to install?"
-    read -rp "`echo $'  > 1. 5.8\n    2. 5.9\n    3. 5.7\n    4. 5.4\nchoice[1-4?]'`" _VERSEL;
+    read -rp "`echo $'  > 1. 5.4\n    2. 5.7\n    3. 5.8\n    4. 5.9\n    5. 5.10\nchoice[1-5?]'`" _VERSEL;
     case $_VERSEL in
-          "2")
-          echo "_basever=59" > "$_path"/versel
-          echo "_basekernel=5.9" >> "$_path"/versel
-          echo "_sub=${ver59}" >> "$_path"/versel
+          "1")
+          echo "_basever=54" > "$_path"/versel
+          echo "_basekernel=5.4" >> "$_path"/versel
+          echo "_sub=${ver54}" >> "$_path"/versel
           ;;
-          "3")
+          "2")
           echo "_basever=57" > "$_path"/versel
           echo "_basekernel=5.7" >> "$_path"/versel
           echo "_sub=${ver57}" >> "$_path"/versel
           ;;
-          "4")
-	  echo "_basever=54" > "$_path"/versel
-	  echo "_basekernel=5.4" >> "$_path"/versel
-	  echo "_sub=${ver54}" >> "$_path"/versel
-	  ;;
-          *)
+          "3")
           echo "_basever=58" > "$_path"/versel
           echo "_basekernel=5.8" >> "$_path"/versel
           echo "_sub=${ver58}" >> "$_path"/versel
+          ;;
+          "5")
+          echo "_basever=510" > "$_path"/versel
+          echo "_basekernel=5.10" >> "$_path"/versel
+          echo "_sub=${ver510}" >> "$_path"/versel
+          ;;
+          *)
+          echo "_basever=59" > "$_path"/versel
+          echo "_basekernel=5.9" >> "$_path"/versel
+          echo "_sub=${ver59}" >> "$_path"/versel
           ;;
     esac
   elif [ -n "$_version" ];then
@@ -64,6 +70,11 @@ _tkg_initscript() {
 		echo "_basever=59" > "$_path"/versel
 		echo "_basekernel=5.9" >> "$_path"/versel
 		echo "_sub=${ver59}" >> "$_path"/versel
+		;;
+		"5.10")
+		echo "_basever=510" > "$_path"/versel
+		echo "_basekernel=5.10" >> "$_path"/versel
+		echo "_sub=${ver510}" >> "$_path"/versel
 		;;
 		*)
 		error "There is something wrong with your kernel version selection, exiting..."
@@ -260,6 +271,14 @@ user_patcher() {
 	fi
 }
 
+_tkg_patcher() {
+  if [ -e "$tkgpatch" ]; then
+    patch -Np1 -i "$tkgpatch"
+  else
+    msg2 "Patch either not found, not available for this kernel version or not needed. Skipping..."
+  fi
+}
+
 _tkg_srcprep() {
 
   if [ "${_distro}" = "Void" ] && [ -e ${srcdir}/sum_failed ]; then
@@ -275,15 +294,15 @@ _tkg_srcprep() {
     # add upstream patch
     if [ "$_sub" != "0" ]; then
       msg2 "Patching from $_basekernel to $pkgver"
-      patch -p1 -i "$srcdir"/patch-"${pkgver}"
+      tkgpatch="$srcdir/patch-${pkgver}" && _tkg_patcher
     fi
 
     # ARCH Patches
     if [ "${_configfile}" = "config_hardened_${_basekernel}.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
       msg2 "Using linux hardened patchset"
-      patch -Np1 -i "$srcdir"/0012-linux-hardened.patch
+      tkgpatch="$srcdir/0012-linux-hardened.patch" && _tkg_patcher
     else
-      patch -Np1 -i "$srcdir"/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+      tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" && _tkg_patcher
     fi
   fi
 
@@ -298,20 +317,20 @@ _tkg_srcprep() {
   if [ "$_compiler_name" != "-llvm" ]; then
     msg2 "Applying graysky's cpu opts patch"
     if [ "${_distro}" = "Arch" ]; then
-      patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch
+      tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch" && _tkg_patcher
     elif [ "${_distro}" = "Void" ]; then
-      patch -Np1 -i "${wrksrc}"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch
+      tkgpatch="${wrksrc}/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch" && _tkg_patcher
     else
-      patch -Np1 -i "$srcdir"/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch
+      tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch" && _tkg_patcher
     fi
   fi
 
   # TkG
   msg2 "Applying clear linux patches"
-  patch -Np1 -i "$srcdir"/0002-clear-patches.patch
+  tkgpatch="$srcdir/0002-clear-patches.patch" && _tkg_patcher
 
   msg2 "Applying glitched base patch"
-  patch -Np1 -i "$srcdir"/0003-glitched-base.patch
+  tkgpatch="$srcdir/0003-glitched-base.patch" && _tkg_patcher
 
   if [ -z $_misc_adds ]; then
     plain "Enable misc additions ? May contain temporary fixes pending upstream or changes that can break on non-Arch. "
@@ -323,36 +342,36 @@ _tkg_srcprep() {
 
   if [ "$_misc_adds" = "true" ] && [ "$_basever" != "54" ]; then
     msg2 "Applying misc additions patch"
-    patch -Np1 -i "$srcdir"/0012-misc-additions.patch
+    tkgpatch="$srcdir/0012-misc-additions.patch" && _tkg_patcher
   fi
 
   # prjc/bmq patch rev
-  if [ "$_basever" = "59" ]; then
-    rev=0
-  elif [ "$_basever" = "58" ] || [ "$_basever" = "57" ]; then
+  if [ "$_basever" = "58" ] || [ "$_basever" = "57" ]; then
     rev=3
+  else
+    rev=0
   fi
 
   if [ "${_cpusched}" = "MuQSS" ]; then
     # MuQSS
     msg2 "Applying MuQSS base patch"
-    patch -Np1 -i "$srcdir"/0004-${_basekernel}-ck1.patch
+    tkgpatch="$srcdir/0004-${_basekernel}-ck1.patch" && _tkg_patcher
 
     if [ "${_aggressive_ondemand}" = "true" ]; then
       msg2 "Applying MuQSS agressive ondemand governor patch"
-      patch -Np1 -i "$srcdir"/0004-glitched-ondemand-muqss.patch
+      tkgpatch="$srcdir/0004-glitched-ondemand-muqss.patch" && _tkg_patcher
     fi
 
     msg2 "Applying Glitched MuQSS patch"
-    patch -Np1 -i "$srcdir"/0004-glitched-muqss.patch
+    tkgpatch="$srcdir/0004-glitched-muqss.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "upds" ] || [ "${_cpusched}" = "pds" ]; then
     # PDS-mq
     msg2 "Applying PDS base patch"
     if [ "${_cpusched}" = "upds" ] && [ "$_basever" != "59" ]; then
-      patch -Np1 -i "$srcdir"/0005-v${_basekernel}_undead-pds099o.patch
+      tkgpatch="$srcdir/0005-v${_basekernel}_undead-pds099o.patch" && _tkg_patcher
     elif [ "$_basever" != "54" ]; then
-      patch -Np1 -i "$srcdir"/0009-prjc_v${_basekernel}-r${rev}.patch
+      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
     fi
 
     # ondemand patches don't exist for 5.4
@@ -362,32 +381,32 @@ _tkg_srcprep() {
     fi
     if [ "${_aggressive_ondemand}" = "true" ] && [ "$_basever" != "54" ] && [ "${_cpusched}" = "upds" ]; then
       msg2 "Applying PDS agressive ondemand governor patch"
-      patch -Np1 -i "$srcdir"/0005${doa}-glitched-ondemand-pds.patch
+      tkgpatch="$srcdir/0005${doa}-glitched-ondemand-pds.patch" && _tkg_patcher
     fi
 
     msg2 "Applying Glitched PDS patch"
-    patch -Np1 -i "$srcdir"/0005${doa}-glitched-pds.patch
+    tkgpatch="$srcdir/0005${doa}-glitched-pds.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
     msg2 "Applying Project C / BMQ base patch"
     if [ "$_basever" != "54" ]; then
-      patch -Np1 -i "$srcdir"/0009-prjc_v${_basekernel}-r${rev}.patch
+      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
     else
-      patch -Np1 -i "$srcdir"/0009-bmq_v5.4-r2.patch
+      tkgpatch="$srcdir/0009-bmq_v5.4-r2.patch" && _tkg_patcher
     fi
 
     if [ "${_aggressive_ondemand}" = "true" ] && [ "$_basever" != "54" ]; then
       msg2 "Applying BMQ agressive ondemand governor patch"
-      patch -Np1 -i "$srcdir"/0009-glitched-ondemand-bmq.patch
+      tkgpatch="$srcdir/0009-glitched-ondemand-bmq.patch" && _tkg_patcher
     fi
 
     msg2 "Applying Glitched BMQ patch"
-    patch -Np1 -i "$srcdir"/0009-glitched-bmq.patch
+    tkgpatch="$srcdir/0009-glitched-bmq.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "cfs" ]; then
     msg2 "Applying Glitched CFS patch"
-    patch -Np1 -i "$srcdir"/0003-glitched-cfs.patch
+    tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
   fi
 
   if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
@@ -985,7 +1004,7 @@ _tkg_srcprep() {
   fi
   if [[ "$CONDITION7" =~ [yY] ]] || [ "$_acs_override" = "true" ]; then
     msg2 "Patching ACS override"
-    patch -Np1 -i "$srcdir"/0006-add-acs-overrides_iommu.patch
+    tkgpatch="$srcdir/0006-add-acs-overrides_iommu.patch" && _tkg_patcher
   fi
 
   # bcachefs
@@ -997,7 +1016,7 @@ _tkg_srcprep() {
   fi
   if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
      msg2 "Patching Bcache filesystem support override"
-     patch -Np1 -i "$srcdir"/0008-${_basekernel}-bcachefs.patch
+     tkgpatch="$srcdir/0008-${_basekernel}-bcachefs.patch" && _tkg_patcher
      echo "CONFIG_BCACHEFS_FS=m" >> ./.config
      echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
      echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
@@ -1015,7 +1034,7 @@ _tkg_srcprep() {
   fi
   if [[ "$CONDITION9" =~ [yY] ]] || [ "$_fsync" = "true" ]; then
     msg2 "Patching Fsync support"
-    patch -Np1 -i "$srcdir"/0007-v${_basekernel}-fsync.patch
+    tkgpatch="$srcdir/0007-v${_basekernel}-fsync.patch" && _tkg_patcher
   fi
 
   # ZFS fix
@@ -1028,7 +1047,7 @@ _tkg_srcprep() {
     fi
     if [[ "$CONDITION11" =~ [yY] ]] || [ "$_zfsfix" = "true" ]; then
       msg2 "Patching missing symbol for AES-NI/AVX support on ZFS"
-      patch -Np1 -i "$srcdir"/0011-ZFS-fix.patch
+      tkgpatch="$srcdir/0011-ZFS-fix.patch" && _tkg_patcher
     fi
   fi
 
