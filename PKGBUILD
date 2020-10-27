@@ -259,6 +259,7 @@ case $_basever in
         	0011-ZFS-fix.patch
 	        #0012-linux-hardened.patch
 		0012-misc-additions.patch
+		0014-5.9-intel-bluetooth-fix.patch
 	)
 	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
             '7edb7b9d06b02f9b88d868c74ab618baf899c94edb19a73291f640dbea55c312'
@@ -281,7 +282,8 @@ case $_basever in
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'a5149d7220457d30e03e6999f35a050bce46acafc6230bfe6b4d4994c523516d'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
+            '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e'
+            '04e986afe1d35041271ab02d6d129695097e29b1a452fe159b183f155c844268')
 	;;
 	510)
 	opt_ver="5.8%2B"
