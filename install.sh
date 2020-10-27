@@ -196,11 +196,19 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [ "$_distro" = "Debian" ]; then #Help Debian cert problem.
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
-  yes '' | make oldconfig
+  yes '' | make ${llvm_opt} oldconfig
   msg2 "Done"
 
   # apply linux-tkg patching script
   _tkg_srcprep
+
+  # source cpuschedset since _cpusched isn't set
+  source "$srcdir"/cpuschedset
+
+  # Uppercase characters are not allowed in source package name for debian based distros
+  if [ "$_distro" = "Debian" ] || [ "$_distro" = "Ubuntu" ] && [ "$_cpusched" = "MuQSS" ]; then
+    _cpusched="muqss"
+  fi
 
   msg2 "Configuration done."
 fi
@@ -237,14 +245,14 @@ if [ "$1" = "install" ]; then
   fi
 
   if [ -z $_kernel_localversion ]; then
-    _kernel_flavor="tkg-${_cpusched}"
+    _kernel_flavor="tkg-${_cpusched}${_compiler_name}"
   else
     _kernel_flavor="tkg-${_kernel_localversion}"
   fi
 
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
-    if make -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
+    if make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -284,7 +292,7 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if make -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
