@@ -13,8 +13,8 @@ plain '   :syNNdhNNhssssssssssssssshNNhdNNys:'
 plain '    /ssyhhhysssssssssssssssssyhhhyss/'
 plain '    .ossssssssssssssssssssssssssssso.'
 plain '   :sssssssssssssssssssssssssssssssss:'
-plain '  /sssssssssssssssssssssssssssssssssss/'
-plain ' :sssssssssssssoosssssssoosssssssssssss:'
+plain '  /sssssssssssssssssssssssssssssssssss/   Linux-tkg'
+plain ' :sssssssssssssoosssssssoosssssssssssss:        kernels'
 plain ' osssssssssssssoosssssssoossssssssssssso'
 plain ' osssssssssssyyyyhhhhhhhyyyyssssssssssso'
 plain ' /yyyyyyhhdmmmmNNNNNNNNNNNmmmmdhhyyyyyy/'
@@ -25,11 +25,10 @@ plain '       `-+shdNNNNNNNNNNNNNNNdhs+-`'
 plain '             `.-:///////:-.`'
 
 _where="$PWD" # track basedir as different Arch based distros are moving srcdir around
+_ispkgbuild="true"
 
 source "$_where"/customization.cfg # load default configuration from file
 source "$_where"/linux-tkg-config/prepare
-
-_distro="Arch"
 
 _tkg_initscript
 
