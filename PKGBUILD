@@ -48,7 +48,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=92
+pkgrel=93
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -91,7 +91,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'bce941bcb6c8148ac19cd2fa4f1e19c6c75f699a3bcdfd452df7484cff2a2353'
+            '969e3475d50eb9085f790fdd1dfcc2ea4f09d929cf3d8b0158af051d0376e93d'
             '27b7fc535ade94b636c3ec4e809e141831e9465a0ef55215a9852b87048629e2'
             '55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -205,7 +205,7 @@ case $_basever in
         	0012-misc-additions.patch
 	)
 	sha256sums=('e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
-            '2ea49982bd10e4c880d49051535bd820e276dd3235c3c913b255aaaadc707e1d'
+            'c8776bc6b68427f176ff54f8e87f0e839bd2e0cb9a90e6f78f040f53cc2530fc'
             '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
             'ac66686b0e1ed057ea5f099cd00366decc00f999aa1cb19ba8d3ccf9f92d60e2'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -260,9 +260,9 @@ case $_basever in
 		0012-misc-additions.patch
 	)
 	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
-            '7edb7b9d06b02f9b88d868c74ab618baf899c94edb19a73291f640dbea55c312'
+            '9f82ebe78a2b611d727c235d4841e860c64c4d2bc82ec4cfc385b8c997eb7f9d'
             '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
-            '36439a90c9d2f860298d90e141f3bf9d897dd8ece9e21cd46508f4ed7b2151bb'
+            '9bb2762ba80f7f38bf067c968badda9671fd1b7749274105569cda30b1ae820d'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
