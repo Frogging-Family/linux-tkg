@@ -245,9 +245,9 @@ case $_basever in
 	        0004-glitched-ondemand-muqss.patch
         	0004-glitched-muqss.patch
 	        0004-5.9-ck1.patch
-		#0005-undead-glitched-ondemand-pds.patch
-		#0005-undead-glitched-pds.patch
-		#0005-v5.8_undead-pds099o.patch
+		0005-undead-glitched-ondemand-pds.patch
+		0005-undead-glitched-pds.patch
+		0005-v5.9_undead-pds099o.patch
 		0005-glitched-pds.patch
         	0006-add-acs-overrides_iommu.patch
 		0007-v5.9-fsync.patch
@@ -272,6 +272,9 @@ case $_basever in
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
             '45a9ab99215ab3313be6e66e073d29154aac55bc58975a4df2dad116c918d27c'
+            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+            '31b428c464905e44ed61cdcd1f42b4ec157ebe5a44cb5b608c4c99b466df66ba'
+            'f9f5f0a3a1d6c5233b9d7a4afe8ed99be97c4ff00a80bde4017d117c7d5f98ed'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
