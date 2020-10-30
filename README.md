@@ -1,12 +1,11 @@
 **Due to intel_pstate poor performances as of late, I have decided to set it to passive mode to make use of the acpi_cpufreq governors passthrough, keeping full support for turbo frequencies.**
 
-### MuQSS is not an available option for 5.8
-## Nvidia prop drivers need to be patched (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
+## Nvidia prop drivers might need to be patched if they aren't supporting your chosen kernel OOTB (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
 
 Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
-- 5.10rc (Project C / PDS & BMQ, MuQSS)
-- 5.9.y (Project C / PDS & BMQ, MuQSS)
+- 5.10rc (Undead PDS, Project C / PDS & BMQ, MuQSS)
+- 5.9.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.8.y (Undead PDS, Project C / PDS & BMQ)
 - 5.7.y (MuQSS, PDS, Project C / BMQ)
 - 5.4.y (MuQSS, PDS, BMQ)
