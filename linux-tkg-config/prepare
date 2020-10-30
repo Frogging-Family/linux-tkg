@@ -1,15 +1,21 @@
 #!/bin/bash
 
-ver54=72
+ver54=73
 ver57=19
-ver58=16
-ver59=1
+ver58=17
+ver59=2
 ver510=rc1
 
 _tkg_initscript() {
   # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
   if [ -e "$_EXT_CONFIG_PATH" ]; then
-    source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values." && msg2 ""
+    source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values.\n"
+  fi
+
+  # Default to Arch
+  if [ -z "$_distro" ] || [ "$_ispkgbuild" = "true" ]; then
+    msg2 "Defaulting to Archlinux target\n"
+    _distro="Arch"
   fi
 
   # create build dir early
@@ -370,18 +376,19 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "upds" ] || [ "${_cpusched}" = "pds" ]; then
     # PDS-mq
     msg2 "Applying PDS base patch"
-    if [ "${_cpusched}" = "upds" ] && [ "$_basever" != "59" ]; then
+    if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
       tkgpatch="$srcdir/0005-v${_basekernel}_undead-pds099o.patch" && _tkg_patcher
-    elif [ "$_basever" != "54" ]; then
+    else
       tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
     fi
 
-    # ondemand patches don't exist for 5.4
+    # 5.8 upds naming quirk
     if [ "$_basever" = "58" ] && [ "${_cpusched}" = "upds" ];then
       # is it dead or alive
       doa="-undead"
     fi
-    if [ "${_aggressive_ondemand}" = "true" ] && [ "$_basever" != "54" ] && [ "${_cpusched}" = "upds" ]; then
+
+    if [ "${_aggressive_ondemand}" = "true" ]; then
       msg2 "Applying PDS agressive ondemand governor patch"
       tkgpatch="$srcdir/0005${doa}-glitched-ondemand-pds.patch" && _tkg_patcher
     fi
@@ -576,36 +583,24 @@ _tkg_srcprep() {
         read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
       fi
     fi
-    if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "$_cpusched" != "bmq" ]; then
-      _sched=${_cpusched}
+    if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
+      _sched="pds"
+    elif [ "${_cpusched}" = "MuQSS" ] || ( [ "$_basever" != "54" ] && [ "$_cpusched" != "bmq" ] && [ "$_cpusched" != "pds" ] ) || ( [ "$_basever" = "54" ] && [ "$_cpusched" = "bmq" ] ); then
+      _sched="${_cpusched}"
     else
       _sched="alt_core"
     fi
     if [ "$CONDITION0" = "0" ]; then
-      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]  && [ "$_basever" != "54" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
-      else
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
-      fi
+      sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
     elif [ "$CONDITION0" = "1" ]; then
       msg2 "Using default CPU sched yield type (1)"
     elif [ "$CONDITION0" = "2" ]; then
-      if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ] && [ "$_basever" != "54" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/${_sched}.c
-      elif [ "${_cpusched}" = "upds" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/pds.c
-      else
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/"${_cpusched}".c
-      fi
+      sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/${_sched}.c
     else
       if [ "${_cpusched}" = "MuQSS" ]; then
         msg2 "Using default CPU sched yield type (1)"
-      elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ] && [ "$_basever" != "54" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
-      elif [ "${_cpusched}" = "upds" ]; then
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/pds.c
       else
-        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/"${_cpusched}".c
+        sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
       fi
     fi
   fi
