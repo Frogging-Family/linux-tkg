@@ -110,9 +110,12 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [ "$_compiler_name" = "llvm" ]; then
     clang_deps="llvm clang lld"
   fi
-  if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
+  if [ "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
+  elif [ "$_distro" = "Debian" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev ${clang_deps} -y
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
     sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build ${clang_deps} -y
