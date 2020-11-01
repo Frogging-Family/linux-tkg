@@ -70091,10 +70091,10 @@ index 99c49eeae71b..5b724e5b4b89 100644
  }
  EXPORT_SYMBOL_GPL(replace_page_cache_page);
  
--static int __add_to_page_cache_locked(struct page *page,
--				      struct address_space *mapping,
--				      pgoff_t offset, gfp_t gfp_mask,
--				      void **shadowp)
+-noinline int __add_to_page_cache_locked(struct page *page,
+-					struct address_space *mapping,
+-					pgoff_t offset, gfp_t gfp_mask,
+-					void **shadowp)
 +static int add_to_page_cache_vec(struct page **pages, unsigned nr_pages,
 +				 struct address_space *mapping,
 +				 pgoff_t index, gfp_t gfp_mask,
@@ -70581,7 +70581,7 @@ index 99c49eeae71b..5b724e5b4b89 100644
  /**
   * generic_file_buffered_read - generic file read routine
   * @iocb:	the iocb to read
-@@ -2158,276 +2509,116 @@ ssize_t generic_file_buffered_read(struct kiocb *iocb,
+@@ -2158,284 +2509,116 @@ ssize_t generic_file_buffered_read(struct kiocb *iocb,
  		struct iov_iter *iter, ssize_t written)
  {
  	struct file *filp = iocb->ki_filp;
@@ -70618,6 +70618,14 @@ index 99c49eeae71b..5b724e5b4b89 100644
 +	if (nr_pages > ARRAY_SIZE(pages_onstack))
 +		pages = kmalloc_array(nr_pages, sizeof(void *), GFP_KERNEL);
  
+-	/*
+-	 * If we've already successfully copied some data, then we
+-	 * can no longer safely return -EIOCBQUEUED. Hence mark
+-	 * an async read NOWAIT at that point.
+-	 */
+-	if (written && (iocb->ki_flags & IOCB_WAITQ))
+-		iocb->ki_flags |= IOCB_NOWAIT;
+-
 -	for (;;) {
 -		struct page *page;
 -		pgoff_t end_index;
