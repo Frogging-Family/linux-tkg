@@ -48,7 +48,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=93
+pkgrel=95
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -91,7 +91,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '969e3475d50eb9085f790fdd1dfcc2ea4f09d929cf3d8b0158af051d0376e93d'
+            'f03c974148bcacae2e5a737b69aa588841a07448f7a970c42c7dfd357f649b04'
             '27b7fc535ade94b636c3ec4e809e141831e9465a0ef55215a9852b87048629e2'
             '55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -205,7 +205,7 @@ case $_basever in
         	0012-misc-additions.patch
 	)
 	sha256sums=('e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
-            'c8776bc6b68427f176ff54f8e87f0e839bd2e0cb9a90e6f78f040f53cc2530fc'
+            '5b558a40c2fdad2c497fe0b1a64679313fd5a7ccbaecef8803d49b3baaccbacd'
             '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
             'ac66686b0e1ed057ea5f099cd00366decc00f999aa1cb19ba8d3ccf9f92d60e2'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -220,7 +220,7 @@ case $_basever in
             '87bca363416655bc865fcb2cc0d1532cb010a61d9b9f625e3c15cd12eeee3a59'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'cd225e86d72eaf6c31ef3d7b20df397f4cc44ddd04389850691292cdf292b204'
-            '86414a20225deec084e0e48b35552b3a4eef67f76755b32a10febb7b6308dcb7'
+            'e73c3a8a040a35eb48d1e0ce4f66dd6e6f69fd10ee5b1acf3a0334cbf7ffb0c4'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
             'f5dbff4833a2e3ca94c202e5197894d5f1006c689ff149355353e77d2e17c943'
@@ -245,9 +245,9 @@ case $_basever in
 	        0004-glitched-ondemand-muqss.patch
         	0004-glitched-muqss.patch
 	        0004-5.9-ck1.patch
-		#0005-undead-glitched-ondemand-pds.patch
-		#0005-undead-glitched-pds.patch
-		#0005-v5.8_undead-pds099o.patch
+		0005-undead-glitched-ondemand-pds.patch
+		0005-undead-glitched-pds.patch
+		0005-v5.9_undead-pds099o.patch
 		0005-glitched-pds.patch
         	0006-add-acs-overrides_iommu.patch
 		0007-v5.9-fsync.patch
@@ -260,7 +260,7 @@ case $_basever in
 		0012-misc-additions.patch
 	)
 	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
-            '9f82ebe78a2b611d727c235d4841e860c64c4d2bc82ec4cfc385b8c997eb7f9d'
+            '01bf91fd18b860f51659209352dc79f6c9bb29fb70a91e91ebc34d1291fe3cf1'
             '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
             '9bb2762ba80f7f38bf067c968badda9671fd1b7749274105569cda30b1ae820d'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -272,10 +272,13 @@ case $_basever in
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
             '45a9ab99215ab3313be6e66e073d29154aac55bc58975a4df2dad116c918d27c'
+            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+            '31b428c464905e44ed61cdcd1f42b4ec157ebe5a44cb5b608c4c99b466df66ba'
+            'f9f5f0a3a1d6c5233b9d7a4afe8ed99be97c4ff00a80bde4017d117c7d5f98ed'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
-            '78373044a416c512d74a1fb0227cbc2e4a47023791e21e2536626fce9401fbf7'
+            '7aba0a625404ed78e73c57860871af3b52610ae5196407286811322e3cd76aa3'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'a5149d7220457d30e03e6999f35a050bce46acafc6230bfe6b4d4994c523516d'
@@ -300,9 +303,9 @@ case $_basever in
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
         0004-5.10-ck1.patch
-        #0005-undead-glitched-ondemand-pds.patch
-        #0005-undead-glitched-pds.patch
-        #0005-v5.10_undead-pds099o.patch
+        0005-undead-glitched-ondemand-pds.patch
+        0005-undead-glitched-pds.patch
+        0005-v5.10_undead-pds099o.patch
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.10-fsync.patch
@@ -314,7 +317,7 @@ case $_basever in
         #0012-linux-hardened.patch
         0012-misc-additions.patch
     )
-    sha256sums=('483d8b3945963ea375026c4dde019da36f5d2116241036b09493e63e92e39ee8'
+    sha256sums=('7276dafa91ba23bb988ab80be6fd010059163e1539187eb7daab22d2fa2803e2'
             '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
             '834247434877e4e76201ada7df35ebd4622116737e9650e0772f22d03083b426'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -326,6 +329,9 @@ case $_basever in
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
             '4231bd331289f5678b49d084698f0a80a3ae602eccb41d89e4f85ff4465eb971'
+            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+            '31b428c464905e44ed61cdcd1f42b4ec157ebe5a44cb5b608c4c99b466df66ba'
+            'f9f5f0a3a1d6c5233b9d7a4afe8ed99be97c4ff00a80bde4017d117c7d5f98ed'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
