@@ -1,9 +1,9 @@
 #!/bin/bash
 
-ver54=74
+ver54=75
 ver57=19
 ver58=18
-ver59=3
+ver59=5
 ver510=rc2
 
 _tkg_initscript() {
@@ -218,8 +218,9 @@ _tkg_initscript() {
   elif [ "$_compiler" = "llvm" ]; then
       echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
       echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
+  elif [ "$_compiler" = "gcc" ]; then
+      echo "_compiler_name=" >> ${_path}/compilerset
   else
-    echo "_compiler_name=" >> ${_path}/compilerset
     if [ "$_nofallback" != "true" ] && [ ! -e "${_path}"/compilerset ] && [ "$_compiler" != "llvm" ]; then
       warning "Something is wrong with your compiler selection. Do you want to fallback to GCC (default)?"
       read -rp "`echo $'    > N/y : '`" _fallback;
@@ -287,7 +288,9 @@ user_patcher() {
 
 _tkg_patcher() {
   if [ -e "$tkgpatch" ]; then
-    patch -Np1 -i "$tkgpatch"
+    echo -e "### Applying ${tkgpatch##*/}... ###" >> "$_where"/prepare.log
+    patch -Np1 -i "$tkgpatch" >> "$_where"/prepare.log || error "An error was encountered applying patches. It was logged to the prepare.log file."
+    echo -e "\n" >> "$_where"/prepare.log
   else
     msg2 "Patch either not found, not available for this kernel version or not needed. Skipping..."
   fi
@@ -303,6 +306,7 @@ _tkg_srcprep() {
     msg2 "Setting version..."
     scripts/setlocalversion --save-scmversion
     echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
+    echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/prepare.log
     echo "" > localversion.20-pkgname
 
     # add upstream patch
@@ -320,7 +324,7 @@ _tkg_srcprep() {
     fi
   fi
 
-  pwd
+  # Void
   if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
     cd ${wrksrc}/linux-${_rc_kern_ver}
   elif [ "$_distro" = "Void" ]; then

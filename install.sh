@@ -22,6 +22,8 @@ set -e
 _where=`pwd`
 srcdir="$_where"
 
+source customization.cfg
+
 source linux-tkg-config/prepare
 
 # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
@@ -51,8 +53,6 @@ case "$_basever" in
 esac
 
 _cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch"  
-
-source customization.cfg
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
@@ -110,9 +110,12 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [ "$_compiler_name" = "llvm" ]; then
     clang_deps="llvm clang lld"
   fi
-  if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
+  if [ "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
     sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
+  elif [ "$_distro" = "Debian" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev ${clang_deps} -y
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
     if [ $(rpm -E %fedora) = "32" ]; then

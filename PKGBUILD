@@ -38,7 +38,7 @@ if [[ "$_sub" = rc* ]]; then
 else
   _srcpath="linux-${_basekernel}"
   kernel_site="https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${_basekernel}.tar.xz"
-  patch_site="https://www.kernel.org/pub/linux/kernel/v5.x/patch-${_basekernel}.${_sub}.xz"
+  patch_site="https://cdn.kernel.org/pub/linux/kernel/v5.x/patch-${_basekernel}.${_sub}.xz"
 fi
 
 if [ -n "$_custom_pkgbase" ]; then
@@ -91,7 +91,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'f03c974148bcacae2e5a737b69aa588841a07448f7a970c42c7dfd357f649b04'
+            '788742ade6a3f28baaf8d9930df5f13bb56aeab81e2aae5661ae22c01befcded'
             '27b7fc535ade94b636c3ec4e809e141831e9465a0ef55215a9852b87048629e2'
             '55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -260,14 +260,14 @@ case $_basever in
 		0012-misc-additions.patch
 	)
 	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
-            '01bf91fd18b860f51659209352dc79f6c9bb29fb70a91e91ebc34d1291fe3cf1'
+            '27e2070e50cd9c268c3e94f348900a0f5517f2e393395b3dfde558c8206ae7fc'
             '5ab29eb64e57df83b395a29a6a4f89030d142feffbfbf73b3afc6d97a2a7fd12'
             '9bb2762ba80f7f38bf067c968badda9671fd1b7749274105569cda30b1ae820d'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
-            '902885088ed0748e40372e04a8ec11adf5acf3d935abffc6737dd9e6ec13bb93'
+            'bcac25553eb7e6319b5f89e92039806468b19ce8d3e7ca811e63e7c91aa8fa38'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'

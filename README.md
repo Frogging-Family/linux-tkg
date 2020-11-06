@@ -68,8 +68,11 @@ cd path/to/linux-tkg
 git clone -b tkg https://github.com/Hyper-KVM/void-packages/
 cd void-packages
 ./xbps-src binary-bootstrap
+# Optional: edit customization.cfg located in srcpkgs/linux-tkg/files
+# Optional: add custom userpatches with the ".mypatch" extension to srcpkgs/linux-tkg/files/mypatches
 ./xbps-src pkg -j$(nproc) linux-tkg
 ```
+If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
 
 ### Other linux distributions
 If your distro is not DEB or RPM based, `install.sh` script can clone the kernel tree, patch and edit a `.config` file from your current distro's 
