@@ -767,3 +767,50 @@ index 6f12bab4d2fa..610ed0817bd7 100644
  		    hci_find_irk_by_addr(hdev, &b->bdaddr, b->bdaddr_type)) {
  			return 0x00;
  		}
+
+From: Rajat Jain <rajatja@google.com>
+Subject: [PATCH] PCI: Always call pci_enable_acs() regardless of pdev->acs_cap
+Date: Wed, 28 Oct 2020 16:15:45 -0700
+
+Some devices may have have anomalies with the ACS cpability structure,
+and they may be using quirks to support ACS functionality via other
+registers. For such devices, it is important we always call
+pci_enable_acs() to give the quirks a chance to enable ACS in other ways.
+
+For Eg:
+There seems a class of Intel devices quirked with *_intel_pch_acs_*
+functions, that do not expose the standard ACS capability structure. But
+these quirks help support ACS on these devices using other registers:
+pci_quirk_enable_intel_pch_acs() -> doesn't use acs_cap to enable ACS
+
+This has already been taken care of in the quirks, in the other direction
+i.e. when checking if the ACS is enabled or not. So no need to do
+anything there.
+
+Reported-by: Boris V <borisvk@bstnet.org>
+Fixes: 52fbf5bdeeef ("PCI: Cache ACS capability offset in device")
+Signed-off-by: Rajat Jain <rajatja@google.com>
+---
+ drivers/pci/pci.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/pci/pci.c b/drivers/pci/pci.c
+index 6d4d5a2f923d..ab398226c55e 100644
+--- a/drivers/pci/pci.c
++++ b/drivers/pci/pci.c
+@@ -3516,8 +3516,13 @@ void pci_acs_init(struct pci_dev *dev)
+ {
+ 	dev->acs_cap = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ACS);
+ 
+-	if (dev->acs_cap)
+-		pci_enable_acs(dev);
++	/*
++	 * Attempt to enable ACS regardless of capability because some rootports
++	 * (e.g. the ones quirked with *_intel_pch_acs_*) may not expose
++	 * standard rootport capability structure, but still may support ACS via
++	 * those quirks.
++	 */
++	pci_enable_acs(dev);
+ }
+ 
+ /**
