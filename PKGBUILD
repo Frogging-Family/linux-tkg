@@ -254,7 +254,7 @@ case $_basever in
         	0008-5.9-bcachefs.patch
 		0009-glitched-ondemand-bmq.patch
 		0009-glitched-bmq.patch
-		0009-prjc_v5.9-r1.patch
+		0009-prjc_v5.9-r2.patch
         	0011-ZFS-fix.patch
 	        #0012-linux-hardened.patch
 		0012-misc-additions.patch
@@ -281,7 +281,7 @@ case $_basever in
             '7aba0a625404ed78e73c57860871af3b52610ae5196407286811322e3cd76aa3'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            'a5149d7220457d30e03e6999f35a050bce46acafc6230bfe6b4d4994c523516d'
+            '11d2343174e5486e8ea1a1e98f9f6f1a1625043f6547484f5a729a83f94336eb'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
 	;;
