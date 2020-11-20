@@ -198,8 +198,11 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     cd "$_where"/linux-${_basekernel}
   fi
 
-  msg2 "Copying current kernel's config and running make oldconfig..."
-  cp /boot/config-`uname -r` .config
+  if ( msg2 "Trying /boot/config-* ..." && cp /boot/config-`uname -r` .config ) || ( msg2 "Trying /proc/config.gz ..." && zcat --verbose /proc/config.gz > .config ); then
+    msg2 "Copying current kernel's config and running make oldconfig..."
+  else
+    msg2 "Current kernel config not found! Falling back to default..."
+  fi
   if [ "$_distro" = "Debian" ]; then #Help Debian cert problem.
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
@@ -224,9 +227,9 @@ if [ "$1" = "install" ]; then
 
   # Use custom compiler paths if defined
   if [ "$_compiler_name" = "-llvm" ] && [ -n "${CUSTOM_LLVM_PATH}" ]; then
-    PATH=${CUSTOM_LLVM_PATH}/bin:${CUSTOM_LLVM_PATH}/lib:${CUSTOM_LLVM_PATH}/include:${PATH}
+    PATH="${CUSTOM_LLVM_PATH}/bin:${CUSTOM_LLVM_PATH}/lib:${CUSTOM_LLVM_PATH}/include:${PATH}"
   elif [ -n "${CUSTOM_GCC_PATH}" ]; then
-    PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
+    PATH="${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}"
   fi
 
   if [ "$_force_all_threads" = "true" ]; then

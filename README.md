@@ -76,7 +76,7 @@ If you have to restart the build for any reason, run `./xbps-src clean linux-tkg
 
 ### Other linux distributions
 If your distro is not DEB or RPM based, `install.sh` script can clone the kernel tree, patch and edit a `.config` file from your current distro's 
-that is expected at ``/boot/config-`uname -r`.config`` (otherwise it won't work as-is)
+that is expected either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise it won't work as-is)
 
 The command to do for that is:
 ```
