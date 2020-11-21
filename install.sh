@@ -24,34 +24,7 @@ srcdir="$_where"
 
 source customization.cfg
 
-source linux-tkg-config/prepare
-
-if [[ "$_sub" = rc* ]]; then
-  # if an RC version, subver will always be 0
-  _kernel_subver=0
-else
-  _kernel_subver="${_sub}"
-fi
-
-case "$_basever" in
-	"54")
-	opt_ver="4.19-v5.4"
-	;;
-	"57")
-	opt_ver="5.7%2B"
-	;;
-	"58")
-	opt_ver="5.8%2B"
-	;;
-	"59")
-	opt_ver="5.8%2B"
-	;;
-	"510")
-	opt_ver="5.8%2B"
-	;;
-esac
-
-_cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch"  
+source linux-tkg-config/prepare 
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
@@ -102,7 +75,26 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   cd "$_where"
 
   msg2 "Downloading Graysky2's CPU optimisations patch"
-  wget "$_cpu_opt_patch_link"
+
+  case "$_basever" in
+    "54")
+    opt_ver="4.19-v5.4"
+    ;;
+    "57")
+    opt_ver="5.7%2B"
+    ;;
+    "58")
+    opt_ver="5.8%2B"
+    ;;
+    "59")
+    opt_ver="5.8%2B"
+    ;;
+    "510")
+    opt_ver="5.8%2B"
+    ;;
+  esac
+
+  wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch" 
 
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
@@ -171,6 +163,14 @@ if [ "$1" = "install" ]; then
     _kernel_flavor="tkg-${_cpusched}${_compiler_name}"
   else
     _kernel_flavor="tkg-${_kernel_localversion}"
+  fi
+
+  # Setup kernel_subver variable
+  if [[ "$_sub" = rc* ]]; then
+    # if an RC version, subver will always be 0
+    _kernel_subver=0
+  else
+    _kernel_subver="${_sub}"
   fi
 
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
