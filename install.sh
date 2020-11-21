@@ -224,10 +224,7 @@ if [ "$1" = "install" ]; then
       mkdir -p RPMS
       
       # Move rpm files to RPMS folder inside the linux-tkg folder
-      mv ~/rpmbuild/RPMS/x86_64/* "$_where"/RPMS/
-
-      #Clean up the original folder, unneeded and takes a lot of space
-      rm -rf ~/rpmbuild/
+      mv ~/rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
