@@ -219,7 +219,7 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if RPMOPTS='--define "_topdir ~/.cache/linux-tkg-rpmbuild"' make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -228,7 +228,9 @@ if [ "$1" = "install" ]; then
       mkdir -p RPMS
       
       # Move rpm files to RPMS folder inside the linux-tkg folder
-      mv ~/rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
+      mv ~/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
+
+      rm -rf ~/.cache/linux-tkg-rpmbuild
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
