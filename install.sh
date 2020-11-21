@@ -49,6 +49,10 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     _distro_prompt
   fi
 
+  if [ "$1" = "config" ]; then
+    _distro="Unknown"
+  fi
+
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
