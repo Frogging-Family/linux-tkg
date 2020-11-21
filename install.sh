@@ -72,12 +72,12 @@ _misc_adds="false" # We currently don't want this enabled on non-Arch
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
-  # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
-  _tkg_initscript
-
   if [ -z $_distro ] && [ "$1" = "install" ]; then
     _distro_prompt
   fi
+
+  # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
+  _tkg_initscript
 
   if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
