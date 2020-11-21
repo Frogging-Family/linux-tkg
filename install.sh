@@ -26,9 +26,6 @@ source customization.cfg
 
 source linux-tkg-config/prepare
 
-# Run init script that is also run in PKGBUILD, it will define some env vars that we will use
-_tkg_initscript
-
 if [[ "$_sub" = rc* ]]; then
   # if an RC version, subver will always be 0
   _kernel_subver=0
@@ -73,32 +70,11 @@ _misc_adds="false" # We currently don't want this enabled on non-Arch
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
-  if [ -z $_distro ] && [ "$1" = "install" ]; then
-    while true; do
-      echo "Which linux distribution are you running ?"
-      echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
-      echo "   1) Debian"
-      echo "   2) Fedora"
-      echo "   3) Suse"
-      echo "   4) Ubuntu"
-      read -p "[1-4]: " _distro_index
+  # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
+  _tkg_initscript
 
-      if [ "$_distro_index" = "1" ]; then
-        _distro="Debian"
-        break
-      elif [ "$_distro_index" = "2" ]; then
-        _distro="Fedora"
-        break
-      elif [ "$_distro_index" = "3" ]; then
-        _distro="Suse"
-        break
-      elif [ "$_distro_index" = "4" ]; then
-        _distro="Ubuntu"
-        break
-      else
-        echo "Wrong index."
-      fi
-    done
+  if [ -z $_distro ] && [ "$1" = "install" ]; then
+    _distro_prompt
   fi
 
   if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
@@ -346,6 +322,10 @@ if [ "$1" = "install" ]; then
 fi
 
 if [ "$1" = "uninstall-help" ]; then
+
+  if [ -z $_distro ]; then
+    _distro_prompt
+  fi
 
   cd "$_where"
   msg2 "List of installed custom tkg kernels: "
