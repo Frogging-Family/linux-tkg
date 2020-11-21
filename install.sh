@@ -230,8 +230,6 @@ if [ "$1" = "install" ]; then
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv ${HOME}/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
-      rm -rf ${HOME}/.cache/linux-tkg-rpmbuild
-
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
         
