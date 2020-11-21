@@ -36,6 +36,88 @@ _distro_prompt() {
   
 }
 
+_install_dependencies() {
+  if [ "$_compiler_name" = "llvm" ]; then
+    clang_deps="llvm clang lld"
+  fi
+  if [ "$_distro" = "Ubuntu" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
+  elif [ "$_distro" = "Debian" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev ${clang_deps} -y
+  elif [ "$_distro" = "Fedora" ]; then
+    msg2 "Installing dependencies"
+    if [ $(rpm -E %fedora) = "32" ]; then
+      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build ${clang_deps} -y
+    else
+      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel elfutils-devel openssl openssl-devel dwarves rpm-build perl-devel perl-generators python3-devel make -y ${clang_deps} -y
+    fi
+  elif [ "$_distro" = "Suse" ]; then
+    msg2 "Installing dependencies"
+    sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 ${clang_deps}
+  fi
+}
+
+_linux_git_branch_checkout() {
+
+  cd "$_where"
+
+  if ! [ -d linux-src-git ]; then
+    msg2 "First initialization of the linux source code git floder"
+    mkdir linux-src-git
+    cd linux-src-git
+    git init
+    git remote add origin https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+  else
+    cd linux-src-git
+
+    msg2 "Current branch: $(git branch | grep "\*")"
+    msg2 "Reseting files to their original state"
+    
+    git reset --hard HEAD
+    git clean -f -d -x
+  fi 
+
+  if [[ "$_sub" = rc* ]]; then
+    msg2 "Switching to master branch for RC Kernel"
+    _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
+
+    if ! git branch --list | grep "master" ; then
+      msg2 "master branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add origin master        
+      git fetch origin master --shallow-since=$_clone_start_date
+      git checkout -b master origin/master      
+    else
+      msg2 "master branch exists locally, updating..."
+      git checkout master
+      git fetch origin master --shallow-since=$_clone_start_date
+      git reset --hard origin/master
+    fi
+    msg2 "Checking out latest RC tag"
+    git fetch origin tag "v${_basekernel}-${_sub}" 
+    git checkout "v${_basekernel}-${_sub}"
+
+  else
+    msg2 "Switching to linux-${_basekernel}.y"
+    if ! git branch --list | grep "linux-${_basekernel}.y" ; then
+      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add origin linux-${_basekernel}.y        
+      git fetch origin linux-${_basekernel}.y --depth=1
+      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y      
+    else
+      msg2 "${_basekernel}.y branch exists locally, updating..."
+      git checkout linux-${_basekernel}.y
+      git fetch origin linux-${_basekernel}.y --depth=1
+      git reset --hard origin/linux-${_basekernel}.y
+    fi
+    msg2 "Checking out latest release"
+    git fetch origin tag "v${_basekernel}.${_sub}"
+    git checkout "v${_basekernel}.${_sub}"
+  fi
+
+}
+
 _tkg_initscript() {
 
   # Default to Arch
@@ -51,6 +133,9 @@ _tkg_initscript() {
     _path="${_where}"
   fi
 
+  # _basever, _basekernel and _sub are saved to the file "versel"
+  # then this file is sourced at the end of these so these vars are accessible
+  # to the rest of the script
   if [ -z "$_version" ] && [ ! -e "$_path"/versel ]; then
     plain "Which kernel version do you want to install?"
     read -rp "`echo $'    1. 5.4 LTS\n    2. 5.7\n    3. 5.8\n  > 4. 5.9\n    5. 5.10 RC\nchoice[1-5?]'`" _VERSEL;
@@ -351,10 +436,9 @@ _tkg_srcprep() {
   fi
 
   # Void
-  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
-    cd ${wrksrc}/linux-${_rc_kern_ver}
-  elif [ "$_distro" = "Void" ]; then
-    cd ${wrksrc}/linux-${_kern_ver}
+
+  if [ "$_distro" = "Void" ]; then
+    cd ${wrksrc}/linux-src-git
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
@@ -457,9 +541,7 @@ _tkg_srcprep() {
   fi
 
   if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
-    cd ${wrksrc}/linux-${_rc_kern_ver}
-  elif [ "$_distro" = "Void" ] && [[ "$_sub" != rc* ]]; then
-    cd ${wrksrc}/linux-${_kern_ver}
+    cd ${wrksrc}/linux-src-git
   fi
 
   if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
@@ -1274,48 +1356,52 @@ exit_cleanup() {
     rm -rf "$srcdir"/*-profile.cfg
     rm -f "$srcdir"/config.x86_64
     rm -f "$srcdir"/customization.cfg
-  else
-    # Meh
-    rm -rf "$srcdir"/linux-${_basekernel}/Documentation/filesystems/aufs/*
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/ABI/testing/*-aufs
-    rm -rf "$srcdir"/linux-${_basekernel}/fs/aufs/*
-    rm -f "$srcdir"/linux-${_basekernel}/include/uapi/linux/aufs*
 
-    rm -f "$srcdir"/linux-${_basekernel}/mm/prfile.c
+  elif [ "$_distro" == "Arch" ]; then
+    # TODO: Ask TKG if this block is actually useful for Arch ?
+    # If it is not, it can be entirely deleted
+    # Because install.sh cleans the git folder anyway.
+    # Otherwise update the naming
+    rm -rf "$srcdir"/linux-src-git/Documentation/filesystems/aufs/*
+    rm -f "$srcdir"/linux-src-git/Documentation/ABI/testing/*-aufs
+    rm -rf "$srcdir"/linux-src-git/fs/aufs/*
+    rm -f "$srcdir"/linux-src-git/include/uapi/linux/aufs*
 
-    rm -f "$srcdir"/linux-${_basekernel}/block/bfq*
+    rm -f "$srcdir"/linux-src-git/mm/prfile.c
 
-    rm -rf "$srcdir"/linux-${_basekernel}/drivers/scsi/vhba/*
+    rm -f "$srcdir"/linux-src-git/block/bfq*
 
-    rm -rf "$srcdir"/linux-${_basekernel}/fs/exfat/*
-    rm -f "$srcdir"/linux-${_basekernel}/include/trace/events/fs.h
+    rm -rf "$srcdir"/linux-src-git/drivers/scsi/vhba/*
 
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-PDS-mq.txt
-    rm -f "$srcdir"/linux-${_basekernel}/include/linux/skip_list.h
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/pds_sched.h
+    rm -rf "$srcdir"/linux-src-git/fs/exfat/*
+    rm -f "$srcdir"/linux-src-git/include/trace/events/fs.h
 
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BMQ.txt
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/${_sched}.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/sched/alt_debug.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/alt_sched.h
+    rm -f "$srcdir"/linux-src-git/Documentation/scheduler/sched-PDS-mq.txt
+    rm -f "$srcdir"/linux-src-git/include/linux/skip_list.h
+    rm -f "$srcdir"/linux-src-git/kernel/sched/pds.c
+    rm -f "$srcdir"/linux-src-git/kernel/sched/pds_sched.h
 
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-BFS.txt
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/scheduler/sched-MuQSS.txt
-    rm -rf "$srcdir"/linux-${_basekernel}/arch/blackfin/*
-    rm -f "$srcdir"/linux-${_basekernel}/arch/powerpc/configs/c2k_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/arch/score/configs/spct6600_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilegx_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/arch/tile/configs/tilepro_defconfig
-    rm -f "$srcdir"/linux-${_basekernel}/drivers/staging/lustre/lnet/lnet/lib-eq.c
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/sched/MuQSS*
-    rm -f "$srcdir"/linux-${_basekernel}/kernel/skip_list.c
+    rm -f "$srcdir"/linux-src-git/Documentation/scheduler/sched-BMQ.txt
+    rm -f "$srcdir"/linux-src-git/kernel/sched/${_sched}.c
+    rm -f "$srcdir"/linux-src-git/kernel/sched/sched/alt_debug.c
+    rm -f "$srcdir"/linux-src-git/kernel/sched/alt_sched.h
 
-    rm -f "$srcdir"/linux-${_basekernel}/Documentation/vm/uksm.txt
-    rm -f "$srcdir"/linux-${_basekernel}/include/linux/sradix-tree.h
-    rm -f "$srcdir"/linux-${_basekernel}/include/linux/uksm.h
-    rm -f "$srcdir"/linux-${_basekernel}/lib/sradix-tree.c
-    rm -f "$srcdir"/linux-${_basekernel}/mm/uksm.c
+    rm -f "$srcdir"/linux-src-git/Documentation/scheduler/sched-BFS.txt
+    rm -f "$srcdir"/linux-src-git/Documentation/scheduler/sched-MuQSS.txt
+    rm -rf "$srcdir"/linux-src-git/arch/blackfin/*
+    rm -f "$srcdir"/linux-src-git/arch/powerpc/configs/c2k_defconfig
+    rm -f "$srcdir"/linux-src-git/arch/score/configs/spct6600_defconfig
+    rm -f "$srcdir"/linux-src-git/arch/tile/configs/tilegx_defconfig
+    rm -f "$srcdir"/linux-src-git/arch/tile/configs/tilepro_defconfig
+    rm -f "$srcdir"/linux-src-git/drivers/staging/lustre/lnet/lnet/lib-eq.c
+    rm -f "$srcdir"/linux-src-git/kernel/sched/MuQSS*
+    rm -f "$srcdir"/linux-src-git/kernel/skip_list.c
+
+    rm -f "$srcdir"/linux-src-git/Documentation/vm/uksm.txt
+    rm -f "$srcdir"/linux-src-git/include/linux/sradix-tree.h
+    rm -f "$srcdir"/linux-src-git/include/linux/uksm.h
+    rm -f "$srcdir"/linux-src-git/lib/sradix-tree.c
+    rm -f "$srcdir"/linux-src-git/mm/uksm.c
   fi
 
   if [ "${_distro}" = "Arch" ]; then
@@ -1327,6 +1413,6 @@ exit_cleanup() {
     msg2 "compilation time : \n$_runtime"
   fi
 }
-if [ "$_distro" != "Void" ] && [ "$1" != "config" ]; then
+if [ "$_distro" != "Void" ]; then
   trap exit_cleanup EXIT
 fi

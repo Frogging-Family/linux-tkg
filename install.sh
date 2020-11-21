@@ -29,6 +29,8 @@ source linux-tkg-config/prepare
 if [[ "$_sub" = rc* ]]; then
   # if an RC version, subver will always be 0
   _kernel_subver=0
+else
+  _kernel_subver="${_sub}"
 fi
 
 case "$_basever" in
@@ -53,7 +55,7 @@ _cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : shallow clones the linux ${_basekernel}.x git tree into the folder linux-${_basekernel}, then applies on it the extra patches and prepares the .config file 
+        - config : shallow clones the linux ${_basekernel}.x git tree into the folder linux-src-git, then applies on it the extra patches and prepares the .config file 
                    by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
         - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
         - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
@@ -83,25 +85,10 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     exit 0
   fi
 
-  if [ "$_compiler_name" = "llvm" ]; then
-    clang_deps="llvm clang lld"
-  fi
-  if [ "$_distro" = "Ubuntu" ]; then
-    msg2 "Installing dependencies"
-    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
-  elif [ "$_distro" = "Debian" ]; then
-    msg2 "Installing dependencies"
-    sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev ${clang_deps} -y
-  elif [ "$_distro" = "Fedora" ]; then
-    msg2 "Installing dependencies"
-    if [ $(rpm -E %fedora) = "32" ]; then
-      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build ${clang_deps} -y
-    else
-      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel elfutils-devel openssl openssl-devel dwarves rpm-build perl-devel perl-generators python3-devel make -y ${clang_deps} -y
-    fi
-  elif [ "$_distro" = "Suse" ]; then
-    msg2 "Installing dependencies"
-    sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 ${clang_deps}
+  # Install the needed dependencies if the user wants to install the kernel
+  # Not needed if the user asks for install.sh config
+  if [ $1 == "install" ]; then
+    _install_dependencies
   fi
 
   # Force prepare script to avoid Arch specific commands if the user is using `config`
@@ -109,56 +96,8 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     _distro=""
   fi
 
-  if [[ "$_sub" = rc* ]]; then
-    if [ -d linux-main.orig ]; then
-      rm -rf linux-main.orig
-    fi
-  
-    if [  -d linux-main ]; then
-      msg2 "Reseting files in linux-main to their original state and getting latest updates"
-      cd "$_where"/linux-main
-      git reset --hard HEAD
-      git clean -f -d -x
-      git checkout master
-      git pull
-      git checkout "v${_basekernel}-${_sub}"
-      msg2 "Done" 
-      cd "$_where"
-    else
-      msg2 "Shallow git cloning linux kernel master branch"
-      # Shallow clone the past 3 weeks
-      _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
-      git clone --branch master --single-branch --shallow-since=$_clone_start_date https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$_where"/linux-main
-      cd "$_where"/linux-main
-      git checkout "v${_basekernel}-${_sub}"
-      msg2 "Done"
-    fi
-  else
-    if [ -d linux-${_basekernel}.orig ]; then
-      rm -rf linux-${_basekernel}.orig
-    fi
-  
-    if [ -d linux-${_basekernel} ]; then
-      msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
-      cd "$_where"/linux-${_basekernel}
-      git checkout --force linux-$_basekernel.y
-      git clean -f -d -x
-      git pull
-      msg2 "Done" 
-      cd "$_where"
-    else
-      msg2 "Shallow git cloning linux $_basekernel"
-      git clone --branch linux-$_basekernel.y --single-branch --depth=1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
-      msg2 "Done"
-    fi
-  
-    # Define current kernel subversion
-    if [ -z $_kernel_subver ]; then
-      cd "$_where"/linux-${_basekernel}
-      _kernelverstr=`git describe`
-      _kernel_subver=${_kernelverstr:5}
-    fi
-  fi
+  # Git clone (if necessary) and checkout the asked branch by the user
+  _linux_git_branch_checkout
   
   cd "$_where"
 
@@ -168,11 +107,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
   # cd in linux folder, copy Ubuntu's current config file, update with new params
-  if [[ "$_sub" = rc* ]]; then
-    cd "$_where"/linux-main
-  else
-    cd "$_where"/linux-${_basekernel}
-  fi
+  cd "$_where"/linux-src-git
 
   if ( msg2 "Trying /boot/config-* ..." && cp /boot/config-`uname -r` .config ) || ( msg2 "Trying /proc/config.gz ..." && zcat --verbose /proc/config.gz > .config ); then
     msg2 "Copying current kernel's config and running make oldconfig..."
