@@ -1,31 +1,38 @@
-**Due to intel_pstate poor performances as of late, I have decided to set it to passive mode to make use of the acpi_cpufreq governors passthrough, keeping full support for turbo frequencies.**
+## Linux-TKG
 
-## Nvidia prop drivers might need to be patched if they aren't supporting your chosen kernel OOTB (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
+This repository provides scripts to automatically download, patch and compile the Linux Kernel from [the official Linux git repository](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git), with extra select patches that aim for better desktop/gaming performance. Users can customize which patches are added to the "vanilla" sources and also provide their own patches, by editing the file `customization.cfg`. More information is available in the file itself.
 
+### Important information
 
-Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
-- 5.10rc (Undead PDS, Project C / PDS & BMQ, MuQSS)
-- 5.9.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
-- 5.8.y (Undead PDS, Project C / PDS & BMQ)
-- 5.7.y (MuQSS, PDS, Project C / BMQ)
-- 5.4.y (MuQSS, PDS, BMQ)
+- Due to `intel_pstate` poor performances as of late, it is set it to passive mode to make use of the `acpi_cpufreq` governors passthrough, keeping full support for turbo frequencies.
 
-MuQSS : http://ck-hack.blogspot.com/
+- Nvidia prop drivers might need to be patched if they aren't supporting your chosen kernel OOTB (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
 
-Project C / PDS & BMQ : http://cchalpha.blogspot.com/
+---------------------
+### Customization options
+#### Alternative CPU schedulers
 
-Undead PDS: PDS-mq was originally created by Alfred Chen : http://cchalpha.blogspot.com/
+CFS is the original scheduler available in the kernel sources. Additionnal schedulers are provided, who can provide a better interactivity/performance ratio, aiming for a better gaming experience. The kernel can be compiled with one of them:
+- 5.10rc: Undead PDS, Project C / PDS & BMQ, MuQSS, CFS
+- 5.9.y: Undead PDS, Project C / PDS & BMQ, MuQSS, CFS
+- 5.8.y: Undead PDS, Project C / PDS & BMQ, CFS
+- 5.7.y: MuQSS, PDS, Project C / BMQ, CFS
+- 5.4.y: MuQSS, PDS, BMQ, CFS
 
-While he dropped it with kernel 5.1 in favor of its BMQ evolution/rework, my pretty bad gaming experiences with BMQ up to this point convinced me to keep PDS afloat for as long as it'll make sense/I'll be able to.
-Update: Alfred has revived PDS through Project C as of kernel 5.8.0 release.
+**More informaiton about the alternative schedulers:**
+- MuQSS by ck : http://ck-hack.blogspot.com/
+- Project C / PDS & BMQ by Alfred Chen, http://cchalpha.blogspot.com/
+- Undead PDS: derived from PDS-mq by TKG, the ancestor of Project C PDS. While it got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par with its elder PDS-mq in gaming, PDS will be kept afloat for as long as it'll make sense/possible to.
 
-Various personalization options available and userpatches support (put your own patches in the same dir as the PKGBUILD, with the ".mypatch" extension). The options built with are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
+#### User patches
 
-Comes with a slightly modified Arch config asking for a few core personalization settings at compilation time.
+To apply your own patch files, put them in the same dir as the `PKGBUILD` file, with the `.mypatch` extension. The script will by default ask if you want to apply them, one by one. The option `_user_patches` should be set to `true` in the `customization.cfg` file for this to work.
+#### Modprobed-db
+
 If you want to streamline your kernel config for lower footprint and faster compilations : https://wiki.archlinux.org/index.php/Modprobed-db
-You can optionally enable support for it at the beginning of the PKGBUILD file. **Make sure to read everything you need to know about it as there are big caveats making it NOT recommended for most users**.
+You can optionally enable support for it in the `customization.cfg` file. **Make sure to read everything you need to know about it as there are big caveats making it NOT recommended for most users**.
 
-## Other stuff included:
+#### Misc additions:
 - Graysky's per-CPU-arch native optimizations - https://github.com/graysky2/kernel_gcc_patch
 - memory management and swapping tweaks
 - scheduling tweaks
@@ -39,17 +46,21 @@ You can optionally enable support for it at the beginning of the PKGBUILD file. 
 - **optional** Fsync support (proton)
 - **optional** ZFS fpu symbols (<5.9)
 
-## Install procedure
+-------------
+### Install procedure
 
-### Arch & derivatives
+#### Arch & derivatives
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg
 # Optional: edit customization.cfg file
 makepkg -si
 ```
+The script will use a slightly modified Arch config, that is in the `linux-tkg-config` folder. The options built with are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
 
-### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
+
+
+#### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg
@@ -62,8 +73,9 @@ manually. The script can can help out with some useful information:
 cd path/to/linux-tkg
 ./install.sh uninstall-help
 ```
+The script will use the `.config` file from the one that your current distro uses, that is expected either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise the script won't work as-is). It is recommended to run the script on the kernel your distro is providing.
 
-### Void Linux
+#### Void Linux
 ```
 git clone -b tkg https://github.com/Hyper-KVM/void-packages/
 cd void-packages
@@ -74,9 +86,8 @@ cd void-packages
 ```
 If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
 
-### Other linux distributions
-If your distro is not DEB or RPM based, `install.sh` script can clone the kernel tree, patch and edit a `.config` file from your current distro's 
-that is expected either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise it won't work as-is)
+#### Other linux distributions
+If your distro is not DEB or RPM based, `install.sh` script can clone the kernel tree, patch and edit a `.config` file from the one that your current distro uses. It is expected either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise it won't work as-is).
 
 The command to do for that is:
 ```
