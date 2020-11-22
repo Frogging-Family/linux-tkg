@@ -1,4 +1,4 @@
-## Linux-TKG
+## Linux-tkg
 
 This repository provides scripts to automatically download, patch and compile the Linux Kernel from [the official Linux git repository](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git), with extra select patches that aim for better desktop/gaming performance. Users can customize which patches are added to the "vanilla" sources and also provide their own patches, by editing the file `customization.cfg`. More information is available in the file itself.
 
@@ -12,7 +12,7 @@ This repository provides scripts to automatically download, patch and compile th
 ### Customization options
 #### Alternative CPU schedulers
 
-CFS is the original scheduler available in the kernel sources. Additionnal schedulers are provided, who can provide a better interactivity/performance ratio, aiming for a better gaming experience. The kernel can be compiled with one of them:
+CFS is the original scheduler available in the kernel sources. Additional schedulers are provided: they can offer a better interactivity/performance ratio, aiming for a better gaming experience. The kernel can be compiled with one of them:
 - 5.10rc: Undead PDS, Project C / PDS & BMQ, MuQSS, CFS
 - 5.9.y: Undead PDS, Project C / PDS & BMQ, MuQSS, CFS
 - 5.8.y: Undead PDS, Project C / PDS & BMQ, CFS
