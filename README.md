@@ -1,4 +1,4 @@
-## Linux-tkg
+## linux-tkg
 
 This repository provides scripts to automatically download, patch and compile the Linux Kernel from [the official Linux git repository](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git), with extra select patches that aim for better desktop/gaming performance. Users can customize which patches are added to the "vanilla" sources and also provide their own patches, by editing the file `customization.cfg`. More information is available in the file itself.
 
