@@ -316,6 +316,7 @@ case $_basever in
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
+        0013-v5.10-rc7-revert.patch
     )
     sha256sums=('9f95194fc84eef01789f2ed6566518ef597e9c6541b640f7276f2a3ef1a221f2'
             'SKIP'
@@ -339,7 +340,8 @@ case $_basever in
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'a5149d7220457d30e03e6999f35a050bce46acafc6230bfe6b4d4994c523516d'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
+            '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e'
+            '748f7d9db58946d82caf4fe1c76d4f855eee806aa140b0aa69236f1f89a3e5c6')
 	;;
 esac
 
