@@ -254,7 +254,7 @@ case $_basever in
         	0008-5.9-bcachefs.patch
 		0009-glitched-ondemand-bmq.patch
 		0009-glitched-bmq.patch
-		0009-prjc_v5.9-r2.patch
+		0009-prjc_v5.9-r3.patch
         	0011-ZFS-fix.patch
 	        #0012-linux-hardened.patch
 		0012-misc-additions.patch
@@ -281,7 +281,7 @@ case $_basever in
             '14a261f1940a2b21b6b14df7391fc2c6274694bcfabfac3d0e985a67285dbfe7'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            '11d2343174e5486e8ea1a1e98f9f6f1a1625043f6547484f5a729a83f94336eb'
+            '0d5fe3a9050536fe431564b221badb85af7ff57b330e3978ae90d21989fcad2d'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
 	;;
@@ -338,7 +338,7 @@ case $_basever in
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            'a5149d7220457d30e03e6999f35a050bce46acafc6230bfe6b4d4994c523516d'
+            '0d5fe3a9050536fe431564b221badb85af7ff57b330e3978ae90d21989fcad2d'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e'
             '748f7d9db58946d82caf4fe1c76d4f855eee806aa140b0aa69236f1f89a3e5c6')
