@@ -253,8 +253,16 @@ _tkg_initscript() {
 }
 
 user_patcher() {
+    for _f in "$_where"/*."${_userpatch_ext}patch" "$_where"/*."${_userpatch_ext}revert"; do
+      [ -e "${_f}" ] || continue
+      warning "Found userpatch file ${f##*/} in the PKGBUILD directory."
+      warning "Userpatches must now be placed in version-specific subdirectories (linux${_basever}-tkg-userpatches for this kernel version)."
+      warning "The patch will not be applied."
+      break
+    done
+
 	# To patch the user because all your base are belong to us
-	local _patches=("$_where"/*."${_userpatch_ext}revert")
+	local _patches=("$_where"/linux"$_basever"-tkg-userpatches/*."${_userpatch_ext}revert")
 	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
 	  if [ "$_user_patches_no_confirm" != "true" ]; then
 	    msg2 "Found ${#_patches[@]} 'to revert' userpatches for ${_userpatch_target}:"
@@ -276,7 +284,7 @@ user_patcher() {
 	  fi
 	fi
 
-	_patches=("$_where"/*."${_userpatch_ext}patch")
+	_patches=("$_where"/linux"$_basever"-tkg-userpatches/*."${_userpatch_ext}patch")
 	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
 	  if [ "$_user_patches_no_confirm" != "true" ]; then
 	    msg2 "Found ${#_patches[@]} userpatches for ${_userpatch_target}:"
@@ -1114,8 +1122,9 @@ _tkg_srcprep() {
       cd "$_where/.." && git clone https://github.com/Frogging-Family/community-patches.git && cd "${srcdir}/${_srcpath}"
     fi
     _community_patches=($_community_patches)
+    mkdir -p "$_where"/linux"$_basever"-tkg-userpatches
     for _p in ${_community_patches[@]}; do
-      ln -s "$_where"/../community-patches/linux"$_basever"-tkg/$_p "$_where"/
+      ln -s "$_where"/../community-patches/linux"$_basever"-tkg/$_p "$_where"/linux"$_basever"-tkg-userpatches/$_p
     done
   fi
 
@@ -1128,7 +1137,7 @@ _tkg_srcprep() {
 
   # Community patches removal
   for _p in ${_community_patches[@]}; do
-    rm -f "$_where"/$_p
+    rm -f "$_where"/linux"$_basever"-tkg-userpatches/$_p
   done
 
   if [ "$_distro" = "Arch" ] || [ "$_distro" = "Void" ]; then
@@ -1266,7 +1275,7 @@ exit_cleanup() {
 
   # Community patches removal in case of failure
   for _p in ${_community_patches[@]}; do
-    rm -f "$_where"/"$_p"
+    rm -f "$_where"/linux"$_basever"-tkg-userpatches/"$_p"
   done
 
   if [ "$_NUKR" = "true" ] && [ "$_where" != "$srcdir" ]; then
