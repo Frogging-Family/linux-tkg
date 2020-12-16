@@ -1,10 +1,10 @@
 #!/bin/bash
 
-ver54=78
+ver54=83
 ver57=19
 ver58=18
-ver59=9
-ver510=rc4
+ver59=14
+ver510=1
 
 _distro_prompt() {
   
@@ -138,7 +138,7 @@ _tkg_initscript() {
   # to the rest of the script
   if [ -z "$_version" ] && [ ! -e "$_path"/versel ]; then
     plain "Which kernel version do you want to install?"
-    read -rp "`echo $'    1. 5.4 LTS\n    2. 5.7\n    3. 5.8\n  > 4. 5.9\n    5. 5.10 RC\nchoice[1-5?]'`" _VERSEL;
+    read -rp "`echo $'    1. 5.4 LTS\n    2. 5.7\n    3. 5.8\n    4. 5.9\n  > 5. 5.10\nchoice[1-5?]'`" _VERSEL;
     case $_VERSEL in
           "1")
           echo "_basever=54" > "$_path"/versel
@@ -155,15 +155,15 @@ _tkg_initscript() {
           echo "_basekernel=5.8" >> "$_path"/versel
           echo "_sub=${ver58}" >> "$_path"/versel
           ;;
-          "5")
-          echo "_basever=510" > "$_path"/versel
-          echo "_basekernel=5.10" >> "$_path"/versel
-          echo "_sub=${ver510}" >> "$_path"/versel
-          ;;
-          *)
+          "4")
           echo "_basever=59" > "$_path"/versel
           echo "_basekernel=5.9" >> "$_path"/versel
           echo "_sub=${ver59}" >> "$_path"/versel
+          ;;
+          *)
+          echo "_basever=510" > "$_path"/versel
+          echo "_basekernel=5.10" >> "$_path"/versel
+          echo "_sub=${ver510}" >> "$_path"/versel
           ;;
     esac
   elif [ -n "$_version" ];then
@@ -477,7 +477,7 @@ _tkg_srcprep() {
   if [ "$_basever" = "58" ] || [ "$_basever" = "57" ]; then
     rev=3
   elif [ "$_basever" = "59" ]; then
-    rev=2
+    rev=3
   else
     rev=0
   fi
@@ -496,23 +496,26 @@ _tkg_srcprep() {
     tkgpatch="$srcdir/0004-glitched-muqss.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "upds" ] || [ "${_cpusched}" = "pds" ]; then
-    # PDS-mq
-    msg2 "Applying PDS base patch"
-    if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
-      tkgpatch="$srcdir/0005-v${_basekernel}_undead-pds099o.patch" && _tkg_patcher
-    else
-      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
-    fi
-
     # upds naming quirk
     if [ "${_cpusched}" = "upds" ];then
       # is it dead or alive
       doa="-undead"
     fi
 
-    if [ "${_aggressive_ondemand}" = "true" ]; then
-      msg2 "Applying PDS agressive ondemand governor patch"
-      tkgpatch="$srcdir/0005${doa}-glitched-ondemand-pds.patch" && _tkg_patcher
+    # PDS-mq
+    msg2 "Applying PDS base patch"
+    if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
+      tkgpatch="$srcdir/0005-v${_basekernel}_undead-pds099o.patch" && _tkg_patcher
+      if [ "${_aggressive_ondemand}" = "true" ]; then
+        msg2 "Applying PDS agressive ondemand governor patch"
+        tkgpatch="$srcdir/0005${doa}-glitched-ondemand-pds.patch" && _tkg_patcher
+      fi
+    else
+      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
+      if [ "${_aggressive_ondemand}" = "true" ]; then
+        msg2 "Applying prjc PDS/BMQ agressive ondemand governor patch"
+        tkgpatch="$srcdir/0009-glitched-ondemand-bmq.patch" && _tkg_patcher
+      fi
     fi
 
     msg2 "Applying Glitched PDS patch"
@@ -998,12 +1001,22 @@ _tkg_srcprep() {
   fi
 
   # default cpu gov
-  if [ "$_default_cpu_gov" = "performance" ]; then
-    sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
-    sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y/' ./.config
-  elif [ "$_default_cpu_gov" = "ondemand" ]; then
-    sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
-    sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y/' ./.config
+  if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] || [ "$_basever" = "58" ]; then
+    if [ "$_default_cpu_gov" = "performance" ]; then
+      sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
+      sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y/' ./.config
+    elif [ "$_default_cpu_gov" = "ondemand" ]; then
+      sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
+      sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y/' ./.config
+    fi
+  else
+    if [ "$_default_cpu_gov" = "performance" ]; then
+      _custom_commandline+=" cpufreq.default_governor=performance"
+    elif [ "$_default_cpu_gov" = "ondemand" ]; then
+      _custom_commandline+=" cpufreq.default_governor=ondemand"
+      sed -i -e 's/CONFIG_CPU_FREQ_GOV_ONDEMAND=m/CONFIG_CPU_FREQ_GOV_ONDEMAND=y/' ./.config
+    fi
+    msg2 "Command line set to \"$_custom_commandline\""
   fi
 
   # ACPI_CPUFREQ disablement
@@ -1170,19 +1183,22 @@ _tkg_srcprep() {
   fi
 
  # Anbox modules
-  if [ "$_basever" > "56" ]; then
+  if [ "$_basever" != "54" ]; then
     if [ -z "$_anbox" ]; then
       plain ""
       plain "Enable android modules for use with Anbox?"
       plain "https://github.com/anbox/anbox"
       read -rp "`echo $'    > N/y : '`" CONDITION12;
     fi
-    if [[ "$CONDITION12" =~ [yY] ]] || [ "$_zfsfix" = "true" ]; then
+    if [[ "$CONDITION12" =~ [yY] ]] || [ "$_anbox" = "true" ]; then
       echo "CONFIG_ASHMEM=y" >> ./.config
+      echo "CONFIG_ION=y" >> ./.config
+      echo "# CONFIG_ION_SYSTEM_HEAP is not set" >> ./.config
       echo "CONFIG_ANDROID=y" >> ./.config
       echo "CONFIG_ANDROID_BINDER_IPC=y" >> ./.config
       echo "CONFIG_ANDROID_BINDERFS=y" >>./.config
       echo 'CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"' >>./.config
+      echo "# CONFIG_ANDROID_BINDER_IPC_SELFTEST is not set" >> ./.config
     fi
   fi
 
@@ -1404,7 +1420,7 @@ exit_cleanup() {
   fi
 
   if [ "${_distro}" = "Arch" ]; then
-    remove_deps
+    remove_deps || ( true && msg2 "remove_deps not found" )
   fi
 
   msg2 'exit cleanup done\n'

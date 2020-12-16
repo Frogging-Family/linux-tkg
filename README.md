@@ -37,6 +37,7 @@ You can optionally enable support for it at the beginning of the PKGBUILD file. 
 - cherry-picked clear linux patches
 - **optional** overrides for missing ACS capabilities
 - **optional** Fsync support (proton)
+- **optional** Anbox support (binder, ashmem)
 - **optional** ZFS fpu symbols (<5.9)
 
 ## Install procedure
