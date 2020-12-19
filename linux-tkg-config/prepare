@@ -79,9 +79,10 @@ _linux_git_branch_checkout() {
     git clean -f -d -x
   fi 
 
+  _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
+
   if [[ "$_sub" = rc* ]]; then
-    msg2 "Switching to master branch for RC Kernel"
-    _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
+    msg2 "Switching to master branch for RC Kernel"    
 
     if ! git branch --list | grep "master" ; then
       msg2 "master branch doesn't locally exist, shallow cloning..."
@@ -94,7 +95,7 @@ _linux_git_branch_checkout() {
       git fetch origin master --shallow-since=$_clone_start_date
       git reset --hard origin/master
     fi
-    msg2 "Checking out latest RC tag"
+    msg2 "Checking out latest RC tag: v${_basekernel}-${_sub}"
     git fetch origin tag "v${_basekernel}-${_sub}" 
     git checkout "v${_basekernel}-${_sub}"
 
@@ -103,15 +104,15 @@ _linux_git_branch_checkout() {
     if ! git branch --list | grep "linux-${_basekernel}.y" ; then
       msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
       git remote set-branches --add origin linux-${_basekernel}.y        
-      git fetch origin linux-${_basekernel}.y --depth=1
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
       git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y      
     else
       msg2 "${_basekernel}.y branch exists locally, updating..."
       git checkout linux-${_basekernel}.y
-      git fetch origin linux-${_basekernel}.y --depth=1
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
       git reset --hard origin/linux-${_basekernel}.y
     fi
-    msg2 "Checking out latest release"
+    msg2 "Checking out latest release: v${_basekernel}.${_sub}"
     git fetch origin tag "v${_basekernel}.${_sub}"
     git checkout "v${_basekernel}.${_sub}"
   fi
@@ -462,7 +463,7 @@ _tkg_srcprep() {
   tkgpatch="$srcdir/0003-glitched-base.patch" && _tkg_patcher
 
   if [ -z $_misc_adds ]; then
-    plain "Enable misc additions ? May contain temporary fixes pending upstream or changes that can break on non-Arch. "
+    plain "Enable misc additions ? They may contain temporary fixes pending upstream, or some other changes that can break on non-Arch distros."
     read -rp "`echo $'    > [Y]/n : '`" _interactive_misc_adds;
     if [ "$_interactive_misc_adds" != "n" ] && [ "$_interactive_misc_adds" != "N" ]; then
       _misc_adds="true"
