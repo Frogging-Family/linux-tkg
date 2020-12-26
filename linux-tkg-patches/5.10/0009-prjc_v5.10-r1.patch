@@ -830,10 +830,10 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..1a857d7e230b
+index 000000000000..9880d9b50f7e
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,6370 @@
+@@ -0,0 +1,6385 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -888,7 +888,7 @@ index 000000000000..1a857d7e230b
 + */
 +EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
 +
-+#define ALT_SCHED_VERSION "v5.10-r0"
++#define ALT_SCHED_VERSION "v5.10-r1"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -928,6 +928,8 @@ index 000000000000..1a857d7e230b
 +
 +DEFINE_PER_CPU(cpumask_t [NR_CPU_AFFINITY_LEVELS], sched_cpu_affinity_masks);
 +DEFINE_PER_CPU(cpumask_t *, sched_cpu_affinity_end_mask);
++
++DEFINE_PER_CPU(cpumask_t [NR_CPU_AFFINITY_LEVELS], sched_cpu_topo_masks);
 +DEFINE_PER_CPU(cpumask_t *, sched_cpu_llc_mask);
 +
 +#ifdef CONFIG_SCHED_SMT
@@ -5622,9 +5624,14 @@ index 000000000000..1a857d7e230b
 +	rcu_read_lock();
 +	retval = -ESRCH;
 +	p = find_process_by_pid(pid);
-+	if (p != NULL)
-+		retval = sched_setattr(p, &attr);
++	if (likely(p))
++		get_task_struct(p);
 +	rcu_read_unlock();
++
++	if (likely(p)) {
++		retval = sched_setattr(p, &attr);
++		put_task_struct(p);
++	}
 +
 +	return retval;
 +}
@@ -5797,13 +5804,11 @@ index 000000000000..1a857d7e230b
 +	struct task_struct *p;
 +	int retval;
 +
-+	get_online_cpus();
 +	rcu_read_lock();
 +
 +	p = find_process_by_pid(pid);
 +	if (!p) {
 +		rcu_read_unlock();
-+		put_online_cpus();
 +		return -ESRCH;
 +	}
 +
@@ -5828,17 +5833,18 @@ index 000000000000..1a857d7e230b
 +		rcu_read_lock();
 +		if (!ns_capable(__task_cred(p)->user_ns, CAP_SYS_NICE)) {
 +			rcu_read_unlock();
-+			goto out_unlock;
++			goto out_free_new_mask;
 +		}
 +		rcu_read_unlock();
 +	}
 +
 +	retval = security_task_setscheduler(p);
 +	if (retval)
-+		goto out_unlock;
++		goto out_free_new_mask;
 +
 +	cpuset_cpus_allowed(p, cpus_allowed);
 +	cpumask_and(new_mask, in_mask, cpus_allowed);
++
 +again:
 +	retval = __set_cpus_allowed_ptr(p, new_mask, true);
 +
@@ -5854,13 +5860,12 @@ index 000000000000..1a857d7e230b
 +			goto again;
 +		}
 +	}
-+out_unlock:
++out_free_new_mask:
 +	free_cpumask_var(new_mask);
 +out_free_cpus_allowed:
 +	free_cpumask_var(cpus_allowed);
 +out_put_task:
 +	put_task_struct(p);
-+	put_online_cpus();
 +	return retval;
 +}
 +
@@ -6707,42 +6712,52 @@ index 000000000000..1a857d7e230b
 +	cpumask_t *tmp;
 +
 +	for_each_possible_cpu(cpu) {
++		/* init affinity masks */
 +		tmp = per_cpu(sched_cpu_affinity_masks, cpu);
 +
 +		cpumask_copy(tmp, cpumask_of(cpu));
 +		tmp++;
 +		cpumask_copy(tmp, cpu_possible_mask);
 +		cpumask_clear_cpu(cpu, tmp);
-+		per_cpu(sched_cpu_llc_mask, cpu) = tmp;
 +		per_cpu(sched_cpu_affinity_end_mask, cpu) = ++tmp;
++		/* init topo masks */
++		tmp = per_cpu(sched_cpu_topo_masks, cpu);
++
++		cpumask_copy(tmp, cpumask_of(cpu));
++		tmp++;
++		cpumask_copy(tmp, cpu_possible_mask);
++		per_cpu(sched_cpu_llc_mask, cpu) = tmp;
 +		/*per_cpu(sd_llc_id, cpu) = cpu;*/
 +	}
 +}
 +
 +#define TOPOLOGY_CPUMASK(name, mask, last) \
-+	if (cpumask_and(chk, chk, mask))					\
-+		printk(KERN_INFO "sched: cpu#%02d affinity mask: 0x%08lx - "#name,\
-+		       cpu, (chk++)->bits[0]);					\
++	if (cpumask_and(chk, chk, mask)) {					\
++		cpumask_copy(topo, mask);					\
++		printk(KERN_INFO "sched: cpu#%02d affinity: 0x%08lx topo: 0x%08lx - "#name,\
++		       cpu, (chk++)->bits[0], (topo++)->bits[0]);		\
++	}									\
 +	if (!last)								\
 +		cpumask_complement(chk, mask)
 +
 +static void sched_init_topology_cpumask(void)
 +{
 +	int cpu;
-+	cpumask_t *chk;
++	cpumask_t *chk, *topo;
 +
 +	for_each_online_cpu(cpu) {
 +		/* take chance to reset time slice for idle tasks */
 +		cpu_rq(cpu)->idle->time_slice = sched_timeslice_ns;
 +
 +		chk = per_cpu(sched_cpu_affinity_masks, cpu) + 1;
++		topo = per_cpu(sched_cpu_topo_masks, cpu) + 1;
 +
 +		cpumask_complement(chk, cpumask_of(cpu));
 +#ifdef CONFIG_SCHED_SMT
 +		TOPOLOGY_CPUMASK(smt, topology_sibling_cpumask(cpu), false);
 +#endif
 +		per_cpu(sd_llc_id, cpu) = cpumask_first(cpu_coregroup_mask(cpu));
-+		per_cpu(sched_cpu_llc_mask, cpu) = chk;
++		per_cpu(sched_cpu_llc_mask, cpu) = topo;
 +		TOPOLOGY_CPUMASK(coregroup, cpu_coregroup_mask(cpu), false);
 +
 +		TOPOLOGY_CPUMASK(core, topology_core_cpumask(cpu), false);
@@ -6753,7 +6768,7 @@ index 000000000000..1a857d7e230b
 +		printk(KERN_INFO "sched: cpu#%02d llc_id = %d, llc_mask idx = %d\n",
 +		       cpu, per_cpu(sd_llc_id, cpu),
 +		       (int) (per_cpu(sched_cpu_llc_mask, cpu) -
-+			      per_cpu(sched_cpu_affinity_masks, cpu)));
++			      per_cpu(sched_cpu_topo_masks, cpu)));
 +	}
 +}
 +#endif
@@ -7243,10 +7258,10 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..fd75b7895469
+index 000000000000..5d6ee22875b9
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,574 @@
+@@ -0,0 +1,612 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -7472,7 +7487,8 @@ index 000000000000..fd75b7895469
 +	NR_CPU_AFFINITY_LEVELS
 +};
 +
-+DECLARE_PER_CPU(cpumask_t [NR_CPU_AFFINITY_LEVELS], sched_cpu_affinity_masks);
++DECLARE_PER_CPU(cpumask_t [NR_CPU_AFFINITY_LEVELS], sched_cpu_topo_masks);
++DECLARE_PER_CPU(cpumask_t *, sched_cpu_llc_mask);
 +
 +static inline int __best_mask_cpu(int cpu, const cpumask_t *cpumask,
 +				  const cpumask_t *mask)
@@ -7491,13 +7507,50 @@ index 000000000000..fd75b7895469
 +#endif
 +}
 +
-+static inline int best_mask_cpu(int cpu, const cpumask_t *cpumask)
++static inline int best_mask_cpu(int cpu, cpumask_t *mask)
 +{
 +#if NR_CPUS <= 64
-+	return __best_mask_cpu(cpu, cpumask, per_cpu(sched_cpu_affinity_masks, cpu));
++	unsigned long llc_match;
++	cpumask_t *chk = per_cpu(sched_cpu_llc_mask, cpu);
++
++	if ((llc_match = mask->bits[0] & chk->bits[0])) {
++		unsigned long match;
++
++		chk = per_cpu(sched_cpu_topo_masks, cpu);
++		if (mask->bits[0] & chk->bits[0])
++			return cpu;
++
++#ifdef CONFIG_SCHED_SMT
++		chk++;
++		if ((match = mask->bits[0] & chk->bits[0]))
++			return __ffs(match);
++#endif
++
++		return __ffs(llc_match);
++	}
++
++	return __best_mask_cpu(cpu, mask, chk + 1);
 +#else
-+	return cpumask_test_cpu(cpu, cpumask) ? cpu:
-+		__best_mask_cpu(cpu, cpumask, per_cpu(sched_cpu_affinity_masks, cpu) + 1);
++	cpumask_t llc_match;
++	cpumask_t *chk = per_cpu(sched_cpu_llc_mask, cpu);
++
++	if (cpumask_and(&llc_match, mask, chk)) {
++		cpumask_t tmp;
++
++		chk = per_cpu(sched_cpu_topo_masks, cpu);
++		if (cpumask_test_cpu(cpu, mask))
++			return cpu;
++
++#ifdef CONFIG_SCHED_SMT
++		chk++;
++		if (cpumask_and(&tmp, mask, chk))
++			return cpumask_any(&tmp);
++#endif
++
++		return cpumask_any(&llc_match);
++	}
++
++	return __best_mask_cpu(cpu, mask, chk + 1);
 +#endif
 +}
 +
@@ -7843,7 +7896,7 @@ index 000000000000..aba3c98759f8
 +#endif
 diff --git a/kernel/sched/bmq_imp.h b/kernel/sched/bmq_imp.h
 new file mode 100644
-index 000000000000..83c2d019c446
+index 000000000000..3faba5f9bb69
 --- /dev/null
 +++ b/kernel/sched/bmq_imp.h
 @@ -0,0 +1,198 @@

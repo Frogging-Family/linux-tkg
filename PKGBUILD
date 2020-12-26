@@ -48,7 +48,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=104
+pkgrel=105
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -312,7 +312,7 @@ case $_basever in
         #0008-5.10-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
-        0009-prjc_v5.10-r0.patch
+        0009-prjc_v5.10-r1.patch
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
@@ -338,7 +338,7 @@ case $_basever in
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            '3586c46f240e5bedcf32543085c2593c64a449d264506ed31260073b55a000f8'
+            '3db1c9aaae36336fdca8fe80fe87ed95732e63f1f445735f1f7f1c0d77240476'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
 	;;
