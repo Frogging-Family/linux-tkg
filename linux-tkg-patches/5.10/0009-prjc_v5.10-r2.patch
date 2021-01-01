@@ -830,7 +830,7 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..9880d9b50f7e
+index 000000000000..be766515662c
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
 @@ -0,0 +1,6385 @@
@@ -888,7 +888,7 @@ index 000000000000..9880d9b50f7e
 + */
 +EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
 +
-+#define ALT_SCHED_VERSION "v5.10-r1"
++#define ALT_SCHED_VERSION "v5.10-r2"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -7258,7 +7258,7 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..5d6ee22875b9
+index 000000000000..d979b4b1aac2
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
 @@ -0,0 +1,612 @@
@@ -7507,7 +7507,7 @@ index 000000000000..5d6ee22875b9
 +#endif
 +}
 +
-+static inline int best_mask_cpu(int cpu, cpumask_t *mask)
++static inline int best_mask_cpu(int cpu, const cpumask_t *mask)
 +{
 +#if NR_CPUS <= 64
 +	unsigned long llc_match;
@@ -7896,10 +7896,10 @@ index 000000000000..aba3c98759f8
 +#endif
 diff --git a/kernel/sched/bmq_imp.h b/kernel/sched/bmq_imp.h
 new file mode 100644
-index 000000000000..3faba5f9bb69
+index 000000000000..13eda4b26b6a
 --- /dev/null
 +++ b/kernel/sched/bmq_imp.h
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,200 @@
 +#define ALT_SCHED_VERSION_MSG "sched/bmq: BMQ CPU Scheduler "ALT_SCHED_VERSION" by Alfred Chen.\n"
 +
 +/*
@@ -8087,11 +8087,13 @@ index 000000000000..3faba5f9bb69
 +	p->boost_prio = MAX_PRIORITY_ADJ;
 +}
 +
++#ifdef CONFIG_SMP
 +static void sched_task_ttwu(struct task_struct *p)
 +{
 +	if(this_rq()->clock_task - p->last_ran > sched_timeslice_ns)
 +		boost_task(p);
 +}
++#endif
 +
 +static void sched_task_deactivate(struct task_struct *p, struct rq *rq)
 +{
@@ -8244,10 +8246,10 @@ index 000000000000..623908cf4380
 +#endif
 diff --git a/kernel/sched/pds_imp.h b/kernel/sched/pds_imp.h
 new file mode 100644
-index 000000000000..6b2140f0a69e
+index 000000000000..b1ad3d0b0430
 --- /dev/null
 +++ b/kernel/sched/pds_imp.h
-@@ -0,0 +1,272 @@
+@@ -0,0 +1,274 @@
 +#define ALT_SCHED_VERSION_MSG "sched/pds: PDS CPU Scheduler "ALT_SCHED_VERSION" by Alfred Chen.\n"
 +
 +static const u64 user_prio2deadline[NICE_WIDTH] = {
@@ -8518,7 +8520,9 @@ index 000000000000..6b2140f0a69e
 +	time_slice_expired(p, rq);
 +}
 +
++#ifdef CONFIG_SMP
 +static void sched_task_ttwu(struct task_struct *p) {}
++#endif
 +static void sched_task_deactivate(struct task_struct *p, struct rq *rq) {}
 diff --git a/kernel/sched/pelt.c b/kernel/sched/pelt.c
 index 2c613e1cff3a..0103b2a7201d 100644
