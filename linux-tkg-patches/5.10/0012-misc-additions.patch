@@ -52,3 +52,319 @@ index e9d39c48520a..3bceead8da40 100644
 +#define MAX_NR_CONSOLES CONFIG_NR_TTY_DEVICES	/* serial lines start above this */
  		/* Note: the ioctl VT_GETSTATE does not work for
  		   consoles 16 and higher (since it returns a short) */
+
+From 0438f3011663ce01a981bb8b3af0e84e73551ecf Mon Sep 17 00:00:00 2001
+From: Edward Vear <edwardvear@gmail.com>
+Date: Tue, 27 Oct 2020 00:02:03 -0700
+Subject: Bluetooth: Fix attempting to set RPA timeout when unsupported
+
+During controller initialization, an LE Set RPA Timeout command is sent
+to the controller if supported. However, the value checked to determine
+if the command is supported is incorrect. Page 1921 of the Bluetooth
+Core Spec v5.2 shows that bit 2 of octet 35 of the Supported_Commands
+field corresponds to the LE Set RPA Timeout command, but currently
+bit 6 of octet 35 is checked. This patch checks the correct value
+instead.
+
+This issue led to the error seen in the following btmon output during
+initialization of an adapter (rtl8761b) and prevented initialization
+from completing.
+
+< HCI Command: LE Set Resolvable Private Address Timeout (0x08|0x002e) plen 2
+        Timeout: 900 seconds
+> HCI Event: Command Complete (0x0e) plen 4
+      LE Set Resolvable Private Address Timeout (0x08|0x002e) ncmd 2
+        Status: Unsupported Remote Feature / Unsupported LMP Feature (0x1a)
+= Close Index: 00:E0:4C:6B:E5:03
+
+The error did not appear when running with this patch.
+
+Signed-off-by: Edward Vear <edwardvear@gmail.com>
+Signed-off-by: Marcel Holtmann <marcel@holtmann.org>
+---
+ net/bluetooth/hci_core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/net/bluetooth/hci_core.c b/net/bluetooth/hci_core.c
+index 502552d6e9af..c4aa2cbb9269 100644
+--- a/net/bluetooth/hci_core.c
++++ b/net/bluetooth/hci_core.c
+@@ -763,7 +763,7 @@ static int hci_init3_req(struct hci_request *req, unsigned long opt)
+ 			hci_req_add(req, HCI_OP_LE_CLEAR_RESOLV_LIST, 0, NULL);
+ 		}
+ 
+-		if (hdev->commands[35] & 0x40) {
++		if (hdev->commands[35] & 0x04) {
+ 			__le16 rpa_timeout = cpu_to_le16(hdev->rpa_timeout);
+ 
+ 			/* Set RPA timeout */
+-- 
+cgit v1.2.3-1-gf6bb5
+
+From e5e77ad2223f662e1615266d8ef39a8db7e65a70 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Felix=20H=C3=A4dicke?= <felixhaedicke@web.de>
+Date: Thu, 19 Nov 2020 09:22:32 +0100
+Subject: HID: quirks: Add Apple Magic Trackpad 2 to hid_have_special_driver
+ list
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Apple Magic Trackpad 2 is handled by the magicmouse driver. And
+there were severe stability issues when both drivers (hid-generic and
+hid-magicmouse) were loaded for this device.
+
+Fixes: https://bugzilla.kernel.org/show_bug.cgi?id=210241
+
+Signed-off-by: Felix Hädicke <felixhaedicke@web.de>
+---
+ drivers/hid/hid-quirks.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
+index bf7ecab5d9e5..142e9dae2837 100644
+--- a/drivers/hid/hid-quirks.c
++++ b/drivers/hid/hid-quirks.c
+@@ -478,6 +478,8 @@ static const struct hid_device_id hid_have_special_driver[] = {
+ #if IS_ENABLED(CONFIG_HID_MAGICMOUSE)
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICMOUSE) },
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD) },
++	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
+ #endif
+ #if IS_ENABLED(CONFIG_HID_MAYFLASH)
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_DRAGONRISE, USB_DEVICE_ID_DRAGONRISE_PS3) },
+-- 
+cgit v1.2.3-1-gf6bb5
+
+From 88fbde26128dedf0097aa45b8c923973a4e5f843 Mon Sep 17 00:00:00 2001
+From: Rodrigo Siqueira <Rodrigo.Siqueira@amd.com>
+Date: Tue, 15 Dec 2020 10:33:34 -0500
+Subject: drm/amd/display: Add get_dig_frontend implementation for DCEx
+
+Some old ASICs might not implement/require get_dig_frontend helper; in
+this scenario, we can have a NULL pointer exception when we try to call
+it inside vbios disable operation. For example, this situation might
+happen when using Polaris12 with an eDP panel. This commit avoids this
+situation by adding a specific get_dig_frontend implementation for DCEx.
+
+Cc: Alex Deucher <alexander.deucher@amd.com>
+Cc: Borislav Petkov <bp@alien8.de>
+Cc: Harry Wentland <Harry.Wentland@amd.com>
+Cc: Nicholas Kazlauskas <Nicholas.Kazlauskas@amd.com>
+Cc: Chiawen Huang <chiawen.huang@amd.com>
+Reported-and-tested-by: Borislav Petkov <bp@suse.de>
+Acked-by: Alex Deucher <alexander.deucher@amd.com>
+Signed-off-by: Rodrigo Siqueira <Rodrigo.Siqueira@amd.com>
+Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+Cc: stable@vger.kernel.org
+---
+ .../gpu/drm/amd/display/dc/dce/dce_link_encoder.c  | 44 +++++++++++++++++++++-
+ .../gpu/drm/amd/display/dc/dce/dce_link_encoder.h  |  2 +
+ 2 files changed, 44 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c
+index b409f6b2bfd8..56bc401536c5 100644
+--- a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c
++++ b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c
+@@ -119,7 +119,8 @@ static const struct link_encoder_funcs dce110_lnk_enc_funcs = {
+ 	.disable_hpd = dce110_link_encoder_disable_hpd,
+ 	.is_dig_enabled = dce110_is_dig_enabled,
+ 	.destroy = dce110_link_encoder_destroy,
+-	.get_max_link_cap = dce110_link_encoder_get_max_link_cap
++	.get_max_link_cap = dce110_link_encoder_get_max_link_cap,
++	.get_dig_frontend = dce110_get_dig_frontend
+ };
+ 
+ static enum bp_result link_transmitter_control(
+@@ -235,6 +236,44 @@ static void set_link_training_complete(
+ 
+ }
+ 
++unsigned int dce110_get_dig_frontend(struct link_encoder *enc)
++{
++	struct dce110_link_encoder *enc110 = TO_DCE110_LINK_ENC(enc);
++	u32 value;
++	enum engine_id result;
++
++	REG_GET(DIG_BE_CNTL, DIG_FE_SOURCE_SELECT, &value);
++
++	switch (value) {
++	case DCE110_DIG_FE_SOURCE_SELECT_DIGA:
++		result = ENGINE_ID_DIGA;
++		break;
++	case DCE110_DIG_FE_SOURCE_SELECT_DIGB:
++		result = ENGINE_ID_DIGB;
++		break;
++	case DCE110_DIG_FE_SOURCE_SELECT_DIGC:
++		result = ENGINE_ID_DIGC;
++		break;
++	case DCE110_DIG_FE_SOURCE_SELECT_DIGD:
++		result = ENGINE_ID_DIGD;
++		break;
++	case DCE110_DIG_FE_SOURCE_SELECT_DIGE:
++		result = ENGINE_ID_DIGE;
++		break;
++	case DCE110_DIG_FE_SOURCE_SELECT_DIGF:
++		result = ENGINE_ID_DIGF;
++		break;
++	case DCE110_DIG_FE_SOURCE_SELECT_DIGG:
++		result = ENGINE_ID_DIGG;
++		break;
++	default:
++		// invalid source select DIG
++		result = ENGINE_ID_UNKNOWN;
++	}
++
++	return result;
++}
++
+ void dce110_link_encoder_set_dp_phy_pattern_training_pattern(
+ 	struct link_encoder *enc,
+ 	uint32_t index)
+@@ -1665,7 +1704,8 @@ static const struct link_encoder_funcs dce60_lnk_enc_funcs = {
+ 	.disable_hpd = dce110_link_encoder_disable_hpd,
+ 	.is_dig_enabled = dce110_is_dig_enabled,
+ 	.destroy = dce110_link_encoder_destroy,
+-	.get_max_link_cap = dce110_link_encoder_get_max_link_cap
++	.get_max_link_cap = dce110_link_encoder_get_max_link_cap,
++	.get_dig_frontend = dce110_get_dig_frontend
+ };
+ 
+ void dce60_link_encoder_construct(
+diff --git a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h
+index cb714a48b171..fc6ade824c23 100644
+--- a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h
++++ b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h
+@@ -295,6 +295,8 @@ void dce110_link_encoder_connect_dig_be_to_fe(
+ 	enum engine_id engine,
+ 	bool connect);
+ 
++unsigned int dce110_get_dig_frontend(struct link_encoder *enc);
++
+ void dce110_link_encoder_set_dp_phy_pattern_training_pattern(
+ 	struct link_encoder *enc,
+ 	uint32_t index);
+-- 
+cgit v1.2.3-1-gf6bb5
+
+From 0128c7314a4d856461caacfdd528a7bffa03d41e Mon Sep 17 00:00:00 2001
+From: Josef Bacik <josef@toxicpanda.com>
+Date: Wed, 23 Dec 2020 14:41:00 -0500
+Subject: btrfs: Fix 500-2000% performance regression w/ 5.10
+
+Josef's tentative fix from
+https://lore.kernel.org/linux-btrfs/0382080a1836a12c2d625f8a5bf899828eba204b.1608752315.git.josef@toxicpanda.com/
+
+With the conflict fix mentioned in the reply.
+
+For https://bugs.archlinux.org/task/69077
+---
+ fs/btrfs/space-info.c | 25 ++++++++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/fs/btrfs/space-info.c b/fs/btrfs/space-info.c
+index 64099565ab8f..8a1ce11b6ed8 100644
+--- a/fs/btrfs/space-info.c
++++ b/fs/btrfs/space-info.c
+@@ -480,6 +480,28 @@ static inline u64 calc_reclaim_items_nr(struct btrfs_fs_info *fs_info,
+ 
+ #define EXTENT_SIZE_PER_ITEM	SZ_256K
+ 
++static void btrfs_writeback_inodes_sb_nr(struct btrfs_fs_info *fs_info,
++					 unsigned long nr_pages, u64 nr_items)
++{
++	struct super_block *sb = fs_info->sb;
++
++	if (down_read_trylock(&sb->s_umount)) {
++		writeback_inodes_sb_nr(sb, nr_pages, WB_REASON_FS_FREE_SPACE);
++		up_read(&sb->s_umount);
++	} else {
++		/*
++		 * We needn't worry the filesystem going from r/w to r/o though
++		 * we don't acquire ->s_umount mutex, because the filesystem
++		 * should guarantee the delalloc inodes list be empty after
++		 * the filesystem is readonly(all dirty pages are written to
++		 * the disk).
++		 */
++		btrfs_start_delalloc_roots(fs_info, nr_items);
++		if (!current->journal_info)
++			btrfs_wait_ordered_roots(fs_info, nr_items, 0, (u64)-1);
++       }
++}
++
+ /*
+  * shrink metadata reservation for delalloc
+  */
+@@ -532,7 +554,8 @@ static void shrink_delalloc(struct btrfs_fs_info *fs_info,
+ 
+ 	loops = 0;
+ 	while ((delalloc_bytes || dio_bytes) && loops < 3) {
+-		btrfs_start_delalloc_roots(fs_info, items);
++		unsigned long nr_pages = min(delalloc_bytes, to_reclaim) >> PAGE_SHIFT;
++		btrfs_writeback_inodes_sb_nr(fs_info, nr_pages, items);
+ 
+ 		loops++;
+ 		if (wait_ordered && !trans) {
+-- 
+cgit v1.2.3-1-gf6bb5
+
+From 61e5f6548784e507eb0662a71976a673436e6e3a Mon Sep 17 00:00:00 2001
+From: Eric Dumazet <edumazet@google.com>
+Date: Mon, 21 Dec 2020 20:14:02 +0100
+Subject: iwlwifi: Fix regression from UDP segmentation support
+
+Eric's tentative fix from
+https://lore.kernel.org/linux-wireless/CANn89iJWG2n1s3j7EdpwkQQv-9dOY02V+FGYHAWguO4JiqWuJA@mail.gmail.com/
+---
+ drivers/net/wireless/intel/iwlwifi/mvm/tx.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/tx.c b/drivers/net/wireless/intel/iwlwifi/mvm/tx.c
+index fe1c538cd718..c27743a58f81 100644
+--- a/drivers/net/wireless/intel/iwlwifi/mvm/tx.c
++++ b/drivers/net/wireless/intel/iwlwifi/mvm/tx.c
+@@ -833,6 +833,7 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
+ 
+ 	next = skb_gso_segment(skb, netdev_flags);
+ 	skb_shinfo(skb)->gso_size = mss;
++       skb_shinfo(skb)->gso_type = ipv4 ? SKB_GSO_TCPV4 : SKB_GSO_TCPV6;
+ 	if (WARN_ON_ONCE(IS_ERR(next)))
+ 		return -EINVAL;
+ 	else if (next)
+@@ -855,6 +856,7 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
+ 
+ 		if (tcp_payload_len > mss) {
+ 			skb_shinfo(tmp)->gso_size = mss;
++                       skb_shinfo(tmp)->gso_type = ipv4 ? SKB_GSO_TCPV4 : SKB_GSO_TCPV6;
+ 		} else {
+ 			if (qos) {
+ 				u8 *qc;
+-- 
+cgit v1.2.3-1-gf6bb5
+
+From 00f09a6a8193b46c83ae1c8ff6623db011f90099 Mon Sep 17 00:00:00 2001
+From: "Jan Alexander Steffens (heftig)" <heftig@archlinux.org>
+Date: Fri, 1 Jan 2021 06:20:32 +0100
+Subject: ALSA: hda/hdmi: fix locking in silent_stream_disable
+
+The code unlocked the wrong lock, leading to deadlocks.
+---
+ sound/pci/hda/patch_hdmi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sound/pci/hda/patch_hdmi.c b/sound/pci/hda/patch_hdmi.c
+index 2ddc27db8c01..d12b4799c3cb 100644
+--- a/sound/pci/hda/patch_hdmi.c
++++ b/sound/pci/hda/patch_hdmi.c
+@@ -1736,7 +1736,7 @@ static void silent_stream_disable(struct hda_codec *codec,
+ 	per_pin->silent_stream = false;
+ 
+  unlock_out:
+-	mutex_unlock(&spec->pcm_lock);
++	mutex_unlock(&per_pin->lock);
+ }
+ 
+ /* update ELD and jack state via audio component */
+-- 
+cgit v1.2.3-1-gf6bb5
