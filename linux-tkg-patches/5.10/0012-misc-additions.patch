@@ -257,3 +257,71 @@ index 2ddc27db8c01..d12b4799c3cb 100644
  /* update ELD and jack state via audio component */
 -- 
 cgit v1.2.3-1-gf6bb5
+
+From e437ac931e89629f952ce9f3f9dfe45ac505cd0d Mon Sep 17 00:00:00 2001
+From: Joshua Ashton <joshua@froggi.es>
+Date: Tue, 5 Jan 2021 19:46:01 +0000
+Subject: [PATCH] drm/amdgpu: don't limit gtt size on apus
+
+Since commit 24562523688b ("Revert "drm/amd/amdgpu: set gtt size
+according to system memory size only""), the GTT size was limited by
+3GiB or VRAM size.
+
+This is problematic on APU systems with a small carveout
+(notably, those that ship with dGPUs where this is unconfigurable),
+where the carveout size can be as low as 128MiB.
+
+This makes it so the GTT size heuristic always uses 3/4ths of
+the system memory size on APUs (limiting the size by 3GiB/VRAM size
+only on devices with dedicated video memory).
+
+Fixes: 24562523688b ("Revert drm/amd/amdgpu: set gtt size according to
+system memory size only")
+
+Signed-off-by: Joshua Ashton <joshua@froggi.es>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c |  5 +++--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c | 12 +++++++++---
+ 2 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index 72efd579ec5e..a5a41e9272d6 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -192,8 +192,9 @@ module_param_named(gartsize, amdgpu_gart_size, uint, 0600);
+ 
+ /**
+  * DOC: gttsize (int)
+- * Restrict the size of GTT domain in MiB for testing. The default is -1 (It's VRAM size if 3GB < VRAM < 3/4 RAM,
+- * otherwise 3/4 RAM size).
++ * Restrict the size of GTT domain in MiB for testing. The default is -1 (On APUs this is 3/4th
++ * of the system memory; on dGPUs this is 3GiB or VRAM sized, whichever is bigger,
++ * with an upper bound of 3/4th of system memory.
+  */
+ MODULE_PARM_DESC(gttsize, "Size of the GTT domain in megabytes (-1 = auto)");
+ module_param_named(gttsize, amdgpu_gtt_size, int, 0600);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+index 4d8f19ab1014..294f26f4f310 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+@@ -1865,9 +1865,15 @@ int amdgpu_ttm_init(struct amdgpu_device *adev)
+ 		struct sysinfo si;
+ 
+ 		si_meminfo(&si);
+-		gtt_size = min(max((AMDGPU_DEFAULT_GTT_SIZE_MB << 20),
+-			       adev->gmc.mc_vram_size),
+-			       ((uint64_t)si.totalram * si.mem_unit * 3/4));
++		gtt_size = (uint64_t)si.totalram * si.mem_unit * 3/4;
++		/* If we have dedicated memory, limit our GTT size to
++		 * 3GiB or VRAM size, whichever is bigger
++		 */
++		if (!(adev->flags & AMD_IS_APU)) {
++			gtt_size = min(max(AMDGPU_DEFAULT_GTT_SIZE_MB << 20,
++				adev->gmc.mc_vram_size),
++				gtt_size);
++		}
+ 	}
+ 	else
+ 		gtt_size = (uint64_t)amdgpu_gtt_size << 20;
+-- 
+2.30.0
