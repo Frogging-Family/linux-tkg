@@ -53,53 +53,6 @@ index e9d39c48520a..3bceead8da40 100644
  		/* Note: the ioctl VT_GETSTATE does not work for
  		   consoles 16 and higher (since it returns a short) */
 
-From 0438f3011663ce01a981bb8b3af0e84e73551ecf Mon Sep 17 00:00:00 2001
-From: Edward Vear <edwardvear@gmail.com>
-Date: Tue, 27 Oct 2020 00:02:03 -0700
-Subject: Bluetooth: Fix attempting to set RPA timeout when unsupported
-
-During controller initialization, an LE Set RPA Timeout command is sent
-to the controller if supported. However, the value checked to determine
-if the command is supported is incorrect. Page 1921 of the Bluetooth
-Core Spec v5.2 shows that bit 2 of octet 35 of the Supported_Commands
-field corresponds to the LE Set RPA Timeout command, but currently
-bit 6 of octet 35 is checked. This patch checks the correct value
-instead.
-
-This issue led to the error seen in the following btmon output during
-initialization of an adapter (rtl8761b) and prevented initialization
-from completing.
-
-< HCI Command: LE Set Resolvable Private Address Timeout (0x08|0x002e) plen 2
-        Timeout: 900 seconds
-> HCI Event: Command Complete (0x0e) plen 4
-      LE Set Resolvable Private Address Timeout (0x08|0x002e) ncmd 2
-        Status: Unsupported Remote Feature / Unsupported LMP Feature (0x1a)
-= Close Index: 00:E0:4C:6B:E5:03
-
-The error did not appear when running with this patch.
-
-Signed-off-by: Edward Vear <edwardvear@gmail.com>
-Signed-off-by: Marcel Holtmann <marcel@holtmann.org>
----
- net/bluetooth/hci_core.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
-diff --git a/net/bluetooth/hci_core.c b/net/bluetooth/hci_core.c
-index 502552d6e9af..c4aa2cbb9269 100644
---- a/net/bluetooth/hci_core.c
-+++ b/net/bluetooth/hci_core.c
-@@ -763,7 +763,7 @@ static int hci_init3_req(struct hci_request *req, unsigned long opt)
- 			hci_req_add(req, HCI_OP_LE_CLEAR_RESOLV_LIST, 0, NULL);
- 		}
- 
--		if (hdev->commands[35] & 0x40) {
-+		if (hdev->commands[35] & 0x04) {
- 			__le16 rpa_timeout = cpu_to_le16(hdev->rpa_timeout);
- 
- 			/* Set RPA timeout */
--- 
-cgit v1.2.3-1-gf6bb5
 
 From e5e77ad2223f662e1615266d8ef39a8db7e65a70 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Felix=20H=C3=A4dicke?= <felixhaedicke@web.de>
@@ -229,32 +182,6 @@ index fe1c538cd718..c27743a58f81 100644
  		} else {
  			if (qos) {
  				u8 *qc;
--- 
-cgit v1.2.3-1-gf6bb5
-
-From 00f09a6a8193b46c83ae1c8ff6623db011f90099 Mon Sep 17 00:00:00 2001
-From: "Jan Alexander Steffens (heftig)" <heftig@archlinux.org>
-Date: Fri, 1 Jan 2021 06:20:32 +0100
-Subject: ALSA: hda/hdmi: fix locking in silent_stream_disable
-
-The code unlocked the wrong lock, leading to deadlocks.
----
- sound/pci/hda/patch_hdmi.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
-diff --git a/sound/pci/hda/patch_hdmi.c b/sound/pci/hda/patch_hdmi.c
-index 2ddc27db8c01..d12b4799c3cb 100644
---- a/sound/pci/hda/patch_hdmi.c
-+++ b/sound/pci/hda/patch_hdmi.c
-@@ -1736,7 +1736,7 @@ static void silent_stream_disable(struct hda_codec *codec,
- 	per_pin->silent_stream = false;
- 
-  unlock_out:
--	mutex_unlock(&spec->pcm_lock);
-+	mutex_unlock(&per_pin->lock);
- }
- 
- /* update ELD and jack state via audio component */
 -- 
 cgit v1.2.3-1-gf6bb5
 
