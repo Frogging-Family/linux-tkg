@@ -53,53 +53,6 @@ index e9d39c48520a..3bceead8da40 100644
  		/* Note: the ioctl VT_GETSTATE does not work for
  		   consoles 16 and higher (since it returns a short) */
 
-From 0438f3011663ce01a981bb8b3af0e84e73551ecf Mon Sep 17 00:00:00 2001
-From: Edward Vear <edwardvear@gmail.com>
-Date: Tue, 27 Oct 2020 00:02:03 -0700
-Subject: Bluetooth: Fix attempting to set RPA timeout when unsupported
-
-During controller initialization, an LE Set RPA Timeout command is sent
-to the controller if supported. However, the value checked to determine
-if the command is supported is incorrect. Page 1921 of the Bluetooth
-Core Spec v5.2 shows that bit 2 of octet 35 of the Supported_Commands
-field corresponds to the LE Set RPA Timeout command, but currently
-bit 6 of octet 35 is checked. This patch checks the correct value
-instead.
-
-This issue led to the error seen in the following btmon output during
-initialization of an adapter (rtl8761b) and prevented initialization
-from completing.
-
-< HCI Command: LE Set Resolvable Private Address Timeout (0x08|0x002e) plen 2
-        Timeout: 900 seconds
-> HCI Event: Command Complete (0x0e) plen 4
-      LE Set Resolvable Private Address Timeout (0x08|0x002e) ncmd 2
-        Status: Unsupported Remote Feature / Unsupported LMP Feature (0x1a)
-= Close Index: 00:E0:4C:6B:E5:03
-
-The error did not appear when running with this patch.
-
-Signed-off-by: Edward Vear <edwardvear@gmail.com>
-Signed-off-by: Marcel Holtmann <marcel@holtmann.org>
----
- net/bluetooth/hci_core.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
-diff --git a/net/bluetooth/hci_core.c b/net/bluetooth/hci_core.c
-index 502552d6e9af..c4aa2cbb9269 100644
---- a/net/bluetooth/hci_core.c
-+++ b/net/bluetooth/hci_core.c
-@@ -763,7 +763,7 @@ static int hci_init3_req(struct hci_request *req, unsigned long opt)
- 			hci_req_add(req, HCI_OP_LE_CLEAR_RESOLV_LIST, 0, NULL);
- 		}
- 
--		if (hdev->commands[35] & 0x40) {
-+		if (hdev->commands[35] & 0x04) {
- 			__le16 rpa_timeout = cpu_to_le16(hdev->rpa_timeout);
- 
- 			/* Set RPA timeout */
--- 
-cgit v1.2.3-1-gf6bb5
 
 From e5e77ad2223f662e1615266d8ef39a8db7e65a70 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Felix=20H=C3=A4dicke?= <felixhaedicke@web.de>
@@ -134,117 +87,6 @@ index bf7ecab5d9e5..142e9dae2837 100644
  #endif
  #if IS_ENABLED(CONFIG_HID_MAYFLASH)
  	{ HID_USB_DEVICE(USB_VENDOR_ID_DRAGONRISE, USB_DEVICE_ID_DRAGONRISE_PS3) },
--- 
-cgit v1.2.3-1-gf6bb5
-
-From 88fbde26128dedf0097aa45b8c923973a4e5f843 Mon Sep 17 00:00:00 2001
-From: Rodrigo Siqueira <Rodrigo.Siqueira@amd.com>
-Date: Tue, 15 Dec 2020 10:33:34 -0500
-Subject: drm/amd/display: Add get_dig_frontend implementation for DCEx
-
-Some old ASICs might not implement/require get_dig_frontend helper; in
-this scenario, we can have a NULL pointer exception when we try to call
-it inside vbios disable operation. For example, this situation might
-happen when using Polaris12 with an eDP panel. This commit avoids this
-situation by adding a specific get_dig_frontend implementation for DCEx.
-
-Cc: Alex Deucher <alexander.deucher@amd.com>
-Cc: Borislav Petkov <bp@alien8.de>
-Cc: Harry Wentland <Harry.Wentland@amd.com>
-Cc: Nicholas Kazlauskas <Nicholas.Kazlauskas@amd.com>
-Cc: Chiawen Huang <chiawen.huang@amd.com>
-Reported-and-tested-by: Borislav Petkov <bp@suse.de>
-Acked-by: Alex Deucher <alexander.deucher@amd.com>
-Signed-off-by: Rodrigo Siqueira <Rodrigo.Siqueira@amd.com>
-Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
-Cc: stable@vger.kernel.org
----
- .../gpu/drm/amd/display/dc/dce/dce_link_encoder.c  | 44 +++++++++++++++++++++-
- .../gpu/drm/amd/display/dc/dce/dce_link_encoder.h  |  2 +
- 2 files changed, 44 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c
-index b409f6b2bfd8..56bc401536c5 100644
---- a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c
-+++ b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.c
-@@ -119,7 +119,8 @@ static const struct link_encoder_funcs dce110_lnk_enc_funcs = {
- 	.disable_hpd = dce110_link_encoder_disable_hpd,
- 	.is_dig_enabled = dce110_is_dig_enabled,
- 	.destroy = dce110_link_encoder_destroy,
--	.get_max_link_cap = dce110_link_encoder_get_max_link_cap
-+	.get_max_link_cap = dce110_link_encoder_get_max_link_cap,
-+	.get_dig_frontend = dce110_get_dig_frontend
- };
- 
- static enum bp_result link_transmitter_control(
-@@ -235,6 +236,44 @@ static void set_link_training_complete(
- 
- }
- 
-+unsigned int dce110_get_dig_frontend(struct link_encoder *enc)
-+{
-+	struct dce110_link_encoder *enc110 = TO_DCE110_LINK_ENC(enc);
-+	u32 value;
-+	enum engine_id result;
-+
-+	REG_GET(DIG_BE_CNTL, DIG_FE_SOURCE_SELECT, &value);
-+
-+	switch (value) {
-+	case DCE110_DIG_FE_SOURCE_SELECT_DIGA:
-+		result = ENGINE_ID_DIGA;
-+		break;
-+	case DCE110_DIG_FE_SOURCE_SELECT_DIGB:
-+		result = ENGINE_ID_DIGB;
-+		break;
-+	case DCE110_DIG_FE_SOURCE_SELECT_DIGC:
-+		result = ENGINE_ID_DIGC;
-+		break;
-+	case DCE110_DIG_FE_SOURCE_SELECT_DIGD:
-+		result = ENGINE_ID_DIGD;
-+		break;
-+	case DCE110_DIG_FE_SOURCE_SELECT_DIGE:
-+		result = ENGINE_ID_DIGE;
-+		break;
-+	case DCE110_DIG_FE_SOURCE_SELECT_DIGF:
-+		result = ENGINE_ID_DIGF;
-+		break;
-+	case DCE110_DIG_FE_SOURCE_SELECT_DIGG:
-+		result = ENGINE_ID_DIGG;
-+		break;
-+	default:
-+		// invalid source select DIG
-+		result = ENGINE_ID_UNKNOWN;
-+	}
-+
-+	return result;
-+}
-+
- void dce110_link_encoder_set_dp_phy_pattern_training_pattern(
- 	struct link_encoder *enc,
- 	uint32_t index)
-@@ -1665,7 +1704,8 @@ static const struct link_encoder_funcs dce60_lnk_enc_funcs = {
- 	.disable_hpd = dce110_link_encoder_disable_hpd,
- 	.is_dig_enabled = dce110_is_dig_enabled,
- 	.destroy = dce110_link_encoder_destroy,
--	.get_max_link_cap = dce110_link_encoder_get_max_link_cap
-+	.get_max_link_cap = dce110_link_encoder_get_max_link_cap,
-+	.get_dig_frontend = dce110_get_dig_frontend
- };
- 
- void dce60_link_encoder_construct(
-diff --git a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h
-index cb714a48b171..fc6ade824c23 100644
---- a/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h
-+++ b/drivers/gpu/drm/amd/display/dc/dce/dce_link_encoder.h
-@@ -295,6 +295,8 @@ void dce110_link_encoder_connect_dig_be_to_fe(
- 	enum engine_id engine,
- 	bool connect);
- 
-+unsigned int dce110_get_dig_frontend(struct link_encoder *enc);
-+
- void dce110_link_encoder_set_dp_phy_pattern_training_pattern(
- 	struct link_encoder *enc,
- 	uint32_t index);
 -- 
 cgit v1.2.3-1-gf6bb5
 
@@ -343,28 +185,70 @@ index fe1c538cd718..c27743a58f81 100644
 -- 
 cgit v1.2.3-1-gf6bb5
 
-From 00f09a6a8193b46c83ae1c8ff6623db011f90099 Mon Sep 17 00:00:00 2001
-From: "Jan Alexander Steffens (heftig)" <heftig@archlinux.org>
-Date: Fri, 1 Jan 2021 06:20:32 +0100
-Subject: ALSA: hda/hdmi: fix locking in silent_stream_disable
+From e437ac931e89629f952ce9f3f9dfe45ac505cd0d Mon Sep 17 00:00:00 2001
+From: Joshua Ashton <joshua@froggi.es>
+Date: Tue, 5 Jan 2021 19:46:01 +0000
+Subject: [PATCH] drm/amdgpu: don't limit gtt size on apus
 
-The code unlocked the wrong lock, leading to deadlocks.
+Since commit 24562523688b ("Revert "drm/amd/amdgpu: set gtt size
+according to system memory size only""), the GTT size was limited by
+3GiB or VRAM size.
+
+This is problematic on APU systems with a small carveout
+(notably, those that ship with dGPUs where this is unconfigurable),
+where the carveout size can be as low as 128MiB.
+
+This makes it so the GTT size heuristic always uses 3/4ths of
+the system memory size on APUs (limiting the size by 3GiB/VRAM size
+only on devices with dedicated video memory).
+
+Fixes: 24562523688b ("Revert drm/amd/amdgpu: set gtt size according to
+system memory size only")
+
+Signed-off-by: Joshua Ashton <joshua@froggi.es>
 ---
- sound/pci/hda/patch_hdmi.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c |  5 +++--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c | 12 +++++++++---
+ 2 files changed, 12 insertions(+), 5 deletions(-)
 
-diff --git a/sound/pci/hda/patch_hdmi.c b/sound/pci/hda/patch_hdmi.c
-index 2ddc27db8c01..d12b4799c3cb 100644
---- a/sound/pci/hda/patch_hdmi.c
-+++ b/sound/pci/hda/patch_hdmi.c
-@@ -1736,7 +1736,7 @@ static void silent_stream_disable(struct hda_codec *codec,
- 	per_pin->silent_stream = false;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index 72efd579ec5e..a5a41e9272d6 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -192,8 +192,9 @@ module_param_named(gartsize, amdgpu_gart_size, uint, 0600);
  
-  unlock_out:
--	mutex_unlock(&spec->pcm_lock);
-+	mutex_unlock(&per_pin->lock);
- }
+ /**
+  * DOC: gttsize (int)
+- * Restrict the size of GTT domain in MiB for testing. The default is -1 (It's VRAM size if 3GB < VRAM < 3/4 RAM,
+- * otherwise 3/4 RAM size).
++ * Restrict the size of GTT domain in MiB for testing. The default is -1 (On APUs this is 3/4th
++ * of the system memory; on dGPUs this is 3GiB or VRAM sized, whichever is bigger,
++ * with an upper bound of 3/4th of system memory.
+  */
+ MODULE_PARM_DESC(gttsize, "Size of the GTT domain in megabytes (-1 = auto)");
+ module_param_named(gttsize, amdgpu_gtt_size, int, 0600);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+index 4d8f19ab1014..294f26f4f310 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+@@ -1865,9 +1865,15 @@ int amdgpu_ttm_init(struct amdgpu_device *adev)
+ 		struct sysinfo si;
  
- /* update ELD and jack state via audio component */
+ 		si_meminfo(&si);
+-		gtt_size = min(max((AMDGPU_DEFAULT_GTT_SIZE_MB << 20),
+-			       adev->gmc.mc_vram_size),
+-			       ((uint64_t)si.totalram * si.mem_unit * 3/4));
++		gtt_size = (uint64_t)si.totalram * si.mem_unit * 3/4;
++		/* If we have dedicated memory, limit our GTT size to
++		 * 3GiB or VRAM size, whichever is bigger
++		 */
++		if (!(adev->flags & AMD_IS_APU)) {
++			gtt_size = min(max(AMDGPU_DEFAULT_GTT_SIZE_MB << 20,
++				adev->gmc.mc_vram_size),
++				gtt_size);
++		}
+ 	}
+ 	else
+ 		gtt_size = (uint64_t)amdgpu_gtt_size << 20;
 -- 
-cgit v1.2.3-1-gf6bb5
+2.30.0
