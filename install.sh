@@ -69,8 +69,6 @@ if [ -e "$_EXT_CONFIG_PATH" ]; then
   source "$_EXT_CONFIG_PATH"
 fi
 
-_misc_adds="false" # We currently don't want this enabled on non-Arch
-
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   if [ -z $_distro ] && [ "$1" = "install" ]; then
