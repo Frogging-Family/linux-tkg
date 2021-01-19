@@ -39,16 +39,16 @@ case "$_basever" in
 	opt_ver="4.19-v5.4"
 	;;
 	"57")
-	opt_ver="5.7%2B"
+	opt_ver="5.7+"
 	;;
 	"58")
-	opt_ver="5.8%2B"
+	opt_ver="5.8+"
 	;;
 	"59")
-	opt_ver="5.8%2B"
+	opt_ver="5.8+"
 	;;
 	"510")
-	opt_ver="5.8%2B"
+	opt_ver="5.8+"
 	;;
 esac
 
