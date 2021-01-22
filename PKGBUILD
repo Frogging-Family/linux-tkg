@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=111
+pkgrel=113
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -96,7 +96,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'e54d3d471824488dea2210303330b05d73f789021c90ccd2d3bc11069c7499df'
+            'e843852a5151561f8f3cb7d50811931602db57bf57b7eb60facc449553ca5ea6'
             'SKIP'
             '55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -104,7 +104,7 @@ case $_basever in
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             '31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
             'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
-            '156a2c75fd228920e3c3da5e04a110afa403951bdfbb85772c2fd4b82fd24d61'
+            '3ef74dd80dc8c4323803cbf868178cf01d8ed69f09fe2f537ff91124cbd6e611'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
@@ -317,7 +317,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '8ecf194fbba49edf9014112f15928f0e869355ebe305b98a99db6f2674a931c2'
+            '90cf5582f25ded6d5935b54fc20758e2c47915a4d5fe68d7298684557f631ff1'
             'SKIP'
             '458d1ca195f3fee5501683a4b61ef0ed0cfa7e5219eccab3390fb40c0289898a'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -339,7 +339,7 @@ case $_basever in
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'e308292fc42840a2366280ea7cf26314e92b931bb11f04ad4830276fc0326ee1'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            'c41bf6a5d2ec52df766ce3019800cf7dd60a62f52811ead6f20dd06765870de2')
+            'cf7c758604f2a99cfcb65129c436e32e2ef7a80fe486f8e55a2206a955acc40a')
 	;;
 	511)
 	opt_ver="5.8%2B"
@@ -372,7 +372,7 @@ case $_basever in
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
     )
-    sha256sums=('c158fd7a2efa738554d04f281770c65afaef9cab14f1a114ee499fcbe27eae95'
+    sha256sums=('c0712caaeff17ece2175b3079052418a5eb6a3c58008e8fa57f448245bdaca7b'
             'SKIP'
             '0b4cdd202b5da351bdde626915d040c8255565b8ff647de7c47a8b91ccb33113'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
