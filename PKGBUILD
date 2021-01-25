@@ -367,7 +367,7 @@ case $_basever in
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
     )
-    sha256sums=('c0712caaeff17ece2175b3079052418a5eb6a3c58008e8fa57f448245bdaca7b'
+    sha256sums=('9864eb2880ffab9b776be9f6f222015165a23d1303619a3e2ed5671b88be3609'
             'SKIP'
             '0b4cdd202b5da351bdde626915d040c8255565b8ff647de7c47a8b91ccb33113'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
