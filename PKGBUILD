@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=113
+pkgrel=116
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -96,7 +96,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'e843852a5151561f8f3cb7d50811931602db57bf57b7eb60facc449553ca5ea6'
+            '40db6e83da28b8e4d048a5f71a7fe937d91cf4d8171dfd7466d4b663d034b6c5'
             'SKIP'
             '55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -290,7 +290,7 @@ case $_basever in
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
         'config.x86_64' # stock Arch config
-        #'config_hardened.x86_64' # hardened Arch config
+        'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
         cleanup
         # ARCH Patches
@@ -308,18 +308,19 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.10-fsync.patch
-        #0008-5.10-bcachefs.patch
+        0008-5.10-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
         0009-prjc_v5.10-r2.patch
         0011-ZFS-fix.patch
-        #0012-linux-hardened.patch
+        0012-linux-hardened.patch
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '90cf5582f25ded6d5935b54fc20758e2c47915a4d5fe68d7298684557f631ff1'
+            '21e4e5e4286494f230c46efb198da34a0f25e13bd40606f4597e53434a29c6fe'
             'SKIP'
             '458d1ca195f3fee5501683a4b61ef0ed0cfa7e5219eccab3390fb40c0289898a'
+            'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -335,10 +336,12 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            '26b4b7b4832c5eff53bb679a410dd6300b956d4c51763512ebebf4fd99eed873'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'e308292fc42840a2366280ea7cf26314e92b931bb11f04ad4830276fc0326ee1'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
+            '105f51e904d80f63c1421203e093b612fc724edefd3e388b64f8d371c0b3a842'
             'cf7c758604f2a99cfcb65129c436e32e2ef7a80fe486f8e55a2206a955acc40a')
 	;;
 	511)
@@ -372,7 +375,7 @@ case $_basever in
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
     )
-    sha256sums=('c0712caaeff17ece2175b3079052418a5eb6a3c58008e8fa57f448245bdaca7b'
+    sha256sums=('9864eb2880ffab9b776be9f6f222015165a23d1303619a3e2ed5671b88be3609'
             'SKIP'
             '0b4cdd202b5da351bdde626915d040c8255565b8ff647de7c47a8b91ccb33113'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
