@@ -16,6 +16,119 @@ plain() {
  echo "$1" >&2
 }
 
+_distro_prompt() {
+  
+  while true; do
+    echo "Which linux distribution are you running ?"
+    echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
+    echo "   1) Debian"
+    echo "   2) Fedora"
+    echo "   3) Suse"
+    echo "   4) Ubuntu"
+    read -p "[1-4]: " _distro_index
+
+    if [ "$_distro_index" = "1" ]; then
+      _distro="Debian"
+      break
+    elif [ "$_distro_index" = "2" ]; then
+      _distro="Fedora"
+      break
+    elif [ "$_distro_index" = "3" ]; then
+      _distro="Suse"
+      break
+    elif [ "$_distro_index" = "4" ]; then
+      _distro="Ubuntu"
+      break
+    else
+      echo "Wrong index."
+    fi
+  done
+  
+}
+
+_install_dependencies() {
+  if [ "$_compiler_name" = "llvm" ]; then
+    clang_deps="llvm clang lld"
+  fi
+  if [ "$_distro" = "Ubuntu" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
+  elif [ "$_distro" = "Debian" ]; then
+    msg2 "Installing dependencies"
+    sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev ${clang_deps} -y
+  elif [ "$_distro" = "Fedora" ]; then
+    msg2 "Installing dependencies"
+    if [ $(rpm -E %fedora) = "32" ]; then
+      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build ${clang_deps} -y
+    else
+      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel elfutils-devel openssl openssl-devel dwarves rpm-build perl-devel perl-generators python3-devel make -y ${clang_deps} -y
+    fi
+  elif [ "$_distro" = "Suse" ]; then
+    msg2 "Installing dependencies"
+    sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 ${clang_deps}
+  fi
+}
+
+_linux_git_branch_checkout() {
+
+  cd "$_where"
+
+  if ! [ -d linux-src-git ]; then
+    msg2 "First initialization of the linux source code git folder"
+    mkdir linux-src-git
+    cd linux-src-git
+    git init
+    git remote add origin https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+  else
+    cd linux-src-git
+
+    msg2 "Current branch: $(git branch | grep "\*")"
+    msg2 "Reseting files to their original state"
+    
+    git reset --hard HEAD
+    git clean -f -d -x
+  fi 
+
+  _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
+
+  if [[ "$_sub" = rc* ]]; then
+    msg2 "Switching to master branch for RC Kernel"    
+
+    if ! git branch --list | grep "master" ; then
+      msg2 "master branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add origin master        
+      git fetch origin master --shallow-since=$_clone_start_date
+      git checkout -b master origin/master      
+    else
+      msg2 "master branch exists locally, updating..."
+      git checkout master
+      git fetch origin master --shallow-since=$_clone_start_date
+      git reset --hard origin/master
+    fi
+    msg2 "Checking out latest RC tag: v${_basekernel}-${_sub}"
+    git fetch origin tag "v${_basekernel}-${_sub}" 
+    git checkout "v${_basekernel}-${_sub}"
+
+  else
+    msg2 "Switching to linux-${_basekernel}.y"
+    if ! git branch --list | grep "linux-${_basekernel}.y" ; then
+      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add origin linux-${_basekernel}.y        
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y      
+    else
+      msg2 "${_basekernel}.y branch exists locally, updating..."
+      git checkout linux-${_basekernel}.y
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git reset --hard origin/linux-${_basekernel}.y
+    fi
+    msg2 "Checking out latest release: v${_basekernel}.${_sub}"
+    git fetch origin tag "v${_basekernel}.${_sub}"
+    git checkout "v${_basekernel}.${_sub}"
+  fi
+
+}
+
 # Stop the script at any ecountered error
 set -e
 
