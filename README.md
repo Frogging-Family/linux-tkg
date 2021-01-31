@@ -1,28 +1,28 @@
 ## linux-tkg
 
-This repository provides scripts to automatically download, patch and compile the Linux Kernel from [the official Linux git repository](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git), with extra select patches that aim for better desktop/gaming performance. Users can customize which patches are added to the "vanilla" sources and also provide their own patches, by editing the file `customization.cfg`. More information is available in the file itself.
+This repository provides scripts to automatically download, patch and compile the Linux Kernel from [the official Linux git repository](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git), with extra select patches that aim for better desktop/gaming performance. Users can customize which patches are added to the "vanilla" sources by editing the file `customization.cfg` and/or by following the interactive install script. Users can also provide their own patches: more information is available in the file `customization.cfg`.
 
 ### Important information
 
-- Due to `intel_pstate` poor performances as of late, it is set it to passive mode to make use of the `acpi_cpufreq` governors passthrough, keeping full support for turbo frequencies.
+- Due to `intel_pstate` poor performance as of late, it is set it to passive mode to make use of the `acpi_cpufreq` governor passthrough, keeping full support for turbo frequencies.
 
-- Nvidia prop drivers might need to be patched if they aren't supporting your chosen kernel OOTB (https://github.com/Frogging-Family/nvidia-all can do that automatically for you)
+- Nvidia's proprietary drivers might need to be patched if they don't support your chosen kernel OOTB: [Frogging-Family nvidia-all](https://github.com/Frogging-Family/nvidia-all) can do that automatically for you.
 
 ---------------------
 ### Customization options
 #### Alternative CPU schedulers
 
-CFS is the original scheduler available in the kernel sources. Additional schedulers are provided: they can offer a better interactivity/performance ratio, aiming for a better gaming experience. The kernel can be compiled with one of them:
-- 5.10rc: Undead PDS, Project C / PDS & BMQ, MuQSS, CFS
-- 5.9.y: Undead PDS, Project C / PDS & BMQ, MuQSS, CFS
-- 5.8.y: Undead PDS, Project C / PDS & BMQ, CFS
+CFS is the only scheduler available in the "vanilla" kernel sources. Additional schedulers are provided: they can offer a better interactivity/throughput ratio that can be beneficial for gaming. The kernel can be compiled with one of the following alternative schedulers:
+- 5.10rc: Undead PDS, Project C / PDS or BMQ, MuQSS, CFS
+- 5.9.y: Undead PDS, Project C / PDS or BMQ, MuQSS, CFS
+- 5.8.y: Undead PDS, Project C / PDS or BMQ, CFS
 - 5.7.y: MuQSS, PDS, Project C / BMQ, CFS
 - 5.4.y: MuQSS, PDS, BMQ, CFS
 
 **More informaiton about the alternative schedulers:**
 - MuQSS by ck : http://ck-hack.blogspot.com/
 - Project C / PDS & BMQ by Alfred Chen, http://cchalpha.blogspot.com/
-- Undead PDS: derived from PDS-mq by TKG, the ancestor of Project C PDS. While it got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par with its elder PDS-mq in gaming, PDS will be kept afloat for as long as it'll make sense/possible to.
+- Undead PDS: derived from PDS-mq by TKG, the ancestor of Project C PDS. While it got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par PDS-mq in gaming, PDS will be kept afloat for as long as it remains possible and makes sense.
 
 #### User patches
 
