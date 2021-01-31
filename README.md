@@ -4,7 +4,7 @@ This repository provides scripts to automatically download, patch and compile th
 
 ### Important information
 
-- Due to `intel_pstate` poor performance as of late, it is set it to passive mode to make use of the `acpi_cpufreq` governor passthrough, keeping full support for turbo frequencies.
+- Due to `intel_pstate`'s poor performance as of late, it is set it to passive mode to make use of the `acpi_cpufreq` governor passthrough, keeping full support for turbo frequencies.
 
 - Nvidia's proprietary drivers might need to be patched if they don't support your chosen kernel OOTB: [Frogging-Family nvidia-all](https://github.com/Frogging-Family/nvidia-all) can do that automatically for you.
 
@@ -93,4 +93,3 @@ The command to do for that is:
 ```
 ./install.sh config
 ```
-
