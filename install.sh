@@ -141,10 +141,10 @@ source linux-tkg-config/prepare
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : shallow clones the linux ${_basekernel}.x git tree into the folder linux-src-git, then applies on it the extra patches and prepares the .config file 
-                   by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
-        - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
-        - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
+        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file 
+                   by copying the one from the currently running linux system and updates it. 
+        - install : [for RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
+        - uninstall-help : [for RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
   exit 0
 fi
 
