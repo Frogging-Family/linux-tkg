@@ -13,7 +13,8 @@ This repository provides scripts to automatically download, patch and compile th
 #### Alternative CPU schedulers
 
 CFS is the only scheduler available in the "vanilla" kernel sources. Additional schedulers are provided: they can offer a better interactivity/throughput ratio that can be beneficial for gaming. The kernel can be compiled with one of the following alternative schedulers:
-- 5.10rc: Undead PDS, Project C / PDS or BMQ, MuQSS, CFS
+- 5.11rc: CFS
+- 5.10.y: Undead PDS, Project C / PDS or BMQ, MuQSS, CFS
 - 5.9.y: Undead PDS, Project C / PDS or BMQ, MuQSS, CFS
 - 5.8.y: Undead PDS, Project C / PDS or BMQ, CFS
 - 5.7.y: MuQSS, PDS, Project C / BMQ, CFS
