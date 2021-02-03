@@ -16,101 +16,43 @@ plain() {
  echo "$1" >&2
 }
 
-# Stop the script at any ecountered error
-set -e
+_distro_prompt() {
+  
+  while true; do
+    echo "Which linux distribution are you running ?"
+    echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
+    echo "   1) Debian"
+    echo "   2) Fedora"
+    echo "   3) Suse"
+    echo "   4) Ubuntu"
+    read -p "[1-4]: " _distro_index
 
-_where=`pwd`
-srcdir="$_where"
+    if [ "$_distro_index" = "1" ]; then
+      _distro="Debian"
+      break
+    elif [ "$_distro_index" = "2" ]; then
+      _distro="Fedora"
+      break
+    elif [ "$_distro_index" = "3" ]; then
+      _distro="Suse"
+      break
+    elif [ "$_distro_index" = "4" ]; then
+      _distro="Ubuntu"
+      break
+    else
+      echo "Wrong index."
+    fi
+  done
+  
+}
 
-source customization.cfg
-
-source linux-tkg-config/prepare
-
-# Run init script that is also run in PKGBUILD, it will define some env vars that we will use
-_tkg_initscript
-
-if [[ "$_sub" = rc* ]]; then
-  # if an RC version, subver will always be 0
-  _kernel_subver=0
-fi
-
-case "$_basever" in
-	"54")
-	opt_ver="4.19-v5.4"
-	;;
-	"57")
-	opt_ver="5.7%2B"
-	;;
-	"58")
-	opt_ver="5.8%2B"
-	;;
-	"59")
-	opt_ver="5.8%2B"
-	;;
-	"510")
-	opt_ver="5.8%2B"
-	;;
-esac
-
-_cpu_opt_patch_link="https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch"  
-
-if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
-  msg2 "Argument not recognised, options are:
-        - config : shallow clones the linux ${_basekernel}.x git tree into the folder linux-${_basekernel}, then applies on it the extra patches and prepares the .config file 
-                   by copying the one from the current linux system in /boot/config-`uname -r` and updates it. 
-        - install : [RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
-        - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives a hint on how to uninstall them manually."
-  exit 0
-fi
-
-# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
-if [ -e "$_EXT_CONFIG_PATH" ]; then
-  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
-  source "$_EXT_CONFIG_PATH"
-fi
-
-if [ "$1" = "install" ] || [ "$1" = "config" ]; then
-
-  if [ -z $_distro ] && [ "$1" = "install" ]; then
-    while true; do
-      echo "Which linux distribution are you running ?"
-      echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
-      echo "   1) Debian"
-      echo "   2) Fedora"
-      echo "   3) Suse"
-      echo "   4) Ubuntu"
-      read -p "[1-4]: " _distro_index
-
-      if [ "$_distro_index" = "1" ]; then
-        _distro="Debian"
-        break
-      elif [ "$_distro_index" = "2" ]; then
-        _distro="Fedora"
-        break
-      elif [ "$_distro_index" = "3" ]; then
-        _distro="Suse"
-        break
-      elif [ "$_distro_index" = "4" ]; then
-        _distro="Ubuntu"
-        break
-      else
-        echo "Wrong index."
-      fi
-    done
-  fi
-
-  if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
-    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
-    msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
-    exit 0
-  fi
-
+_install_dependencies() {
   if [ "$_compiler_name" = "llvm" ]; then
     clang_deps="llvm clang lld"
   fi
   if [ "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
-    sudo apt install git build-essential kernel-package fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
+    sudo apt install git build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev ${clang_deps} -y
   elif [ "$_distro" = "Debian" ]; then
     msg2 "Installing dependencies"
     sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev ${clang_deps} -y
@@ -125,76 +67,154 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     msg2 "Installing dependencies"
     sudo zypper install -y rpmdevtools ncurses-devel pesign libXi-devel gcc-c++ git ccache flex bison elfutils libelf-devel openssl-devel dwarves make patch bc rpm-build libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 ${clang_deps}
   fi
+}
+
+_linux_git_branch_checkout() {
+
+  cd "$_where"
+
+  if ! [ -d linux-src-git ]; then
+    msg2 "First initialization of the linux source code git folder"
+    mkdir linux-src-git
+    cd linux-src-git
+    git init
+    git remote add origin https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+  else
+    cd linux-src-git
+
+    msg2 "Current branch: $(git branch | grep "\*")"
+    msg2 "Reseting files to their original state"
+    
+    git reset --hard HEAD
+    git clean -f -d -x
+  fi 
+
+  _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
+
+  if [[ "$_sub" = rc* ]]; then
+    msg2 "Switching to master branch for RC Kernel"    
+
+    if ! git branch --list | grep "master" ; then
+      msg2 "master branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add origin master        
+      git fetch origin master --shallow-since=$_clone_start_date
+      git checkout -b master origin/master      
+    else
+      msg2 "master branch exists locally, updating..."
+      git checkout master
+      git fetch origin master --shallow-since=$_clone_start_date
+      git reset --hard origin/master
+    fi
+    msg2 "Checking out latest RC tag: v${_basekernel}-${_sub}"
+    git fetch origin tag "v${_basekernel}-${_sub}" 
+    git checkout "v${_basekernel}-${_sub}"
+
+  else
+    msg2 "Switching to linux-${_basekernel}.y"
+    if ! git branch --list | grep "linux-${_basekernel}.y" ; then
+      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add origin linux-${_basekernel}.y        
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y      
+    else
+      msg2 "${_basekernel}.y branch exists locally, updating..."
+      git checkout linux-${_basekernel}.y
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git reset --hard origin/linux-${_basekernel}.y
+    fi
+    msg2 "Checking out latest release: v${_basekernel}.${_sub}"
+    git fetch origin tag "v${_basekernel}.${_sub}"
+    git checkout "v${_basekernel}.${_sub}"
+  fi
+
+}
+
+# Stop the script at any ecountered error
+set -e
+
+_where=`pwd`
+srcdir="$_where"
+
+source customization.cfg
+
+source linux-tkg-config/prepare 
+
+if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
+  msg2 "Argument not recognised, options are:
+        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file 
+                   by copying the one from the currently running linux system and updates it. 
+        - install : [for RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
+        - uninstall-help : [for RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
+  exit 0
+fi
+
+# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
+if [ -e "$_EXT_CONFIG_PATH" ]; then
+  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
+  source "$_EXT_CONFIG_PATH"
+fi
+
+if [ "$1" = "install" ] || [ "$1" = "config" ]; then
+
+  if [ -z $_distro ] && [ "$1" = "install" ]; then
+    _distro_prompt
+  fi
+
+  if [ "$1" = "config" ]; then
+    _distro="Unknown"
+  fi
+
+  # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
+  _tkg_initscript
+
+  if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
+    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
+    msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
+    exit 0
+  fi
+
+  # Install the needed dependencies if the user wants to install the kernel
+  # Not needed if the user asks for install.sh config
+  if [ $1 == "install" ]; then
+    _install_dependencies
+  fi
 
   # Force prepare script to avoid Arch specific commands if the user is using `config`
   if [ "$1" = "config" ]; then
     _distro=""
   fi
 
-  if [[ "$_sub" = rc* ]]; then
-    if [ -d linux-main.orig ]; then
-      rm -rf linux-main.orig
-    fi
-  
-    if [  -d linux-main ]; then
-      msg2 "Reseting files in linux-main to their original state and getting latest updates"
-      cd "$_where"/linux-main
-      git reset --hard HEAD
-      git clean -f -d -x
-      git checkout master
-      git pull
-      git checkout "v${_basekernel}-${_sub}"
-      msg2 "Done" 
-      cd "$_where"
-    else
-      msg2 "Shallow git cloning linux kernel master branch"
-      # Shallow clone the past 3 weeks
-      _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
-      git clone --branch master --single-branch --shallow-since=$_clone_start_date https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$_where"/linux-main
-      cd "$_where"/linux-main
-      git checkout "v${_basekernel}-${_sub}"
-      msg2 "Done"
-    fi
-  else
-    if [ -d linux-${_basekernel}.orig ]; then
-      rm -rf linux-${_basekernel}.orig
-    fi
-  
-    if [ -d linux-${_basekernel} ]; then
-      msg2 "Reseting files in linux-$_basekernel to their original state and getting latest updates"
-      cd "$_where"/linux-${_basekernel}
-      git checkout --force linux-$_basekernel.y
-      git clean -f -d -x
-      git pull
-      msg2 "Done" 
-      cd "$_where"
-    else
-      msg2 "Shallow git cloning linux $_basekernel"
-      git clone --branch linux-$_basekernel.y --single-branch --depth=1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-${_basekernel}
-      msg2 "Done"
-    fi
-  
-    # Define current kernel subversion
-    if [ -z $_kernel_subver ]; then
-      cd "$_where"/linux-${_basekernel}
-      _kernelverstr=`git describe`
-      _kernel_subver=${_kernelverstr:5}
-    fi
-  fi
+  # Git clone (if necessary) and checkout the asked branch by the user
+  _linux_git_branch_checkout
   
   cd "$_where"
 
   msg2 "Downloading Graysky2's CPU optimisations patch"
-  wget "$_cpu_opt_patch_link"
+
+  case "$_basever" in
+    "54")
+    opt_ver="4.19-v5.4"
+    ;;
+    "57")
+    opt_ver="5.7"
+    ;;
+    "58")
+    opt_ver="5.8"
+    ;;
+    "59")
+    opt_ver="5.8"
+    ;;
+    "510")
+    opt_ver="5.8"
+    ;;
+  esac
+
+  wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch" 
 
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 
   # cd in linux folder, copy Ubuntu's current config file, update with new params
-  if [[ "$_sub" = rc* ]]; then
-    cd "$_where"/linux-main
-  else
-    cd "$_where"/linux-${_basekernel}
-  fi
+  cd "$_where"/linux-src-git
 
   if ( msg2 "Trying /boot/config-* ..." && cp /boot/config-`uname -r` .config ) || ( msg2 "Trying /proc/config.gz ..." && zcat --verbose /proc/config.gz > .config ); then
     msg2 "Copying current kernel's config and running make oldconfig..."
@@ -263,6 +283,14 @@ if [ "$1" = "install" ]; then
     _kernel_flavor="tkg-${_kernel_localversion}"
   fi
 
+  # Setup kernel_subver variable
+  if [[ "$_sub" = rc* ]]; then
+    # if an RC version, subver will always be 0
+    _kernel_subver=0
+  else
+    _kernel_subver="${_sub}"
+  fi
+
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
     if make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
@@ -305,7 +333,7 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -314,10 +342,7 @@ if [ "$1" = "install" ]; then
       mkdir -p RPMS
       
       # Move rpm files to RPMS folder inside the linux-tkg folder
-      mv ~/rpmbuild/RPMS/x86_64/* "$_where"/RPMS/
-
-      #Clean up the original folder, unneeded and takes a lot of space
-      rm -rf ~/rpmbuild/
+      mv ${HOME}/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
@@ -347,6 +372,10 @@ if [ "$1" = "install" ]; then
 fi
 
 if [ "$1" = "uninstall-help" ]; then
+
+  if [ -z $_distro ]; then
+    _distro_prompt
+  fi
 
   cd "$_where"
   msg2 "List of installed custom tkg kernels: "

@@ -8,10 +8,6 @@ ver510=12
 ver511=rc6
 
 _tkg_initscript() {
-  # Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
-  if [ -e "$_EXT_CONFIG_PATH" ]; then
-    source "$_EXT_CONFIG_PATH" && msg2 "External configuration file $_EXT_CONFIG_PATH will be used to override customization.cfg values.\n"
-  fi
 
   # Default to Arch
   if [ -z "$_distro" ] || [ "$_ispkgbuild" = "true" ]; then
@@ -26,6 +22,9 @@ _tkg_initscript() {
     _path="${_where}"
   fi
 
+  # _basever, _basekernel and _sub are saved to the file "versel"
+  # then this file is sourced at the end of these so these vars are accessible
+  # to the rest of the script
   if [ -z "$_version" ] && [ ! -e "$_path"/versel ]; then
     plain "Which kernel version do you want to install?"
     read -rp "`echo $'    1. 5.4 LTS\n    2. 5.7\n    3. 5.8\n    4. 5.9\n  > 5. 5.10\n    6. 5.11 RC\nchoice[1-6?]'`" _VERSEL;
@@ -377,7 +376,7 @@ _tkg_srcprep() {
   tkgpatch="$srcdir/0003-glitched-base.patch" && _tkg_patcher
 
   if [ -z $_misc_adds ]; then
-    plain "Enable misc additions ? May contain temporary fixes pending upstream or changes that can break on non-Arch. "
+    plain "Enable misc additions ? They may contain temporary fixes pending upstream, or some other changes that can break on non-Arch distros."
     read -rp "`echo $'    > [Y]/n : '`" _interactive_misc_adds;
     if [ "$_interactive_misc_adds" != "n" ] && [ "$_interactive_misc_adds" != "N" ]; then
       _misc_adds="true"
@@ -1199,6 +1198,9 @@ exit_cleanup() {
   rm -f "$_where"/cleanup
   rm -f "$_where"/prepare
 
+  # Remove RPM temporary files left
+  rm -rf ${HOME}/.cache/linux-tkg-rpmbuild
+
   # Community patches removal in case of failure
   for _p in ${_community_patches[@]}; do
     rm -f "$_where"/linux"$_basever"-tkg-userpatches/"$_p"
@@ -1213,8 +1215,8 @@ exit_cleanup() {
     rm -rf "$srcdir"/*-profile.cfg
     rm -f "$srcdir"/config.x86_64
     rm -f "$srcdir"/customization.cfg
-  else
-    # Meh
+
+  elif [ "$_distro" == "Arch" ]; then
     rm -rf "$srcdir"/linux-${_basekernel}/Documentation/filesystems/aufs/*
     rm -f "$srcdir"/linux-${_basekernel}/Documentation/ABI/testing/*-aufs
     rm -rf "$srcdir"/linux-${_basekernel}/fs/aufs/*
@@ -1266,6 +1268,6 @@ exit_cleanup() {
     msg2 "compilation time : \n$_runtime"
   fi
 }
-if [ "$_distro" != "Void" ] && [ "$1" != "config" ]; then
+if [ "$_distro" != "Void" ]; then
   trap exit_cleanup EXIT
 fi

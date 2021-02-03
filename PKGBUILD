@@ -30,6 +30,11 @@ _ispkgbuild="true"
 source "$_where"/customization.cfg # load default configuration from file
 source "$_where"/linux-tkg-config/prepare
 
+if [ -e "$_EXT_CONFIG_PATH" ]; then
+  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
+  source "$_EXT_CONFIG_PATH"
+fi
+
 _tkg_initscript
 
 if [[ "$_sub" = rc* ]]; then
