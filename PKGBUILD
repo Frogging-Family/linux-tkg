@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=121
+pkgrel=122
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -365,13 +365,13 @@ case $_basever in
         #0005-undead-glitched-ondemand-pds.patch
         #0005-undead-glitched-pds.patch
         #0005-v5.11_undead-pds099o.patch
-        #0005-glitched-pds.patch
+        0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.11-fsync.patch
         #0008-5.11-bcachefs.patch
-        #0009-glitched-ondemand-bmq.patch
-        #0009-glitched-bmq.patch
-        #0009-prjc_v5.11-r0.patch
+        0009-glitched-ondemand-bmq.patch
+        0009-glitched-bmq.patch
+        0009-prjc_v5.11-r0.patch
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
@@ -385,8 +385,12 @@ case $_basever in
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            'ad3ff525e9e7cd53e0f9a19350c144398dffa943573b9741f4cdb085b05efffe'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
 	;;
