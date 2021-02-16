@@ -222,6 +222,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     "510")
     opt_ver="5.8"
     ;;
+    "511")
+    opt_ver="5.8"
+    ;;
   esac
 
   wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch" 
