@@ -108,14 +108,29 @@ _linux_git_branch_checkout() {
     msg2 "Checking out latest RC tag: v${_basekernel}-${_sub}"
     git fetch origin tag "v${_basekernel}-${_sub}" 
     git checkout "v${_basekernel}-${_sub}"
-
+  elif [ "$_sub" = "0" ]; then
+    msg2 "Switching to linux-${_basekernel}.y"
+    if ! git branch --list | grep "linux-${_basekernel}.y" ; then
+      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add origin linux-${_basekernel}.y
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y
+    else
+      msg2 "${_basekernel}.y branch exists locally, updating..."
+      git checkout linux-${_basekernel}.y
+      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git reset --hard origin/linux-${_basekernel}.y
+    fi
+    msg2 "Checking out latest release: v${_basekernel}"
+    git fetch origin tag "v${_basekernel}"
+    git checkout "v${_basekernel}"
   else
     msg2 "Switching to linux-${_basekernel}.y"
     if ! git branch --list | grep "linux-${_basekernel}.y" ; then
       msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add origin linux-${_basekernel}.y        
+      git remote set-branches --add origin linux-${_basekernel}.y
       git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
-      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y      
+      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y
     else
       msg2 "${_basekernel}.y branch exists locally, updating..."
       git checkout linux-${_basekernel}.y
