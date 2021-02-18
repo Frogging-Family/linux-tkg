@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=123
+pkgrel=124
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -359,9 +359,9 @@ case $_basever in
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
-        #0004-glitched-ondemand-muqss.patch
-        #0004-glitched-muqss.patch
-        #0004-5.11-ck1.patch
+        0004-glitched-ondemand-muqss.patch
+        0004-glitched-muqss.patch
+        0004-5.11-ck1.patch
         #0005-undead-glitched-ondemand-pds.patch
         #0005-undead-glitched-pds.patch
         #0005-v5.11_undead-pds099o.patch
@@ -385,6 +385,9 @@ case $_basever in
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
+            '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
+            '2f7e24e70ed1f5561155a1b5e5aab9927aea317db0500e8cf83cd059807f9c7e'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
