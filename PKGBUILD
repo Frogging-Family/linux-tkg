@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=124
+pkgrel=126
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -308,6 +308,7 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.10-fsync.patch
+        0007-v5.10-futex2_interface.patch
         0008-5.10-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
@@ -336,6 +337,7 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            '47c05c6e7e1280dca137ed2139dac7da0d026a27d5590fd386748d1827288a61'
             'c5dd103953b8830640538ba30ff511028bd93310f95e4f5587a6ed5e6414a60d'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -368,6 +370,7 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.11-fsync.patch
+        0007-v5.11-futex2_interface.patch
         #0008-5.11-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
@@ -391,6 +394,7 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            '073e7b8ab48aa9abdb5cedb5c729a2f624275ebdbe1769476231c9e712145496'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'ad3ff525e9e7cd53e0f9a19350c144398dffa943573b9741f4cdb085b05efffe'
