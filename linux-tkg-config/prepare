@@ -133,52 +133,48 @@ _tkg_initscript() {
   fi
 
   # CPU SCHED selector
+  if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
+    _CPUSCHEDARRAY=("PDS" "MuQSS" "BMQ" "CFS")
+  elif [ "$_basever" = "58" ]; then
+    _CPUSCHEDARRAY=("Undead PDS (TkG)" "Project C / PDS" "Project C / BMQ" "CFS")
+  elif [ "$_basever" = "59" ] || [ "$_basever" = "510" ]; then
+    _CPUSCHEDARRAY=("Undead PDS (TkG)" "Project C / PDS" "Project C / BMQ" "MuQSS" "CFS")
+  elif [ "$_basever" = "511" ]; then
+    _CPUSCHEDARRAY=("Project C / PDS" "Project C / BMQ" "MuQSS" "CFS")
+  else
+    _CPUSCHEDARRAY=("CFS")
+  fi
+
   if [ -z "$_cpusched" ] && [ ! -e "${_path}"/cpuschedset ]; then
-    plain "What CPU sched variant do you want to build/install?"
-    if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
-      prompt="`echo $'  > 1.PDS\n    2.MuQSS\n    3.BMQ\n    4.CFS\nchoice[1-4?]: '`"
-    elif [ "$_basever" = "58" ]; then
-      prompt="`echo $'  > 1.Undead PDS (TkG)\n    2.Project C / PDS\n    3.Project C / BMQ\n    4.CFS\nchoice[1-4?]: '`"
-    elif [ "$_basever" = "59" ] || [ "$_basever" = "510" ]; then
-      prompt="`echo $'  > 1.Undead PDS (TkG)\n    2.Project C / PDS\n    3.Project C / BMQ\n    4.MuQSS\n    5.CFS\nchoice[1-5?]: '`"
-    elif [ "$_basever" = "511" ]; then
-      prompt="`echo $'  > 1.Project C / PDS\n    2.Project C / BMQ\n    3.MuQSS\n    4.CFS\nchoice[1-4?]: '`"
-    else
-      prompt="`echo $'  > 1.CFS\nchoice[1-1?]: '`"
-    fi
-    read -rp "$prompt"  CONDITION;
-    if [ "$CONDITION" = "2" ];then
-      if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
-        echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
-      elif [ "$_basever" = "58" ] || [ "$_basever" = "59" ] || [ "$_basever" = "510" ]; then
-        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
-      else
-        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
-      fi
-    elif [ "$CONDITION" = "3" ]; then
-      if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] || [ "$_basever" = "58" ] || [ "$_basever" = "59" ] || [ "$_basever" = "510" ]; then
-        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
-      else
-        echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
-      fi
-    elif [ "$CONDITION" = "4" ]; then
-      if [ "$_basever" = "54" ] || [ "$_basever" = "57" ] || [ "$_basever" = "58" ] || [ "$_basever" = "511" ]; then
-        echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
-      else
-        echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
-      fi
-    elif [ "$CONDITION" = "5" ]; then
-      echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
-    else
-      if [ "$_basever" = "58" ] || [ "$_basever" = "59" ] || [ "$_basever" = "510" ]; then
-        echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
-      else
-        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
-      fi
-    fi
-    if [ -n "$_custom_pkgbase" ]; then
-      echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "${_path}"/cpuschedset
-    fi
+    plain "\nWhich CPU sched variant do you want to build/install?"
+    select CPUSCHED in "${_CPUSCHEDARRAY[@]}"
+    do
+      case $CPUSCHED in
+        "CFS")
+          echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
+          ;;
+        "PDS")
+          echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+          ;;
+        "MuQSS")
+          echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
+          ;;
+        "BMQ")
+          echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+          ;;
+        "Project C / PDS")
+          echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+          ;;
+        "Project C / BMQ")
+          echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+          ;;
+        "Undead PDS (TkG)")
+          echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
+          ;;
+        *)
+      esac
+      break
+    done
   elif [ "$_cpusched" = "upds" ]; then
     echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
   elif [ "$_cpusched" = "pds" ]; then
@@ -190,8 +186,9 @@ _tkg_initscript() {
   elif [ "$_cpusched" = "muqss" ] || [ "$_cpusched" = "MuQSS" ]; then
     echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
   else
-    if [ "$_nofallback" != "true" ]; then
-      warning "Something is wrong with your cpusched selection. Do you want to fallback to CFS (default)?"
+    if [ "$_nofallback" != "true" ] && ! [[ ${_CPUSCHEDARRAY[*]} =~ "$_cpusched" ]]; then
+      warning "Your cpusched selection ( $_cpusched ) is not available for the selected kernel version."
+      msg2 "Do you want to fallback to CFS (default)?"
       read -rp "`echo $'    > N/y : '`" _fallback;
     fi
     if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
@@ -201,14 +198,10 @@ _tkg_initscript() {
       exit 1
     fi
   fi
+
   if [ -n "$_custom_pkgbase" ]; then
     echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "${_path}"/cpuschedset
   fi
-
-  #if [ "$_basever" = "511" ] && [ "$_cpusched" != "cfs" ]; then
-  #  warning "No support for alternative CPU schedulers on this kernel version. Defaulting to CFS."
-  #  echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
-  #fi
 
   case $_compileroptlevel in
 	"2")
