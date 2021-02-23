@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=126
+pkgrel=127
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -349,7 +349,7 @@ case $_basever in
 	511)
 	opt_ver="5.8%2B"
     source=("$kernel_site"
-        #"$patch_site"
+        "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
@@ -380,6 +380,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
+            '8808ee2c7e904f2fb3c830b41c8bbc2b2ad37638ee95fdfde68167f0be35dd3f'
             'SKIP'
             'd8d5d11c80424985642b0eea6ace3256b5a1e5e69d637104523460a5ebdda202'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
