@@ -498,6 +498,13 @@ hackbase() {
 hackheaders() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
+  case $_basever in
+    54|57|58|59|510)
+    ;;
+    *)
+      depends=('pahole')
+    ;;
+  esac
 
   cd "${srcdir}/${_srcpath}"
   local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
