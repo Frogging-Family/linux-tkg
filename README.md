@@ -4,7 +4,8 @@
 
 
 Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
-- 5.10rc (Undead PDS, Project C / PDS & BMQ, MuQSS)
+- 5.11.y (Project C / PDS & BMQ, MuQSS)
+- 5.10.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.9.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.8.y (Undead PDS, Project C / PDS & BMQ)
 - 5.7.y (MuQSS, PDS, Project C / BMQ)
@@ -37,6 +38,7 @@ You can optionally enable support for it at the beginning of the PKGBUILD file. 
 - cherry-picked clear linux patches
 - **optional** overrides for missing ACS capabilities
 - **optional** Fsync support (proton)
+- **optional** futex2 support (proton)
 - **optional** Anbox support (binder, ashmem)
 - **optional** ZFS fpu symbols (<5.9)
 
