@@ -1,0 +1,133 @@
+From e5e77ad2223f662e1615266d8ef39a8db7e65a70 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Felix=20H=C3=A4dicke?= <felixhaedicke@web.de>
+Date: Thu, 19 Nov 2020 09:22:32 +0100
+Subject: HID: quirks: Add Apple Magic Trackpad 2 to hid_have_special_driver
+ list
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Apple Magic Trackpad 2 is handled by the magicmouse driver. And
+there were severe stability issues when both drivers (hid-generic and
+hid-magicmouse) were loaded for this device.
+
+Fixes: https://bugzilla.kernel.org/show_bug.cgi?id=210241
+
+Signed-off-by: Felix Hädicke <felixhaedicke@web.de>
+---
+ drivers/hid/hid-quirks.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
+index bf7ecab5d9e5..142e9dae2837 100644
+--- a/drivers/hid/hid-quirks.c
++++ b/drivers/hid/hid-quirks.c
+@@ -478,6 +478,8 @@ static const struct hid_device_id hid_have_special_driver[] = {
+ #if IS_ENABLED(CONFIG_HID_MAGICMOUSE)
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICMOUSE) },
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD) },
++	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
+ #endif
+ #if IS_ENABLED(CONFIG_HID_MAYFLASH)
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_DRAGONRISE, USB_DEVICE_ID_DRAGONRISE_PS3) },
+-- 
+cgit v1.2.3-1-gf6bb5
+
+From e437ac931e89629f952ce9f3f9dfe45ac505cd0d Mon Sep 17 00:00:00 2001
+From: Joshua Ashton <joshua@froggi.es>
+Date: Tue, 5 Jan 2021 19:46:01 +0000
+Subject: [PATCH] drm/amdgpu: don't limit gtt size on apus
+
+Since commit 24562523688b ("Revert "drm/amd/amdgpu: set gtt size
+according to system memory size only""), the GTT size was limited by
+3GiB or VRAM size.
+
+This is problematic on APU systems with a small carveout
+(notably, those that ship with dGPUs where this is unconfigurable),
+where the carveout size can be as low as 128MiB.
+
+This makes it so the GTT size heuristic always uses 3/4ths of
+the system memory size on APUs (limiting the size by 3GiB/VRAM size
+only on devices with dedicated video memory).
+
+Fixes: 24562523688b ("Revert drm/amd/amdgpu: set gtt size according to
+system memory size only")
+
+Signed-off-by: Joshua Ashton <joshua@froggi.es>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c |  5 +++--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c | 12 +++++++++---
+ 2 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index 72efd579ec5e..a5a41e9272d6 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -192,8 +192,9 @@ module_param_named(gartsize, amdgpu_gart_size, uint, 0600);
+ 
+ /**
+  * DOC: gttsize (int)
+- * Restrict the size of GTT domain in MiB for testing. The default is -1 (It's VRAM size if 3GB < VRAM < 3/4 RAM,
+- * otherwise 3/4 RAM size).
++ * Restrict the size of GTT domain in MiB for testing. The default is -1 (On APUs this is 3/4th
++ * of the system memory; on dGPUs this is 3GiB or VRAM sized, whichever is bigger,
++ * with an upper bound of 3/4th of system memory.
+  */
+ MODULE_PARM_DESC(gttsize, "Size of the GTT domain in megabytes (-1 = auto)");
+ module_param_named(gttsize, amdgpu_gtt_size, int, 0600);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+index 4d8f19ab1014..294f26f4f310 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+@@ -1865,9 +1865,15 @@ int amdgpu_ttm_init(struct amdgpu_device *adev)
+ 		struct sysinfo si;
+ 
+ 		si_meminfo(&si);
+-		gtt_size = min(max((AMDGPU_DEFAULT_GTT_SIZE_MB << 20),
+-			       adev->gmc.mc_vram_size),
+-			       ((uint64_t)si.totalram * si.mem_unit * 3/4));
++		gtt_size = (uint64_t)si.totalram * si.mem_unit * 3/4;
++		/* If we have dedicated memory, limit our GTT size to
++		 * 3GiB or VRAM size, whichever is bigger
++		 */
++		if (!(adev->flags & AMD_IS_APU)) {
++			gtt_size = min(max(AMDGPU_DEFAULT_GTT_SIZE_MB << 20,
++				adev->gmc.mc_vram_size),
++				gtt_size);
++		}
+ 	}
+ 	else
+ 		gtt_size = (uint64_t)amdgpu_gtt_size << 20;
+-- 
+2.30.0
+
+From f7f49141a5dbe9c99d78196b58c44307fb2e6be3 Mon Sep 17 00:00:00 2001
+From: Tk-Glitch <ti3nou@gmail.com>
+Date: Wed, 3 Feb 2021 11:20:12 +0200
+Subject: Revert "cpufreq: Avoid configuring old governors as default with intel_pstate"
+
+This is an undesirable behavior for us since our aggressive ondemand performs
+better than schedutil for gaming when using intel_pstate in passive mode.
+Also it interferes with the option to select the desired default governor we have.
+
+diff --git a/drivers/cpufreq/Kconfig b/drivers/cpufreq/Kconfig
+index 2c7171e0b0010..85de313ddec29 100644
+--- a/drivers/cpufreq/Kconfig
++++ b/drivers/cpufreq/Kconfig
+@@ -71,7 +71,6 @@ config CPU_FREQ_DEFAULT_GOV_USERSPACE
+ 
+ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
+ 	bool "ondemand"
+-	depends on !(X86_INTEL_PSTATE && SMP)
+ 	select CPU_FREQ_GOV_ONDEMAND
+ 	select CPU_FREQ_GOV_PERFORMANCE
+ 	help
+@@ -83,7 +84,6 @@ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
+ 
+ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
+ 	bool "conservative"
+-	depends on !(X86_INTEL_PSTATE && SMP)
+ 	select CPU_FREQ_GOV_CONSERVATIVE
+ 	select CPU_FREQ_GOV_PERFORMANCE
+ 	help

@@ -402,6 +402,51 @@ case $_basever in
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
 	;;
+	512)
+	opt_ver="5.8%2B"
+    source=("$kernel_site"
+        #"$patch_site"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        'config.x86_64' # stock Arch config
+        #'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        #0004-glitched-ondemand-muqss.patch
+        #0004-glitched-muqss.patch
+        #0004-5.12-ck1.patch
+        #0005-undead-glitched-ondemand-pds.patch
+        #0005-undead-glitched-pds.patch
+        #0005-v5.12_undead-pds099o.patch
+        #0005-glitched-pds.patch
+        0006-add-acs-overrides_iommu.patch
+        0007-v5.12-fsync.patch
+        #0007-v5.12-futex2_interface.patch
+        #0008-5.12-bcachefs.patch
+        #0009-glitched-ondemand-bmq.patch
+        #0009-glitched-bmq.patch
+        #0009-prjc_v5.12-r0.patch
+        #0012-linux-hardened.patch
+        0012-misc-additions.patch
+    )
+    sha256sums=('d57d9b8c595960bc21137c2d6312aca417029cc45a264f500d047ee1270193d5'
+            'SKIP'
+            '5cc3767b4005fc21c53863ceda75f287a9d2be772dbdee861a5cbec9cc62c1bd'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
+            '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
+            '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+	;;
 esac
 
 export KBUILD_BUILD_HOST=archlinux
