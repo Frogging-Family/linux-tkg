@@ -426,7 +426,7 @@ case $_basever in
         #0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.12-fsync.patch
-        #0007-v5.12-futex2_interface.patch
+        0007-v5.12-futex2_interface.patch
         #0008-5.12-bcachefs.patch
         #0009-glitched-ondemand-bmq.patch
         #0009-glitched-bmq.patch
@@ -436,7 +436,7 @@ case $_basever in
     )
     sha256sums=('d57d9b8c595960bc21137c2d6312aca417029cc45a264f500d047ee1270193d5'
             'SKIP'
-            '5cc3767b4005fc21c53863ceda75f287a9d2be772dbdee861a5cbec9cc62c1bd'
+            'cb0345a190154935333d88b9fa66df9c29de11d0f6df416950edbae23ec3f1aa'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -445,6 +445,7 @@ case $_basever in
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            'e67872500624b9369641a953cd1ba87b720d6f5dc95b74adb9a7cf51cb4ad4bd'
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
 	;;
 esac
