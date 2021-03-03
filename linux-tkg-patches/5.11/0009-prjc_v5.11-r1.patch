@@ -830,10 +830,10 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..cd1b0b85af6d
+index 000000000000..d5aeadfc1e9b
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,6800 @@
+@@ -0,0 +1,6861 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -888,7 +888,7 @@ index 000000000000..cd1b0b85af6d
 + */
 +EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
 +
-+#define ALT_SCHED_VERSION "v5.11-r0"
++#define ALT_SCHED_VERSION "v5.11-r1"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -1982,6 +1982,8 @@ index 000000000000..cd1b0b85af6d
 +	return ((p->flags & PF_KTHREAD) && (1 == p->nr_cpus_allowed));
 +}
 +
++#define MDF_FORCE_ENABLED	0x80
++
 +static void
 +__do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask, u32 flags);
 +
@@ -2001,6 +2003,7 @@ index 000000000000..cd1b0b85af6d
 +	preempt_disable();
 +	this_rq()->nr_pinned++;
 +	p->migration_disabled = 1;
++	p->migration_flags &= ~MDF_FORCE_ENABLED;
 +
 +	/*
 +	 * Violates locking rules! see comment in __do_set_cpus_allowed().
@@ -2599,6 +2602,7 @@ index 000000000000..cd1b0b85af6d
 +		if (p->cpus_ptr != &p->cpus_mask)
 +			__do_set_cpus_allowed(p, &p->cpus_mask, SCA_MIGRATE_ENABLE);
 +		p->migration_disabled = 0;
++		p->migration_flags |= MDF_FORCE_ENABLED;
 +		/* When p is migrate_disabled, rq->lock should be held */
 +		rq->nr_pinned--;
 +	}
@@ -2815,6 +2819,13 @@ index 000000000000..cd1b0b85af6d
 +
 +static inline bool ttwu_queue_cond(int cpu, int wake_flags)
 +{
++	/*
++	 * Do not complicate things with the async wake_list while the CPU is
++	 * in hotplug state.
++	 */
++	if (!cpu_active(cpu))
++		return false;
++
 +	/*
 +	 * If the CPU does not share cache, then queue the task on the
 +	 * remote rqs wakelist to avoid accessing remote data.
@@ -4597,7 +4608,7 @@ index 000000000000..cd1b0b85af6d
 +
 +#ifdef	CONFIG_SMP
 +
-+#define SCHED_RQ_NR_MIGRATION (32UL)
++#define SCHED_RQ_NR_MIGRATION (32U)
 +/*
 + * Migrate pending tasks in @rq to @dest_cpu
 + * Will try to migrate mininal of half of @rq nr_running tasks and
@@ -6253,15 +6264,6 @@ index 000000000000..cd1b0b85af6d
 +	return ret;
 +}
 +
-+/**
-+ * sys_sched_yield - yield the current processor to other threads.
-+ *
-+ * This function yields the current CPU to other tasks. It does this by
-+ * scheduling away the current task. If it still has the earliest deadline
-+ * it will be scheduled again as the next task.
-+ *
-+ * Return: 0.
-+ */
 +static void do_sched_yield(void)
 +{
 +	struct rq *rq;
@@ -6289,6 +6291,14 @@ index 000000000000..cd1b0b85af6d
 +	schedule();
 +}
 +
++/**
++ * sys_sched_yield - yield the current processor to other threads.
++ *
++ * This function yields the current CPU to other tasks. If there are no
++ * other threads running on this CPU then this function will return.
++ *
++ * Return: 0.
++ */
 +SYSCALL_DEFINE0(sched_yield)
 +{
 +	do_sched_yield();
@@ -7085,6 +7095,25 @@ index 000000000000..cd1b0b85af6d
 +		atomic_long_add(delta, &calc_load_tasks);
 +}
 +
++static void dump_rq_tasks(struct rq *rq, const char *loglvl)
++{
++	struct task_struct *g, *p;
++	int cpu = cpu_of(rq);
++
++	lockdep_assert_held(&rq->lock);
++
++	printk("%sCPU%d enqueued tasks (%u total):\n", loglvl, cpu, rq->nr_running);
++	for_each_process_thread(g, p) {
++		if (task_cpu(p) != cpu)
++			continue;
++
++		if (!task_on_rq_queued(p))
++			continue;
++
++		printk("%s\tpid: %d, name: %s\n", loglvl, p->pid, p->comm);
++	}
++}
++
 +int sched_cpu_dying(unsigned int cpu)
 +{
 +	struct rq *rq = cpu_rq(cpu);
@@ -7094,7 +7123,10 @@ index 000000000000..cd1b0b85af6d
 +	sched_tick_stop(cpu);
 +
 +	raw_spin_lock_irqsave(&rq->lock, flags);
-+	BUG_ON(rq->nr_running != 1 || rq_has_pinned_tasks(rq));
++	if (rq->nr_running != 1 || rq_has_pinned_tasks(rq)) {
++		WARN(true, "Dying CPU not properly vacated!");
++		dump_rq_tasks(rq, KERN_WARNING);
++	}
 +	raw_spin_unlock_irqrestore(&rq->lock, flags);
 +
 +	/*
@@ -7413,6 +7445,35 @@ index 000000000000..cd1b0b85af6d
 +#ifdef CONFIG_SMP
 +void __cant_migrate(const char *file, int line)
 +{
++	static unsigned long prev_jiffy;
++
++	if (irqs_disabled())
++		return;
++
++	if (is_migration_disabled(current))
++		return;
++
++	if (!IS_ENABLED(CONFIG_PREEMPT_COUNT))
++		return;
++
++	if (preempt_count() > 0)
++		return;
++
++	if (current->migration_flags & MDF_FORCE_ENABLED)
++		return;
++
++	if (time_before(jiffies, prev_jiffy + HZ) && prev_jiffy)
++		return;
++	prev_jiffy = jiffies;
++
++	pr_err("BUG: assuming non migratable context at %s:%d\n", file, line);
++	pr_err("in_atomic(): %d, irqs_disabled(): %d, migration_disabled() %u pid: %d, name: %s\n",
++	       in_atomic(), irqs_disabled(), is_migration_disabled(current),
++	       current->pid, current->comm);
++
++	debug_show_held_locks(current);
++	dump_stack();
++	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 +}
 +EXPORT_SYMBOL_GPL(__cant_migrate);
 +#endif
@@ -7673,7 +7734,7 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..cc2739f843af
+index 000000000000..192586fee177
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
 @@ -0,0 +1,638 @@
@@ -7832,7 +7893,7 @@ index 000000000000..cc2739f843af
 +	u64 last_ts_switch;
 +	u64 clock_task;
 +
-+	unsigned long nr_running;
++	unsigned int  nr_running;
 +	unsigned long nr_uninterruptible;
 +
 +#ifdef CONFIG_SCHED_HRTICK
