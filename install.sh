@@ -73,21 +73,49 @@ _linux_git_branch_checkout() {
 
   cd "$_where"
 
+  if [[ -z $_git_mirror || ! $_git_mirror =~ ^(kernel\.org|googlesource\.com)$ ]]; then
+    while true; do
+      echo "Which git repository would you like to clone the linux sources from ?"
+      echo "   0) kernel.org (official)"
+      echo "   1) googlesource.com (faster mirror)"
+      read -p "[0-1]: " _git_repo_index
+      
+      if [ "$_git_repo_index" = "0" ]; then
+        _git_mirror="kernel.org"
+        break
+      elif [ "$_git_repo_index" = "1" ]; then
+        _git_mirror="googlesource.com"
+        break
+      else
+        echo "Wrong index."
+      fi
+    done
+  fi
+
   if ! [ -d linux-src-git ]; then
     msg2 "First initialization of the linux source code git folder"
     mkdir linux-src-git
     cd linux-src-git
     git init
-    git remote add origin https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+    
+    git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+    git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
   else
     cd linux-src-git
+
+    if ! git remote -v | grep "kernel.org" ; then
+      git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+    fi
+    if ! git remote -v | grep "googlesource.com" ; then
+      git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
+    fi
 
     msg2 "Current branch: $(git branch | grep "\*")"
     msg2 "Reseting files to their original state"
     
     git reset --hard HEAD
     git clean -f -d -x
-  fi 
+  fi
 
   _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
 
@@ -96,50 +124,40 @@ _linux_git_branch_checkout() {
 
     if ! git branch --list | grep "master" ; then
       msg2 "master branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add origin master        
-      git fetch origin master --shallow-since=$_clone_start_date
-      git checkout -b master origin/master      
+      git remote set-branches --add $_git_mirror master        
+      git fetch $_git_mirror master --shallow-since=$_clone_start_date
+      git checkout -b master ${_git_mirror}/master      
     else
       msg2 "master branch exists locally, updating..."
       git checkout master
-      git fetch origin master --shallow-since=$_clone_start_date
-      git reset --hard origin/master
+      git fetch $_git_mirror master --shallow-since=$_clone_start_date
+      git reset --hard ${_git_mirror}/master
     fi
     msg2 "Checking out latest RC tag: v${_basekernel}-${_sub}"
-    git fetch origin tag "v${_basekernel}-${_sub}" 
+    git fetch $_git_mirror tag "v${_basekernel}-${_sub}" 
     git checkout "v${_basekernel}-${_sub}"
-  elif [ "$_sub" = "0" ]; then
-    msg2 "Switching to linux-${_basekernel}.y"
-    if ! git branch --list | grep "linux-${_basekernel}.y" ; then
-      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add origin linux-${_basekernel}.y
-      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
-      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y
-    else
-      msg2 "${_basekernel}.y branch exists locally, updating..."
-      git checkout linux-${_basekernel}.y
-      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
-      git reset --hard origin/linux-${_basekernel}.y
-    fi
-    msg2 "Checking out latest release: v${_basekernel}"
-    git fetch origin tag "v${_basekernel}"
-    git checkout "v${_basekernel}"
   else
+    # define kernel tag so we treat the 0 subver properly
+    _kernel_tag="v${_basekernel}.${_sub}"
+    if [ "$_sub" = "0" ];then
+      _kernel_tag="v${_basekernel}"
+    fi
+
     msg2 "Switching to linux-${_basekernel}.y"
     if ! git branch --list | grep "linux-${_basekernel}.y" ; then
       msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add origin linux-${_basekernel}.y
-      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
-      git checkout -b linux-${_basekernel}.y origin/linux-${_basekernel}.y
+      git remote set-branches --add $_git_mirror linux-${_basekernel}.y
+      git fetch $_git_mirror linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git checkout -b linux-${_basekernel}.y ${_git_mirror}/linux-${_basekernel}.y
     else
       msg2 "${_basekernel}.y branch exists locally, updating..."
       git checkout linux-${_basekernel}.y
-      git fetch origin linux-${_basekernel}.y --shallow-since=$_clone_start_date
-      git reset --hard origin/linux-${_basekernel}.y
+      git fetch $_git_mirror linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git reset --hard ${_git_mirror}/linux-${_basekernel}.y
     fi
-    msg2 "Checking out latest release: v${_basekernel}.${_sub}"
-    git fetch origin tag "v${_basekernel}.${_sub}"
-    git checkout "v${_basekernel}.${_sub}"
+    msg2 "Checking out latest release: ${_kernel_tag}"
+    git fetch $_git_mirror tag "${_kernel_tag}"
+    git checkout "${_kernel_tag}"
   fi
 
 }
