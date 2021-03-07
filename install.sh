@@ -209,28 +209,30 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   case "$_basever" in
     "54")
     opt_ver="4.19-v5.4"
+    opt_urladdon="might_not_work/"
     ;;
     "57")
-    opt_ver="5.7"
+    opt_ver="5.7+"
+    opt_urladdon="might_not_work/"
     ;;
     "58")
-    opt_ver="5.8"
+    opt_ver="5.8+"
     ;;
     "59")
-    opt_ver="5.8"
+    opt_ver="5.8+"
     ;;
     "510")
-    opt_ver="5.8"
+    opt_ver="5.8+"
     ;;
     "511")
-    opt_ver="5.8"
+    opt_ver="5.8+"
     ;;
     "512")
-    opt_ver="5.8"
+    opt_ver="5.8+"
     ;;
   esac
 
-  wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch" 
+  wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/${opt_urladdon}enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch" 
 
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
 

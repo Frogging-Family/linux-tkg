@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=131
+pkgrel=132
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -70,7 +70,7 @@ case $_basever in
 	opt_ver="4.19-v5.4"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/might_not_work/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -96,7 +96,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'b42056a96c21ec90f05ae9c7691c6af190a4a61cca912e3ddc3791775d1ddd8b'
+            '0b4cb1fe39d63fb7bd6a3dccb54d29145c1ce637a51826be2ab0291b665a61db'
             'SKIP'
             'be2066dd6133357007e8c7da9d5de3194b13409ebbfba8821db1849588fced1e'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -123,7 +123,7 @@ case $_basever in
 	opt_ver="5.7%2B"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/might_not_work/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -318,7 +318,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '97680df2a1333328bc13ef3a3a0b6bfe3edb479c68d4961f0739e85bd73779f6'
+            '5e91d90fbcfb3d7c3a7a950b8738253250fe461fd23c1cedf5beb990c422ba18'
             'SKIP'
             '458d1ca195f3fee5501683a4b61ef0ed0cfa7e5219eccab3390fb40c0289898a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -380,7 +380,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
-            '5d0c5b8636d71789a8c1b702c76d95f8426ac0899ede9aa8925671ef29423023'
+            'd509c3900cf02a8d9f1692ffcc9d4a27d2b515ad50c0a231d5d00a125e9bd7a8'
             'SKIP'
             'd8d5d11c80424985642b0eea6ace3256b5a1e5e69d637104523460a5ebdda202'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
