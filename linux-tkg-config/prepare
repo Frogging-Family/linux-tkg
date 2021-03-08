@@ -8,6 +8,38 @@ ver510=21
 ver511=4
 ver512=rc2
 
+_cpuschedselector() {
+  msg2 "Which CPU sched variant do you want to build/install?"
+  select CPUSCHED in "${_CPUSCHEDARRAY[@]}"
+  do
+    case $CPUSCHED in
+      "CFS")
+        echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
+        ;;
+      "PDS")
+        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+        ;;
+      "MuQSS")
+        echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
+        ;;
+      "BMQ")
+        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+        ;;
+      "Project C / PDS")
+        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
+        ;;
+      "Project C / BMQ")
+        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
+        ;;
+      "Undead PDS (TkG)")
+        echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
+        ;;
+      *)
+    esac
+    break
+  done
+}
+
 _tkg_initscript() {
 
   # Default to Arch
@@ -157,56 +189,19 @@ _tkg_initscript() {
   fi
 
   if [ -z "$_cpusched" ] && [ ! -e "${_path}"/cpuschedset ]; then
-    plain "\nWhich CPU sched variant do you want to build/install?"
-    select CPUSCHED in "${_CPUSCHEDARRAY[@]}"
-    do
-      case $CPUSCHED in
-        "CFS")
-          echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
-          ;;
-        "PDS")
-          echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
-          ;;
-        "MuQSS")
-          echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
-          ;;
-        "BMQ")
-          echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
-          ;;
-        "Project C / PDS")
-          echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
-          ;;
-        "Project C / BMQ")
-          echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
-          ;;
-        "Undead PDS (TkG)")
-          echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
-          ;;
-        *)
-      esac
-      break
-    done
-  elif [ "$_cpusched" = "upds" ]; then
-    echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
-  elif [ "$_cpusched" = "pds" ]; then
-    echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
-  elif [ "$_cpusched" = "cfs" ]; then
-    echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
-  elif [ "$_cpusched" = "bmq" ]; then
-    echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
-  elif [ "$_cpusched" = "muqss" ] || [ "$_cpusched" = "MuQSS" ]; then
-    echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
+    _cpuschedselector
+  elif [[ ${_CPUSCHEDARRAY[*]} =~ "$_cpusched" ]]; then
+    if ( [ "$_cpusched" = "muqss" ] || [ "$_cpusched" = "MuQSS" ] ); then
+      echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
+    else
+      echo "_cpusched=\"$_cpusched\"" > "${_path}"/cpuschedset
+    fi
   else
     if [ "$_nofallback" != "true" ] && ! [[ ${_CPUSCHEDARRAY[*]} =~ "$_cpusched" ]]; then
-      warning "Your cpusched selection ( $_cpusched ) is not available for the selected kernel version."
-      msg2 "Do you want to fallback to CFS (default)?"
-      read -rp "`echo $'    > N/y : '`" _fallback;
-    fi
-    if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
+      warning "Your cpusched selection ( $_cpusched ) is not available for the selected kernel version. Please select another:"
+      _cpuschedselector
+    elif [ "$_nofallback" = "true" ]; then
       echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
-    else
-      error "Exiting..."
-      exit 1
     fi
   fi
 
