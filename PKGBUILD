@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=133
+pkgrel=134
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -148,6 +148,7 @@ case $_basever in
         	0009-prjc_v5.7-r3.patch
         	0011-ZFS-fix.patch
         	0012-linux-hardened.patch
+        	0013-anbox-modules.patch
 	)
 	sha256sums=('de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
             '66a0173a13cd58015f5bf1b14f67bfa15dc1db5d8e7225fcd95ac2e9a5341653'
@@ -173,7 +174,8 @@ case $_basever in
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
             'b2a2ae866fc3f1093f67e69ba59738827e336b8f800fb0487599127f7f3ef881'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d')
+            '6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d'
+            '9bdb396f70bfcb6485457e611d61b2f6614f9b96b2a7e238b86b4c50a126228a')
 	;;
 	58)
 	opt_ver="5.8%2B"
@@ -205,6 +207,7 @@ case $_basever in
         	0009-prjc_v5.8-r3.patch
         	0011-ZFS-fix.patch
         	#0012-linux-hardened.patch
+        	0013-anbox-modules.patch
 	)
 	sha256sums=('e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
             '5b558a40c2fdad2c497fe0b1a64679313fd5a7ccbaecef8803d49b3baaccbacd'
@@ -226,7 +229,8 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
             'f5dbff4833a2e3ca94c202e5197894d5f1006c689ff149355353e77d2e17c943'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104')
+            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
+            '9bdb396f70bfcb6485457e611d61b2f6614f9b96b2a7e238b86b4c50a126228a')
 	;;
 	59)
 	opt_ver="5.8%2B"
@@ -258,6 +262,7 @@ case $_basever in
 		0009-prjc_v5.9-r3.patch
         	0011-ZFS-fix.patch
 	        #0012-linux-hardened.patch
+	        0013-anbox-modules.patch
 	)
 	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
             '46c520da2db82d8f9a15c2117d3a50e0faaaf98f05bd4ea1f3105e2724f207d6'
@@ -282,7 +287,8 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '0d5fe3a9050536fe431564b221badb85af7ff57b330e3978ae90d21989fcad2d'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104')
+            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
+            '9bdb396f70bfcb6485457e611d61b2f6614f9b96b2a7e238b86b4c50a126228a')
 	;;
 	510)
 	opt_ver="5.8%2B"
@@ -316,6 +322,7 @@ case $_basever in
         0011-ZFS-fix.patch
         0012-linux-hardened.patch
         0012-misc-additions.patch
+        0013-anbox-modules.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
             'a24279f21f69cdbf69f99f483fab39c024a88e1ef55e00a953f55a653402df5c'
@@ -344,7 +351,8 @@ case $_basever in
             'e308292fc42840a2366280ea7cf26314e92b931bb11f04ad4830276fc0326ee1'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             '105f51e904d80f63c1421203e093b612fc724edefd3e388b64f8d371c0b3a842'
-            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            '9bdb396f70bfcb6485457e611d61b2f6614f9b96b2a7e238b86b4c50a126228a')
 	;;
 	511)
 	opt_ver="5.8%2B"
@@ -378,6 +386,7 @@ case $_basever in
         0011-ZFS-fix.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
+        0013-anbox-modules.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
             'afb0f641117643354cd08759549ad69f2cab55feafa22516eeb1a0ac7439e3c4'
@@ -400,7 +409,8 @@ case $_basever in
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'e394d4b7721f55837a8364c8311cb06cb5a59484de8aa8731e38d1aff2b7014e'
             '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            '9bdb396f70bfcb6485457e611d61b2f6614f9b96b2a7e238b86b4c50a126228a')
 	;;
 	512)
 	opt_ver="5.8%2B"
@@ -433,6 +443,7 @@ case $_basever in
         #0009-prjc_v5.12-r0.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
+        0013-anbox-modules.patch
     )
     sha256sums=('fccc4b9e65cbffd5f75ebaed0904df96d10d431c675823875cdde94e40e09d0f'
             'SKIP'
@@ -446,7 +457,8 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             'e67872500624b9369641a953cd1ba87b720d6f5dc95b74adb9a7cf51cb4ad4bd'
-            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            '9bdb396f70bfcb6485457e611d61b2f6614f9b96b2a7e238b86b4c50a126228a')
 	;;
 esac
 
