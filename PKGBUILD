@@ -70,7 +70,7 @@ case $_basever in
 	opt_ver="4.19-v5.4"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-4.19-v5.4.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -123,7 +123,7 @@ case $_basever in
 	opt_ver="5.7"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -179,7 +179,7 @@ case $_basever in
 	opt_ver="5.8%2B"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-5.8%2B.patch"
         	'config.x86_64' # stock Arch config
         	#'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -232,7 +232,7 @@ case $_basever in
 	opt_ver="5.8%2B"
 	source=("$kernel_site"
         	$patch_site
-		"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+		"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-5.8%2B.patch"
         	"config.x86_64" # stock Arch config
         	#$hardened_config_file # hardened Arch config
         	90-cleanup.hook
@@ -288,7 +288,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-5.8%2B.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -350,7 +350,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-5.8%2B.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -406,7 +406,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         #"$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-5.8%2B.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
