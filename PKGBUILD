@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=134
+pkgrel=135
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -372,9 +372,9 @@ case $_basever in
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
         0004-5.11-ck1.patch
-        #0005-undead-glitched-ondemand-pds.patch
-        #0005-undead-glitched-pds.patch
-        #0005-v5.11_undead-pds099o.patch
+        0005-undead-glitched-ondemand-pds.patch
+        0005-undead-glitched-pds.patch
+        0005-v5.11_undead-pds099o.patch
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.11-fsync.patch
@@ -401,6 +401,9 @@ case $_basever in
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
             '2f7e24e70ed1f5561155a1b5e5aab9927aea317db0500e8cf83cd059807f9c7e'
+            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+            '31b428c464905e44ed61cdcd1f42b4ec157ebe5a44cb5b608c4c99b466df66ba'
+            '4169fffe69eb5216831e545cb7439fa8e3fc09066757d7d4c496fe024fc373ee'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
