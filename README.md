@@ -29,6 +29,33 @@ You can optionally enable support for it at the beginning of the PKGBUILD file. 
 **Note regarding kernels older than 5.9 on Archlinux:**
 **Since the switch to zstd compressed initramfs by default, you will face an "invalid magic at start of compress" error by default. You can workaround the issue by editing `/etc/mkinitcpio.conf` to uncomment the `COMPRESSION="lz4"` (for example, since that's the best option after zstd) line and regenerating for all kernels with `sudo mkinitpcio -P`.**
 
+
+### Anbox usage
+
+When enabling the anbox support option, the modules are built-in. You don't have to load them. However you'll need to mount binderfs :
+```
+sudo mkdir /dev/binderfs
+sudo mount -t binder binder /dev/binderfs
+```
+
+To make this persistent, you can add the following to your `/etc/fstab` :
+```
+binder                         /dev/binderfs binder   nofail  0      0
+```
+
+Then, if needed, start the anbox service :
+```
+systemctl start anbox-container-manager.service
+```
+
+You can also enable the service for it to be auto-started on boot :
+```
+systemctl enable anbox-container-manager.service
+```
+
+You're set to run Anbox.
+
+
 ## Other stuff included:
 - Graysky's per-CPU-arch native optimizations - https://github.com/graysky2/kernel_gcc_patch
 - memory management and swapping tweaks
