@@ -38,7 +38,11 @@ sudo mkdir /dev/binderfs
 sudo mount -t binder binder /dev/binderfs
 ```
 
-To make this persistent, you can add the following to your `/etc/fstab` :
+To make this persistent, you can create `/etc/tmpfiles.d/anbox.conf` with the following content :
+```
+d! /dev/binderfs 0755 root root
+```
+After which you can add the following to your `/etc/fstab` :
 ```
 binder                         /dev/binderfs binder   nofail  0      0
 ```
