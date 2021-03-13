@@ -544,6 +544,12 @@ hackbase() {
 
   # install customization file, for reference
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
+
+  # install udev rule for winesync
+  if [ -e "${srcdir}/winesync.rules" ]; then
+    msg2 "Installing udev rule for winesync"
+    install -Dm644 "${srcdir}"/winesync.rules "${pkgdir}/etc/udev/rules.d/winesync.rules"
+  fi
 }
 
 hackheaders() {
