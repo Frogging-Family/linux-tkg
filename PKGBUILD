@@ -439,7 +439,7 @@ case $_basever in
         #0012-linux-hardened.patch
         0012-misc-additions.patch
     )
-    sha256sums=('fccc4b9e65cbffd5f75ebaed0904df96d10d431c675823875cdde94e40e09d0f'
+    sha256sums=('cb251b82131e29c575db3820c9ad62c044d07bcf8bf0bf38482ba55d52dc95b7'
             'SKIP'
             'a48dc999e51763db63a1e52a8a2cc23b4116fbf03a731b999878da8578598115'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -450,7 +450,7 @@ case $_basever in
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
-            'e67872500624b9369641a953cd1ba87b720d6f5dc95b74adb9a7cf51cb4ad4bd'
+            'fc0a3274e3285278e925f4b3bfe803e5e610344bebe5bba063ba202dbaff49c8'
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
 	;;
 esac
