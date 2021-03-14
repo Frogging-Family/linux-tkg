@@ -400,7 +400,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             '073e7b8ab48aa9abdb5cedb5c729a2f624275ebdbe1769476231c9e712145496'
-            '2d2d6f03b53339177e81a39a871345f2e1b492f8f0687ba3843eb845a7bc4d4f'
+            'd366d9f7961350d3bef6e0e2eb8d3a243888976b3376b0ff59730fde34e7c8d3'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'e394d4b7721f55837a8364c8311cb06cb5a59484de8aa8731e38d1aff2b7014e'
@@ -544,6 +544,18 @@ hackbase() {
 
   # install customization file, for reference
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
+
+  # workaround for missing header with winesync
+  if [ -e "${srcdir}/winesync.rules" ]; then
+    msg2 "Workaround missing winesync header"
+    install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
+  fi
+
+  # load winesync module at boot
+  if [ -e "${srcdir}/winesync.conf" ]; then
+    msg2 "Set the winesync module to be loaded at boot through /etc/modules-load.d"
+    install -Dm644 "${srcdir}"/winesync.conf "${pkgdir}/etc/modules-load.d/winesync.conf"
+  fi
 
   # install udev rule for winesync
   if [ -e "${srcdir}/winesync.rules" ]; then
