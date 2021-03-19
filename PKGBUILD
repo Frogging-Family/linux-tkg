@@ -538,7 +538,7 @@ hackbase() {
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 
   # workaround for missing header with winesync
-  if [ -e "${srcdir}/winesync.rules" ]; then
+  if [ -e ""${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h" ]; then
     msg2 "Workaround missing winesync header"
     install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
   fi
