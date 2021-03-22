@@ -368,6 +368,9 @@ case $_basever in
         0009-prjc_v5.11-r2.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
             'dffcabb33733c58344243d722f77f0b38616796b7ecb287892ccb975c91de077'
@@ -393,7 +396,9 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'e394d4b7721f55837a8364c8311cb06cb5a59484de8aa8731e38d1aff2b7014e'
-            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	512)
 	opt_ver="5.8%2B"
@@ -426,6 +431,9 @@ case $_basever in
         #0009-prjc_v5.12-r0.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('cb251b82131e29c575db3820c9ad62c044d07bcf8bf0bf38482ba55d52dc95b7'
             'SKIP'
@@ -439,7 +447,9 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             'fc0a3274e3285278e925f4b3bfe803e5e610344bebe5bba063ba202dbaff49c8'
-            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 esac
 
