@@ -271,6 +271,10 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     #Help Debian UEFI cert compile problem
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/debian-uefi-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
+ if [ "$_distro" = "Ubuntu" ]; then 
+    #Help Ubuntu cert compile problem.
+    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/canonical-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config 
+  fi
   yes '' | make ${llvm_opt} oldconfig
   msg2 "Done"
 
