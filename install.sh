@@ -260,11 +260,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # cd in linux folder, copy Ubuntu's current config file, update with new params
   cd "$_where"/linux-src-git
 
-  if ( msg2 "Trying /boot/config-* ..." && cp /boot/config-`uname -r` .config ) || ( msg2 "Trying /proc/config.gz ..." && zcat --verbose /proc/config.gz > .config ); then
-    msg2 "Copying current kernel's config and running make oldconfig..."
-  else
-    msg2 "Current kernel config not found! Falling back to default..."
-  fi
   if [ "$_distro" = "Debian" ]; then 
     #Help Debian cert compile problem.
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config 
