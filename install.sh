@@ -13,7 +13,7 @@ warning() {
 }
 
 plain() {
- echo "$1" >&2
+ echo -e "$1" >&2
 }
 
 _distro_prompt() {
