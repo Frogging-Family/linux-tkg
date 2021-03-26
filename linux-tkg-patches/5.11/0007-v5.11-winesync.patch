@@ -1,131 +1,3 @@
-From dedf0e7ca660ff6ac3fbc1863207cfd6fba4dbaa Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 10:50:45 -0600
-Subject: [PATCH] winesync: Introduce the winesync driver and character device.
-
----
- drivers/misc/Kconfig    | 11 +++++++++
- drivers/misc/Makefile   |  1 +
- drivers/misc/winesync.c | 64 +++++++++++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 76 insertions(+)
- create mode 100644 drivers/misc/winesync.c
-
-diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
-index fafa8b0d8099..25bf30ab958a 100644
---- a/drivers/misc/Kconfig
-+++ b/drivers/misc/Kconfig
-@@ -466,6 +466,17 @@ config HISI_HIKEY_USB
- 	  switching between the dual-role USB-C port and the USB-A host ports
- 	  using only one USB controller.
- 
-+config WINESYNC
-+	tristate "Synchronization primitives for Wine"
-+	help
-+	  This module provides kernel support for synchronization primitives
-+	  used by Wine. It is not a hardware driver.
-+
-+	  To compile this driver as a module, choose M here: the
-+	  module will be called winesync.
-+
-+	  If unsure, say N.
-+
- source "drivers/misc/c2port/Kconfig"
- source "drivers/misc/eeprom/Kconfig"
- source "drivers/misc/cb710/Kconfig"
-diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
-index d23231e73330..8b1d4ae4ed1b 100644
---- a/drivers/misc/Makefile
-+++ b/drivers/misc/Makefile
-@@ -57,3 +57,4 @@ obj-$(CONFIG_HABANA_AI)		+= habanalabs/
- obj-$(CONFIG_UACCE)		+= uacce/
- obj-$(CONFIG_XILINX_SDFEC)	+= xilinx_sdfec.o
- obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
-+obj-$(CONFIG_WINESYNC)		+= winesync.o
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-new file mode 100644
-index 000000000000..111f33c5676e
---- /dev/null
-+++ b/drivers/misc/winesync.c
-@@ -0,0 +1,64 @@
-+// SPDX-License-Identifier: GPL-2.0-only
-+/*
-+ * winesync.c - Kernel driver for Wine synchronization primitives
-+ *
-+ * Copyright (C) 2021 Zebediah Figura
-+ */
-+
-+#include <linux/fs.h>
-+#include <linux/miscdevice.h>
-+#include <linux/module.h>
-+
-+#define WINESYNC_NAME	"winesync"
-+
-+static int winesync_char_open(struct inode *inode, struct file *file)
-+{
-+	return nonseekable_open(inode, file);
-+}
-+
-+static int winesync_char_release(struct inode *inode, struct file *file)
-+{
-+	return 0;
-+}
-+
-+static long winesync_char_ioctl(struct file *file, unsigned int cmd,
-+				unsigned long parm)
-+{
-+	switch (cmd) {
-+	default:
-+		return -ENOSYS;
-+	}
-+}
-+
-+static const struct file_operations winesync_fops = {
-+	.owner		= THIS_MODULE,
-+	.open		= winesync_char_open,
-+	.release	= winesync_char_release,
-+	.unlocked_ioctl	= winesync_char_ioctl,
-+	.compat_ioctl	= winesync_char_ioctl,
-+	.llseek		= no_llseek,
-+};
-+
-+static struct miscdevice winesync_misc = {
-+	.minor		= MISC_DYNAMIC_MINOR,
-+	.name		= WINESYNC_NAME,
-+	.fops		= &winesync_fops,
-+};
-+
-+static int __init winesync_init(void)
-+{
-+	return misc_register(&winesync_misc);
-+}
-+
-+static void __exit winesync_exit(void)
-+{
-+	misc_deregister(&winesync_misc);
-+}
-+
-+module_init(winesync_init);
-+module_exit(winesync_exit);
-+
-+MODULE_AUTHOR("Zebediah Figura");
-+MODULE_DESCRIPTION("Kernel driver for Wine synchronization primitives");
-+MODULE_LICENSE("GPL");
-+MODULE_ALIAS("devname:" WINESYNC_NAME);
--- 
-2.11.4.GIT
-
-From c09a117631f9dbd7e0ecd44775e5b73d1ccfd017 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 10:57:06 -0600
-Subject: [PATCH] winesync: Reserve a minor device number and ioctl range.
-
----
- Documentation/admin-guide/devices.txt              | 3 ++-
- Documentation/userspace-api/ioctl/ioctl-number.rst | 2 ++
- drivers/misc/winesync.c                            | 3 ++-
- include/linux/miscdevice.h                         | 1 +
- 4 files changed, 7 insertions(+), 2 deletions(-)
-
 diff --git a/Documentation/admin-guide/devices.txt b/Documentation/admin-guide/devices.txt
 index 63fd4e6a014b..dc9a30b5f1a2 100644
 --- a/Documentation/admin-guide/devices.txt
@@ -141,6 +13,18 @@ index 63fd4e6a014b..dc9a30b5f1a2 100644
  		255			Reserved for MISC_DYNAMIC_MINOR
  
    11 char	Raw keyboard device	(Linux/SPARC only)
+diff --git a/Documentation/userspace-api/index.rst b/Documentation/userspace-api/index.rst
+index acd2cc2a538d..1950883c333e 100644
+--- a/Documentation/userspace-api/index.rst
++++ b/Documentation/userspace-api/index.rst
+@@ -24,6 +24,7 @@ place where this information is gathered.
+    ioctl/index
+    iommu
+    media/index
++   winesync
+ 
+ .. only::  subproject and html
+ 
 diff --git a/Documentation/userspace-api/ioctl/ioctl-number.rst b/Documentation/userspace-api/ioctl/ioctl-number.rst
 index a4c75a28c839..e79d6b307e9b 100644
 --- a/Documentation/userspace-api/ioctl/ioctl-number.rst
@@ -154,1690 +38,12 @@ index a4c75a28c839..e79d6b307e9b 100644
  0xFD  all    linux/dm-ioctl.h
  0xFE  all    linux/isst_if.h
  ====  =====  ======================================================= ================================================================
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 111f33c5676e..85cb6ccaa077 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -40,7 +40,7 @@ static const struct file_operations winesync_fops = {
- };
- 
- static struct miscdevice winesync_misc = {
--	.minor		= MISC_DYNAMIC_MINOR,
-+	.minor		= WINESYNC_MINOR,
- 	.name		= WINESYNC_NAME,
- 	.fops		= &winesync_fops,
- };
-@@ -62,3 +62,4 @@ MODULE_AUTHOR("Zebediah Figura");
- MODULE_DESCRIPTION("Kernel driver for Wine synchronization primitives");
- MODULE_LICENSE("GPL");
- MODULE_ALIAS("devname:" WINESYNC_NAME);
-+MODULE_ALIAS_MISCDEV(WINESYNC_MINOR);
-diff --git a/include/linux/miscdevice.h b/include/linux/miscdevice.h
-index 0676f18093f9..350aecfcfb29 100644
---- a/include/linux/miscdevice.h
-+++ b/include/linux/miscdevice.h
-@@ -71,6 +71,7 @@
- #define USERIO_MINOR		240
- #define VHOST_VSOCK_MINOR	241
- #define RFKILL_MINOR		242
-+#define WINESYNC_MINOR		243
- #define MISC_DYNAMIC_MINOR	255
- 
- struct device;
--- 
-2.11.4.GIT
-
-From 9ce65ab0a946055e4586650bef8effaf38b20d45 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:15:39 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_CREATE_SEM and
- WINESYNC_IOC_DELETE.
-
----
- drivers/misc/winesync.c       | 127 ++++++++++++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  25 +++++++++
- 2 files changed, 152 insertions(+)
- create mode 100644 include/uapi/linux/winesync.h
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 85cb6ccaa077..c59553f4b2ce 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -6,25 +6,152 @@
-  */
- 
- #include <linux/fs.h>
-+#include <linux/idr.h>
- #include <linux/miscdevice.h>
- #include <linux/module.h>
-+#include <linux/slab.h>
-+#include <uapi/linux/winesync.h>
- 
- #define WINESYNC_NAME	"winesync"
- 
-+enum winesync_type {
-+	WINESYNC_TYPE_SEM,
-+};
-+
-+struct winesync_obj {
-+	struct kref refcount;
-+
-+	enum winesync_type type;
-+
-+	union {
-+		struct {
-+			__u32 count;
-+			__u32 max;
-+		} sem;
-+	} u;
-+};
-+
-+struct winesync_device {
-+	spinlock_t table_lock;
-+	struct idr objects;
-+};
-+
-+static void destroy_obj(struct kref *ref)
-+{
-+	struct winesync_obj *obj;
-+
-+	obj = container_of(ref, struct winesync_obj, refcount);
-+	kfree(obj);
-+}
-+
-+static void put_obj(struct winesync_obj *obj)
-+{
-+	kref_put(&obj->refcount, destroy_obj);
-+}
-+
- static int winesync_char_open(struct inode *inode, struct file *file)
- {
-+	struct winesync_device *dev;
-+
-+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
-+	if (!dev)
-+		return -ENOMEM;
-+
-+	idr_init(&dev->objects);
-+	spin_lock_init(&dev->table_lock);
-+
-+	file->private_data = dev;
- 	return nonseekable_open(inode, file);
- }
- 
- static int winesync_char_release(struct inode *inode, struct file *file)
- {
-+	struct winesync_device *dev = file->private_data;
-+	struct winesync_obj *obj;
-+	int id;
-+
-+	spin_lock(&dev->table_lock);
-+	idr_for_each_entry(&dev->objects, obj, id) {
-+		idr_remove(&dev->objects, id);
-+		synchronize_rcu();
-+		put_obj(obj);
-+	}
-+	spin_unlock(&dev->table_lock);
-+
-+	kfree(dev);
-+
-+	return 0;
-+}
-+
-+static void winesync_init_obj(struct winesync_obj *obj)
-+{
-+	kref_init(&obj->refcount);
-+}
-+
-+static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_sem_args __user *user_args = argp;
-+	struct winesync_sem_args args;
-+	struct winesync_obj *sem;
-+	int ret;
-+
-+	if (copy_from_user(&args, argp, sizeof(args)))
-+		return -EFAULT;
-+
-+	if (args.count > args.max)
-+		return -EINVAL;
-+
-+	sem = kzalloc(sizeof(*sem), GFP_KERNEL);
-+	if (!sem)
-+		return -ENOMEM;
-+
-+	winesync_init_obj(sem);
-+	sem->type = WINESYNC_TYPE_SEM;
-+	sem->u.sem.count = args.count;
-+	sem->u.sem.max = args.max;
-+
-+	spin_lock(&dev->table_lock);
-+	ret = idr_alloc(&dev->objects, sem, 0, 0, GFP_KERNEL);
-+	spin_unlock(&dev->table_lock);
-+
-+	if (ret < 0) {
-+		kfree(sem);
-+		return ret;
-+	}
-+
-+	return put_user(ret, &user_args->sem);
-+}
-+
-+static int winesync_delete(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_obj *obj;
-+	__u32 id;
-+
-+	if (get_user(id, (__u32 __user *)argp))
-+		return -EFAULT;
-+
-+	spin_lock(&dev->table_lock);
-+	obj = idr_remove(&dev->objects, id);
-+	spin_unlock(&dev->table_lock);
-+
-+	if (!obj)
-+		return -EINVAL;
-+
-+	put_obj(obj);
- 	return 0;
- }
- 
- static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 				unsigned long parm)
- {
-+	struct winesync_device *dev = file->private_data;
-+	void __user *argp = (void __user *)parm;
-+
- 	switch (cmd) {
-+	case WINESYNC_IOC_CREATE_SEM:
-+		return winesync_create_sem(dev, argp);
-+	case WINESYNC_IOC_DELETE:
-+		return winesync_delete(dev, argp);
- 	default:
- 		return -ENOSYS;
- 	}
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-new file mode 100644
-index 000000000000..9096df8e2d99
---- /dev/null
-+++ b/include/uapi/linux/winesync.h
-@@ -0,0 +1,25 @@
-+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
-+/*
-+ * Kernel support for Wine synchronization primitives
-+ *
-+ * Copyright (C) 2021 Zebediah Figura
-+ */
-+
-+#ifndef __LINUX_WINESYNC_H
-+#define __LINUX_WINESYNC_H
-+
-+#include <linux/types.h>
-+
-+struct winesync_sem_args {
-+	__u32 sem;
-+	__u32 count;
-+	__u32 max;
-+};
-+
-+#define WINESYNC_IOC_BASE 0xf7
-+
-+#define WINESYNC_IOC_CREATE_SEM		_IOWR(WINESYNC_IOC_BASE, 0, \
-+					      struct winesync_sem_args)
-+#define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
-+
-+#endif
--- 
-2.11.4.GIT
-
-From 43f0eb0633b1c258fbf400495ccbeb78d6a292dd Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:22:42 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_PUT_SEM.
-
----
- drivers/misc/winesync.c       | 65 +++++++++++++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  2 ++
- 2 files changed, 67 insertions(+)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index c59553f4b2ce..8f105437e7b6 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -20,9 +20,11 @@ enum winesync_type {
- 
- struct winesync_obj {
- 	struct kref refcount;
-+	spinlock_t lock;
- 
- 	enum winesync_type type;
- 
-+	/* The following fields are protected by the object lock. */
- 	union {
- 		struct {
- 			__u32 count;
-@@ -36,6 +38,19 @@ struct winesync_device {
- 	struct idr objects;
- };
- 
-+static struct winesync_obj *get_obj(struct winesync_device *dev, int id)
-+{
-+	struct winesync_obj *obj;
-+
-+	rcu_read_lock();
-+	obj = idr_find(&dev->objects, id);
-+	if (obj && !kref_get_unless_zero(&obj->refcount))
-+		obj = NULL;
-+	rcu_read_unlock();
-+
-+	return obj;
-+}
-+
- static void destroy_obj(struct kref *ref)
- {
- 	struct winesync_obj *obj;
-@@ -86,6 +101,7 @@ static int winesync_char_release(struct inode *inode, struct file *file)
- static void winesync_init_obj(struct winesync_obj *obj)
- {
- 	kref_init(&obj->refcount);
-+	spin_lock_init(&obj->lock);
- }
- 
- static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
-@@ -141,6 +157,53 @@ static int winesync_delete(struct winesync_device *dev, void __user *argp)
- 	return 0;
- }
- 
-+/*
-+ * Actually change the semaphore state, returning -EOVERFLOW if it is made
-+ * invalid.
-+ */
-+static int put_sem_state(struct winesync_obj *sem, __u32 count)
-+{
-+	lockdep_assert_held(&sem->lock);
-+
-+	if (sem->u.sem.count + count < sem->u.sem.count ||
-+	    sem->u.sem.count + count > sem->u.sem.max)
-+		return -EOVERFLOW;
-+
-+	sem->u.sem.count += count;
-+	return 0;
-+}
-+
-+static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_sem_args __user *user_args = argp;
-+	struct winesync_sem_args args;
-+	struct winesync_obj *sem;
-+	__u32 prev_count;
-+	int ret;
-+
-+	if (copy_from_user(&args, argp, sizeof(args)))
-+		return -EFAULT;
-+
-+	sem = get_obj(dev, args.sem);
-+	if (!sem)
-+		return -EINVAL;
-+	if (sem->type != WINESYNC_TYPE_SEM) {
-+		put_obj(sem);
-+		return -EINVAL;
-+	}
-+
-+	spin_lock(&sem->lock);
-+	ret = put_sem_state(sem, args.count);
-+	spin_unlock(&sem->lock);
-+
-+	put_obj(sem);
-+
-+	if (!ret && put_user(prev_count, &user_args->count))
-+		ret = -EFAULT;
-+
-+	return ret;
-+}
-+
- static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 				unsigned long parm)
- {
-@@ -152,6 +215,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_create_sem(dev, argp);
- 	case WINESYNC_IOC_DELETE:
- 		return winesync_delete(dev, argp);
-+	case WINESYNC_IOC_PUT_SEM:
-+		return winesync_put_sem(dev, argp);
- 	default:
- 		return -ENOSYS;
- 	}
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 9096df8e2d99..6447c29fc419 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -20,6 +20,8 @@ struct winesync_sem_args {
- 
- #define WINESYNC_IOC_CREATE_SEM		_IOWR(WINESYNC_IOC_BASE, 0, \
- 					      struct winesync_sem_args)
-+#define WINESYNC_IOC_PUT_SEM		_IOWR(WINESYNC_IOC_BASE, 5, \
-+					      struct winesync_sem_args)
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
- 
- #endif
--- 
-2.11.4.GIT
-
-From cc057370d456bc3da6cadc848ae76ebe4e37ad42 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:31:44 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_WAIT_ANY.
-
----
- drivers/misc/winesync.c       | 229 ++++++++++++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  11 ++
- 2 files changed, 240 insertions(+)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 8f105437e7b6..e203b4447baa 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -22,6 +22,8 @@ struct winesync_obj {
- 	struct kref refcount;
- 	spinlock_t lock;
- 
-+	struct list_head any_waiters;
-+
- 	enum winesync_type type;
- 
- 	/* The following fields are protected by the object lock. */
-@@ -33,6 +35,28 @@ struct winesync_obj {
- 	} u;
- };
- 
-+struct winesync_q_entry {
-+	struct list_head node;
-+	struct winesync_q *q;
-+	struct winesync_obj *obj;
-+	__u32 index;
-+};
-+
-+struct winesync_q {
-+	struct task_struct *task;
-+	__u32 owner;
-+
-+	/*
-+	 * Protected via atomic_cmpxchg(). Only the thread that wins the
-+	 * compare-and-swap may actually change object states and wake this
-+	 * task.
-+	 */
-+	atomic_t signaled;
-+
-+	__u32 count;
-+	struct winesync_q_entry entries[];
-+};
-+
- struct winesync_device {
- 	spinlock_t table_lock;
- 	struct idr objects;
-@@ -102,6 +126,26 @@ static void winesync_init_obj(struct winesync_obj *obj)
- {
- 	kref_init(&obj->refcount);
- 	spin_lock_init(&obj->lock);
-+	INIT_LIST_HEAD(&obj->any_waiters);
-+}
-+
-+static void try_wake_any_sem(struct winesync_obj *sem)
-+{
-+	struct winesync_q_entry *entry;
-+
-+	lockdep_assert_held(&sem->lock);
-+
-+	list_for_each_entry(entry, &sem->any_waiters, node) {
-+		struct winesync_q *q = entry->q;
-+
-+		if (!sem->u.sem.count)
-+			break;
-+
-+		if (atomic_cmpxchg(&q->signaled, -1, entry->index) == -1) {
-+			sem->u.sem.count--;
-+			wake_up_process(q->task);
-+		}
-+	}
- }
- 
- static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
-@@ -194,6 +238,8 @@ static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
- 
- 	spin_lock(&sem->lock);
- 	ret = put_sem_state(sem, args.count);
-+	if (!ret)
-+		try_wake_any_sem(sem);
- 	spin_unlock(&sem->lock);
- 
- 	put_obj(sem);
-@@ -204,6 +250,187 @@ static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
- 	return ret;
- }
- 
-+static int winesync_schedule(const struct winesync_q *q, long timeout)
-+{
-+	int ret = 0;
-+
-+	if (timeout <= 0)
-+		return 0;
-+
-+	do {
-+		if (signal_pending(current)) {
-+			ret = -ERESTARTSYS;
-+			break;
-+		}
-+
-+		set_current_state(TASK_INTERRUPTIBLE);
-+		if (atomic_read(&q->signaled) != -1)
-+			break;
-+		timeout = schedule_timeout(timeout);
-+	} while (timeout);
-+	__set_current_state(TASK_RUNNING);
-+
-+	return ret;
-+}
-+
-+/*
-+ * Allocate and initialize most of the winesync_q structure, but do not queue us
-+ * yet. Also, calculate the relative timeout in jiffies.
-+ */
-+static int setup_wait(struct winesync_device *dev,
-+		      const struct winesync_wait_args *args, long *ret_timeout,
-+		      struct winesync_q **ret_q)
-+{
-+	long timeout = MAX_SCHEDULE_TIMEOUT;
-+	const __u32 count = args->count;
-+	struct winesync_q *q;
-+	__u32 *ids;
-+	__u32 i, j;
-+
-+	if (args->timeout) {
-+		struct timespec64 to, ts;
-+
-+		if (get_timespec64(&to, u64_to_user_ptr(args->timeout)))
-+			return -EFAULT;
-+		if (!timespec64_valid(&to))
-+			return -EINVAL;
-+
-+		ktime_get_ts64(&ts);
-+		if (timespec64_compare(&to, &ts) <= 0) {
-+			timeout = 0;
-+		} else {
-+			ts = timespec64_sub(to, ts);
-+			timeout = timespec64_to_jiffies(&ts);
-+		}
-+	}
-+
-+	ids = kmalloc_array(args->count, sizeof(*ids), GFP_KERNEL);
-+	if (!ids)
-+		return -ENOMEM;
-+	if (copy_from_user(ids, u64_to_user_ptr(args->objs),
-+			   array_size(args->count, sizeof(*ids)))) {
-+		kfree(ids);
-+		return -EFAULT;
-+	}
-+
-+	q = kmalloc(struct_size(q, entries, count), GFP_KERNEL);
-+	if (!q) {
-+		kfree(ids);
-+		return -ENOMEM;
-+	}
-+	q->task = current;
-+	q->owner = args->owner;
-+	atomic_set(&q->signaled, -1);
-+	q->count = count;
-+
-+	for (i = 0; i < count; i++) {
-+		struct winesync_q_entry *entry = &q->entries[i];
-+		struct winesync_obj *obj = get_obj(dev, ids[i]);
-+
-+		if (!obj)
-+			goto err;
-+
-+		entry->obj = obj;
-+		entry->q = q;
-+		entry->index = i;
-+	}
-+
-+	kfree(ids);
-+
-+	*ret_q = q;
-+	*ret_timeout = timeout;
-+	return 0;
-+
-+err:
-+	for (j = 0; j < i; j++)
-+		put_obj(q->entries[j].obj);
-+	kfree(ids);
-+	kfree(q);
-+	return -EINVAL;
-+}
-+
-+static void try_wake_any_obj(struct winesync_obj *obj)
-+{
-+	switch (obj->type) {
-+	case WINESYNC_TYPE_SEM:
-+		try_wake_any_sem(obj);
-+		break;
-+	}
-+}
-+
-+static int winesync_wait_any(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_wait_args args;
-+	struct winesync_q *q;
-+	long timeout;
-+	__u32 i;
-+	int ret;
-+
-+	if (copy_from_user(&args, argp, sizeof(args)))
-+		return -EFAULT;
-+	if (!args.owner)
-+		return -EINVAL;
-+
-+	ret = setup_wait(dev, &args, &timeout, &q);
-+	if (ret < 0)
-+		return ret;
-+
-+	/* queue ourselves */
-+
-+	for (i = 0; i < args.count; i++) {
-+		struct winesync_q_entry *entry = &q->entries[i];
-+		struct winesync_obj *obj = q->entries[i].obj;
-+
-+		spin_lock(&obj->lock);
-+		list_add_tail(&entry->node, &obj->any_waiters);
-+		spin_unlock(&obj->lock);
-+	}
-+
-+	/* check if we are already signaled */
-+
-+	for (i = 0; i < args.count; i++) {
-+		struct winesync_obj *obj = q->entries[i].obj;
-+
-+		if (atomic_read(&q->signaled) != -1)
-+			break;
-+
-+		spin_lock(&obj->lock);
-+		try_wake_any_obj(obj);
-+		spin_unlock(&obj->lock);
-+	}
-+
-+	/* sleep */
-+
-+	ret = winesync_schedule(q, timeout);
-+
-+	/* and finally, unqueue */
-+
-+	for (i = 0; i < args.count; i++) {
-+		struct winesync_obj *obj = q->entries[i].obj;
-+
-+		spin_lock(&obj->lock);
-+		list_del(&q->entries[i].node);
-+		spin_unlock(&obj->lock);
-+
-+		put_obj(obj);
-+	}
-+
-+	if (atomic_read(&q->signaled) != -1) {
-+		struct winesync_wait_args __user *user_args = argp;
-+
-+		/* even if we caught a signal, we need to communicate success */
-+		ret = 0;
-+
-+		if (put_user(atomic_read(&q->signaled), &user_args->index))
-+			ret = -EFAULT;
-+	} else if (!ret) {
-+		ret = -ETIMEDOUT;
-+	}
-+
-+	kfree(q);
-+	return ret;
-+}
-+
- static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 				unsigned long parm)
- {
-@@ -217,6 +444,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_delete(dev, argp);
- 	case WINESYNC_IOC_PUT_SEM:
- 		return winesync_put_sem(dev, argp);
-+	case WINESYNC_IOC_WAIT_ANY:
-+		return winesync_wait_any(dev, argp);
- 	default:
- 		return -ENOSYS;
- 	}
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 6447c29fc419..c9e18310e77f 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -16,6 +16,15 @@ struct winesync_sem_args {
- 	__u32 max;
- };
- 
-+struct winesync_wait_args {
-+	__u64 timeout;
-+	__u64 objs;
-+	__u32 count;
-+	__u32 owner;
-+	__u32 index;
-+	__u32 pad;
-+};
-+
- #define WINESYNC_IOC_BASE 0xf7
- 
- #define WINESYNC_IOC_CREATE_SEM		_IOWR(WINESYNC_IOC_BASE, 0, \
-@@ -23,5 +32,7 @@ struct winesync_sem_args {
- #define WINESYNC_IOC_PUT_SEM		_IOWR(WINESYNC_IOC_BASE, 5, \
- 					      struct winesync_sem_args)
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
-+#define WINESYNC_IOC_WAIT_ANY		_IOWR(WINESYNC_IOC_BASE, 11, \
-+					      struct winesync_wait_args)
- 
- #endif
--- 
-2.11.4.GIT
-
-From bd839ba23eb4590b6a2b2859e1f7bd29ebc688b3 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:36:09 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_WAIT_ALL.
-
----
- drivers/misc/winesync.c       | 240 ++++++++++++++++++++++++++++++++++++++++--
- include/uapi/linux/winesync.h |   2 +
- 2 files changed, 234 insertions(+), 8 deletions(-)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index e203b4447baa..456c5a6d2447 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -22,7 +22,36 @@ struct winesync_obj {
- 	struct kref refcount;
- 	spinlock_t lock;
- 
-+	/*
-+	 * any_waiters is protected by the object lock, but all_waiters is
-+	 * protected by the device wait_all_lock.
-+	 */
- 	struct list_head any_waiters;
-+	struct list_head all_waiters;
-+
-+	/*
-+	 * Hint describing how many tasks are queued on this object in a
-+	 * wait-all operation.
-+	 *
-+	 * Any time we do a wake, we may need to wake "all" waiters as well as
-+	 * "any" waiters. In order to atomically wake "all" waiters, we must
-+	 * lock all of the objects, and that means grabbing the wait_all_lock
-+	 * below (and, due to lock ordering rules, before locking this object).
-+	 * However, wait-all is a rare operation, and grabbing the wait-all
-+	 * lock for every wake would create unnecessary contention. Therefore we
-+	 * first check whether all_hint is one, and, if it is, we skip trying
-+	 * to wake "all" waiters.
-+	 *
-+	 * This "refcount" isn't protected by any lock. It might change during
-+	 * the course of a wake, but there's no meaningful race there; it's only
-+	 * a hint.
-+	 *
-+	 * Use refcount_t rather than atomic_t to take advantage of saturation.
-+	 * This does mean that the "no waiters" case is signified by all_hint
-+	 * being one, rather than zero (otherwise we would get spurious
-+	 * warnings).
-+	 */
-+	refcount_t all_hint;
- 
- 	enum winesync_type type;
- 
-@@ -53,11 +82,24 @@ struct winesync_q {
- 	 */
- 	atomic_t signaled;
- 
-+	bool all;
- 	__u32 count;
- 	struct winesync_q_entry entries[];
- };
- 
- struct winesync_device {
-+	/*
-+	 * Wait-all operations must atomically grab all objects, and be totally
-+	 * ordered with respect to each other and wait-any operations. If one
-+	 * thread is trying to acquire several objects, another thread cannot
-+	 * touch the object at the same time.
-+	 *
-+	 * We achieve this by grabbing multiple object locks at the same time.
-+	 * However, this creates a lock ordering problem. To solve that problem,
-+	 * wait_all_lock is taken first whenever multiple objects must be locked
-+	 * at the same time.
-+	 */
-+	spinlock_t wait_all_lock;
- 	spinlock_t table_lock;
- 	struct idr objects;
- };
-@@ -97,6 +139,7 @@ static int winesync_char_open(struct inode *inode, struct file *file)
- 		return -ENOMEM;
- 
- 	idr_init(&dev->objects);
-+	spin_lock_init(&dev->wait_all_lock);
- 	spin_lock_init(&dev->table_lock);
- 
- 	file->private_data = dev;
-@@ -125,8 +168,82 @@ static int winesync_char_release(struct inode *inode, struct file *file)
- static void winesync_init_obj(struct winesync_obj *obj)
- {
- 	kref_init(&obj->refcount);
-+	refcount_set(&obj->all_hint, 1);
- 	spin_lock_init(&obj->lock);
- 	INIT_LIST_HEAD(&obj->any_waiters);
-+	INIT_LIST_HEAD(&obj->all_waiters);
-+}
-+
-+static bool is_signaled(struct winesync_obj *obj, __u32 owner)
-+{
-+	lockdep_assert_held(&obj->lock);
-+
-+	switch (obj->type) {
-+	case WINESYNC_TYPE_SEM:
-+		return !!obj->u.sem.count;
-+	}
-+
-+	WARN(1, "bad object type %#x\n", obj->type);
-+	return false;
-+}
-+
-+/*
-+ * "locked_obj" is an optional pointer to an object which is already locked and
-+ * should not be locked again. This is necessary so that changing an object's
-+ * state and waking it can be a single atomic operation.
-+ */
-+static void try_wake_all(struct winesync_device *dev, struct winesync_q *q,
-+			 struct winesync_obj *locked_obj)
-+{
-+	__u32 count = q->count;
-+	bool can_wake = true;
-+	__u32 i;
-+
-+	lockdep_assert_held(&dev->wait_all_lock);
-+	if (locked_obj)
-+		lockdep_assert_held(&locked_obj->lock);
-+
-+	for (i = 0; i < count; i++) {
-+		if (q->entries[i].obj != locked_obj)
-+			spin_lock(&q->entries[i].obj->lock);
-+	}
-+
-+	for (i = 0; i < count; i++) {
-+		if (!is_signaled(q->entries[i].obj, q->owner)) {
-+			can_wake = false;
-+			break;
-+		}
-+	}
-+
-+	if (can_wake && atomic_cmpxchg(&q->signaled, -1, 0) == -1) {
-+		for (i = 0; i < count; i++) {
-+			struct winesync_obj *obj = q->entries[i].obj;
-+
-+			switch (obj->type) {
-+			case WINESYNC_TYPE_SEM:
-+				obj->u.sem.count--;
-+				break;
-+			}
-+		}
-+		wake_up_process(q->task);
-+	}
-+
-+	for (i = 0; i < count; i++) {
-+		if (q->entries[i].obj != locked_obj)
-+			spin_unlock(&q->entries[i].obj->lock);
-+	}
-+}
-+
-+static void try_wake_all_obj(struct winesync_device *dev,
-+			     struct winesync_obj *obj)
-+{
-+	struct winesync_q_entry *entry;
-+
-+	lockdep_assert_held(&dev->wait_all_lock);
-+	lockdep_assert_held(&obj->lock);
-+
-+	list_for_each_entry(entry, &obj->all_waiters, node)
-+		try_wake_all(dev, entry->q, obj);
- }
- 
- static void try_wake_any_sem(struct winesync_obj *sem)
-@@ -236,11 +353,29 @@ static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
- 		return -EINVAL;
- 	}
- 
--	spin_lock(&sem->lock);
--	ret = put_sem_state(sem, args.count);
--	if (!ret)
--		try_wake_any_sem(sem);
--	spin_unlock(&sem->lock);
-+	if (refcount_read(&sem->all_hint) > 1) {
-+		spin_lock(&dev->wait_all_lock);
-+		spin_lock(&sem->lock);
-+
-+		prev_count = sem->u.sem.count;
-+		ret = put_sem_state(sem, args.count);
-+		if (!ret) {
-+			try_wake_all_obj(dev, sem);
-+			try_wake_any_sem(sem);
-+		}
-+
-+		spin_unlock(&sem->lock);
-+		spin_unlock(&dev->wait_all_lock);
-+	} else {
-+		spin_lock(&sem->lock);
-+
-+		prev_count = sem->u.sem.count;
-+		ret = put_sem_state(sem, args.count);
-+		if (!ret)
-+			try_wake_any_sem(sem);
-+
-+		spin_unlock(&sem->lock);
-+	}
- 
- 	put_obj(sem);
- 
-@@ -278,8 +413,8 @@ static int winesync_schedule(const struct winesync_q *q, long timeout)
-  * yet. Also, calculate the relative timeout in jiffies.
-  */
- static int setup_wait(struct winesync_device *dev,
--		      const struct winesync_wait_args *args, long *ret_timeout,
--		      struct winesync_q **ret_q)
-+		      const struct winesync_wait_args *args, bool all,
-+		      long *ret_timeout, struct winesync_q **ret_q)
- {
- 	long timeout = MAX_SCHEDULE_TIMEOUT;
- 	const __u32 count = args->count;
-@@ -321,6 +456,7 @@ static int setup_wait(struct winesync_device *dev,
- 	q->task = current;
- 	q->owner = args->owner;
- 	atomic_set(&q->signaled, -1);
-+	q->all = all;
- 	q->count = count;
- 
- 	for (i = 0; i < count; i++) {
-@@ -330,6 +466,16 @@ static int setup_wait(struct winesync_device *dev,
- 		if (!obj)
- 			goto err;
- 
-+		if (all) {
-+			/* Check that the objects are all distinct. */
-+			for (j = 0; j < i; j++) {
-+				if (obj == q->entries[j].obj) {
-+					put_obj(obj);
-+					goto err;
-+				}
-+			}
-+		}
-+
- 		entry->obj = obj;
- 		entry->q = q;
- 		entry->index = i;
-@@ -371,7 +517,7 @@ static int winesync_wait_any(struct winesync_device *dev, void __user *argp)
- 	if (!args.owner)
- 		return -EINVAL;
- 
--	ret = setup_wait(dev, &args, &timeout, &q);
-+	ret = setup_wait(dev, &args, false, &timeout, &q);
- 	if (ret < 0)
- 		return ret;
- 
-@@ -431,6 +577,82 @@ static int winesync_wait_any(struct winesync_device *dev, void __user *argp)
- 	return ret;
- }
- 
-+static int winesync_wait_all(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_wait_args args;
-+	struct winesync_q *q;
-+	long timeout;
-+	__u32 i;
-+	int ret;
-+
-+	if (copy_from_user(&args, argp, sizeof(args)))
-+		return -EFAULT;
-+	if (!args.owner)
-+		return -EINVAL;
-+
-+	ret = setup_wait(dev, &args, true, &timeout, &q);
-+	if (ret < 0)
-+		return ret;
-+
-+	/* queue ourselves */
-+
-+	spin_lock(&dev->wait_all_lock);
-+
-+	for (i = 0; i < args.count; i++) {
-+		struct winesync_q_entry *entry = &q->entries[i];
-+		struct winesync_obj *obj = q->entries[i].obj;
-+
-+		refcount_inc(&obj->all_hint);
-+
-+		/*
-+		 * obj->all_waiters is protected by dev->wait_all_lock rather
-+		 * than obj->lock, so there is no need to acquire it here.
-+		 */
-+		list_add_tail(&entry->node, &obj->all_waiters);
-+	}
-+
-+	/* check if we are already signaled */
-+
-+	try_wake_all(dev, q, NULL);
-+
-+	spin_unlock(&dev->wait_all_lock);
-+
-+	/* sleep */
-+
-+	ret = winesync_schedule(q, timeout);
-+
-+	/* and finally, unqueue */
-+
-+	spin_lock(&dev->wait_all_lock);
-+
-+	for (i = 0; i < args.count; i++) {
-+		struct winesync_q_entry *entry = &q->entries[i];
-+		struct winesync_obj *obj = q->entries[i].obj;
-+
-+		/*
-+		 * obj->all_waiters is protected by dev->wait_all_lock rather
-+		 * than obj->lock, so there is no need to acquire it here.
-+		 */
-+		list_del(&entry->node);
-+
-+		refcount_dec(&obj->all_hint);
-+
-+		put_obj(obj);
-+	}
-+
-+	spin_unlock(&dev->wait_all_lock);
-+
-+	if (atomic_read(&q->signaled) != -1) {
-+		/* even if we caught a signal, we need to communicate success */
-+		ret = 0;
-+	} else if (!ret) {
-+		ret = -ETIMEDOUT;
-+	}
-+
-+	kfree(q);
-+	return ret;
-+}
-+
- static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 				unsigned long parm)
- {
-@@ -446,6 +668,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_put_sem(dev, argp);
- 	case WINESYNC_IOC_WAIT_ANY:
- 		return winesync_wait_any(dev, argp);
-+	case WINESYNC_IOC_WAIT_ALL:
-+		return winesync_wait_all(dev, argp);
- 	default:
- 		return -ENOSYS;
- 	}
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index c9e18310e77f..f4d776294868 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -34,5 +34,7 @@ struct winesync_wait_args {
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
- #define WINESYNC_IOC_WAIT_ANY		_IOWR(WINESYNC_IOC_BASE, 11, \
- 					      struct winesync_wait_args)
-+#define WINESYNC_IOC_WAIT_ALL		_IOW (WINESYNC_IOC_BASE, 12, \
-+					      struct winesync_wait_args)
- 
- #endif
--- 
-2.11.4.GIT
-
-From 8a06708d3699de2ea172c8595253aa82b10a751e Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:41:10 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_CREATE_MUTEX.
-
----
- drivers/misc/winesync.c       | 74 +++++++++++++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  8 +++++
- 2 files changed, 82 insertions(+)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 456c5a6d2447..72d99dfd9cfd 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -16,6 +16,7 @@
- 
- enum winesync_type {
- 	WINESYNC_TYPE_SEM,
-+	WINESYNC_TYPE_MUTEX,
- };
- 
- struct winesync_obj {
-@@ -61,6 +62,10 @@ struct winesync_obj {
- 			__u32 count;
- 			__u32 max;
- 		} sem;
-+		struct {
-+			__u32 count;
-+			__u32 owner;
-+		} mutex;
- 	} u;
- };
- 
-@@ -181,6 +186,10 @@ static bool is_signaled(struct winesync_obj *obj, __u32 owner)
- 	switch (obj->type) {
- 	case WINESYNC_TYPE_SEM:
- 		return !!obj->u.sem.count;
-+	case WINESYNC_TYPE_MUTEX:
-+		if (obj->u.mutex.owner && obj->u.mutex.owner != owner)
-+			return false;
-+		return obj->u.mutex.count < UINT_MAX;
- 	}
- 
- 	WARN(1, "bad object type %#x\n", obj->type);
-@@ -223,6 +232,10 @@ static void try_wake_all(struct winesync_device *dev, struct winesync_q *q,
- 			case WINESYNC_TYPE_SEM:
- 				obj->u.sem.count--;
- 				break;
-+			case WINESYNC_TYPE_MUTEX:
-+				obj->u.mutex.count++;
-+				obj->u.mutex.owner = q->owner;
-+				break;
- 			}
- 		}
- 		wake_up_process(q->task);
-@@ -265,6 +278,28 @@ static void try_wake_any_sem(struct winesync_obj *sem)
- 	}
- }
- 
-+static void try_wake_any_mutex(struct winesync_obj *mutex)
-+{
-+	struct winesync_q_entry *entry;
-+
-+	lockdep_assert_held(&mutex->lock);
-+
-+	list_for_each_entry(entry, &mutex->any_waiters, node) {
-+		struct winesync_q *q = entry->q;
-+
-+		if (mutex->u.mutex.count == UINT_MAX)
-+			break;
-+		if (mutex->u.mutex.owner && mutex->u.mutex.owner != q->owner)
-+			continue;
-+
-+		if (atomic_cmpxchg(&q->signaled, -1, entry->index) == -1) {
-+			mutex->u.mutex.count++;
-+			mutex->u.mutex.owner = q->owner;
-+			wake_up_process(q->task);
-+		}
-+	}
-+}
-+
- static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
- {
- 	struct winesync_sem_args __user *user_args = argp;
-@@ -299,6 +334,40 @@ static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
- 	return put_user(ret, &user_args->sem);
- }
- 
-+static int winesync_create_mutex(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_mutex_args __user *user_args = argp;
-+	struct winesync_mutex_args args;
-+	struct winesync_obj *mutex;
-+	int ret;
-+
-+	if (copy_from_user(&args, argp, sizeof(args)))
-+		return -EFAULT;
-+
-+	if (!args.owner != !args.count)
-+		return -EINVAL;
-+
-+	mutex = kzalloc(sizeof(*mutex), GFP_KERNEL);
-+	if (!mutex)
-+		return -ENOMEM;
-+
-+	winesync_init_obj(mutex);
-+	mutex->type = WINESYNC_TYPE_MUTEX;
-+	mutex->u.mutex.count = args.count;
-+	mutex->u.mutex.owner = args.owner;
-+
-+	spin_lock(&dev->table_lock);
-+	ret = idr_alloc(&dev->objects, mutex, 0, 0, GFP_KERNEL);
-+	spin_unlock(&dev->table_lock);
-+
-+	if (ret < 0) {
-+		kfree(mutex);
-+		return ret;
-+	}
-+
-+	return put_user(ret, &user_args->mutex);
-+}
-+
- static int winesync_delete(struct winesync_device *dev, void __user *argp)
- {
- 	struct winesync_obj *obj;
-@@ -501,6 +570,9 @@ static void try_wake_any_obj(struct winesync_obj *obj)
- 	case WINESYNC_TYPE_SEM:
- 		try_wake_any_sem(obj);
- 		break;
-+	case WINESYNC_TYPE_MUTEX:
-+		try_wake_any_mutex(obj);
-+		break;
- 	}
- }
- 
-@@ -662,6 +734,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 	switch (cmd) {
- 	case WINESYNC_IOC_CREATE_SEM:
- 		return winesync_create_sem(dev, argp);
-+	case WINESYNC_IOC_CREATE_MUTEX:
-+		return winesync_create_mutex(dev, argp);
- 	case WINESYNC_IOC_DELETE:
- 		return winesync_delete(dev, argp);
- 	case WINESYNC_IOC_PUT_SEM:
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index f4d776294868..2e16652efe03 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -16,6 +16,12 @@ struct winesync_sem_args {
- 	__u32 max;
- };
- 
-+struct winesync_mutex_args {
-+	__u32 mutex;
-+	__u32 owner;
-+	__u32 count;
-+};
-+
- struct winesync_wait_args {
- 	__u64 timeout;
- 	__u64 objs;
-@@ -29,6 +35,8 @@ struct winesync_wait_args {
- 
- #define WINESYNC_IOC_CREATE_SEM		_IOWR(WINESYNC_IOC_BASE, 0, \
- 					      struct winesync_sem_args)
-+#define WINESYNC_IOC_CREATE_MUTEX	_IOWR(WINESYNC_IOC_BASE, 1, \
-+					      struct winesync_mutex_args)
- #define WINESYNC_IOC_PUT_SEM		_IOWR(WINESYNC_IOC_BASE, 5, \
- 					      struct winesync_sem_args)
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
--- 
-2.11.4.GIT
-
-From dacb7bb011dd3a011599dea84fe624a8b9489b4f Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:44:41 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_PUT_MUTEX.
-
----
- drivers/misc/winesync.c       | 71 +++++++++++++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  2 ++
- 2 files changed, 73 insertions(+)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 72d99dfd9cfd..529f12d444ad 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -454,6 +454,75 @@ static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
- 	return ret;
- }
- 
-+/*
-+ * Actually change the mutex state, returning -EPERM if not the owner.
-+ */
-+static int put_mutex_state(struct winesync_obj *mutex,
-+			   const struct winesync_mutex_args *args)
-+{
-+	lockdep_assert_held(&mutex->lock);
-+
-+	if (mutex->u.mutex.owner != args->owner)
-+		return -EPERM;
-+
-+	if (!--mutex->u.mutex.count)
-+		mutex->u.mutex.owner = 0;
-+	return 0;
-+}
-+
-+static int winesync_put_mutex(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_mutex_args __user *user_args = argp;
-+	struct winesync_mutex_args args;
-+	struct winesync_obj *mutex;
-+	__u32 prev_count;
-+	int ret;
-+
-+	if (copy_from_user(&args, argp, sizeof(args)))
-+		return -EFAULT;
-+	if (!args.owner)
-+		return -EINVAL;
-+
-+	mutex = get_obj(dev, args.mutex);
-+	if (!mutex)
-+		return -EINVAL;
-+	if (mutex->type != WINESYNC_TYPE_MUTEX) {
-+		put_obj(mutex);
-+		return -EINVAL;
-+	}
-+
-+	if (refcount_read(&mutex->all_hint) > 1) {
-+		spin_lock(&dev->wait_all_lock);
-+		spin_lock(&mutex->lock);
-+
-+		prev_count = mutex->u.mutex.count;
-+		ret = put_mutex_state(mutex, &args);
-+		if (!ret) {
-+			try_wake_all_obj(dev, mutex);
-+			try_wake_any_mutex(mutex);
-+		}
-+
-+		spin_unlock(&mutex->lock);
-+		spin_unlock(&dev->wait_all_lock);
-+	} else {
-+		spin_lock(&mutex->lock);
-+
-+		prev_count = mutex->u.mutex.count;
-+		ret = put_mutex_state(mutex, &args);
-+		if (!ret)
-+			try_wake_any_mutex(mutex);
-+
-+		spin_unlock(&mutex->lock);
-+	}
-+
-+	put_obj(mutex);
-+
-+	if (!ret && put_user(prev_count, &user_args->count))
-+		ret = -EFAULT;
-+
-+	return ret;
-+}
-+
- static int winesync_schedule(const struct winesync_q *q, long timeout)
- {
- 	int ret = 0;
-@@ -740,6 +809,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_delete(dev, argp);
- 	case WINESYNC_IOC_PUT_SEM:
- 		return winesync_put_sem(dev, argp);
-+	case WINESYNC_IOC_PUT_MUTEX:
-+		return winesync_put_mutex(dev, argp);
- 	case WINESYNC_IOC_WAIT_ANY:
- 		return winesync_wait_any(dev, argp);
- 	case WINESYNC_IOC_WAIT_ALL:
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 2e16652efe03..2c8658d5dbe0 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -39,6 +39,8 @@ struct winesync_wait_args {
- 					      struct winesync_mutex_args)
- #define WINESYNC_IOC_PUT_SEM		_IOWR(WINESYNC_IOC_BASE, 5, \
- 					      struct winesync_sem_args)
-+#define WINESYNC_IOC_PUT_MUTEX		_IOWR(WINESYNC_IOC_BASE, 6, \
-+					      struct winesync_mutex_args)
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
- #define WINESYNC_IOC_WAIT_ANY		_IOWR(WINESYNC_IOC_BASE, 11, \
- 					      struct winesync_wait_args)
--- 
-2.11.4.GIT
-
-From 2400d761354250bcd1a57dd5ebea4adea2063fd8 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:46:46 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_KILL_OWNER.
-
----
- drivers/misc/winesync.c       | 80 +++++++++++++++++++++++++++++++++++++++++--
- include/uapi/linux/winesync.h |  1 +
- 2 files changed, 79 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 529f12d444ad..b66ffc740317 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -65,6 +65,7 @@ struct winesync_obj {
- 		struct {
- 			__u32 count;
- 			__u32 owner;
-+			bool ownerdead;
- 		} mutex;
- 	} u;
- };
-@@ -88,6 +89,7 @@ struct winesync_q {
- 	atomic_t signaled;
- 
- 	bool all;
-+	bool ownerdead;
- 	__u32 count;
- 	struct winesync_q_entry entries[];
- };
-@@ -233,6 +235,9 @@ static void try_wake_all(struct winesync_device *dev, struct winesync_q *q,
- 				obj->u.sem.count--;
- 				break;
- 			case WINESYNC_TYPE_MUTEX:
-+				if (obj->u.mutex.ownerdead)
-+					q->ownerdead = true;
-+				obj->u.mutex.ownerdead = false;
- 				obj->u.mutex.count++;
- 				obj->u.mutex.owner = q->owner;
- 				break;
-@@ -293,6 +298,9 @@ static void try_wake_any_mutex(struct winesync_obj *mutex)
- 			continue;
- 
- 		if (atomic_cmpxchg(&q->signaled, -1, entry->index) == -1) {
-+			if (mutex->u.mutex.ownerdead)
-+				q->ownerdead = true;
-+			mutex->u.mutex.ownerdead = false;
- 			mutex->u.mutex.count++;
- 			mutex->u.mutex.owner = q->owner;
- 			wake_up_process(q->task);
-@@ -523,6 +531,71 @@ static int winesync_put_mutex(struct winesync_device *dev, void __user *argp)
- 	return ret;
- }
- 
-+/*
-+ * Actually change the mutex state to mark its owner as dead.
-+ */
-+static void put_mutex_ownerdead_state(struct winesync_obj *mutex)
-+{
-+	lockdep_assert_held(&mutex->lock);
-+
-+	mutex->u.mutex.ownerdead = true;
-+	mutex->u.mutex.owner = 0;
-+	mutex->u.mutex.count = 0;
-+}
-+
-+static int winesync_kill_owner(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_obj *obj;
-+	__u32 owner;
-+	int id;
-+
-+	if (get_user(owner, (__u32 __user *)argp))
-+		return -EFAULT;
-+	if (!owner)
-+		return -EINVAL;
-+
-+	rcu_read_lock();
-+
-+	idr_for_each_entry(&dev->objects, obj, id) {
-+		if (!kref_get_unless_zero(&obj->refcount))
-+			continue;
-+
-+		if (obj->type != WINESYNC_TYPE_MUTEX) {
-+			put_obj(obj);
-+			continue;
-+		}
-+
-+		if (refcount_read(&obj->all_hint) > 1) {
-+			spin_lock(&dev->wait_all_lock);
-+			spin_lock(&obj->lock);
-+
-+			if (obj->u.mutex.owner == owner) {
-+				put_mutex_ownerdead_state(obj);
-+				try_wake_all_obj(dev, obj);
-+				try_wake_any_mutex(obj);
-+			}
-+
-+			spin_unlock(&obj->lock);
-+			spin_unlock(&dev->wait_all_lock);
-+		} else {
-+			spin_lock(&obj->lock);
-+
-+			if (obj->u.mutex.owner == owner) {
-+				put_mutex_ownerdead_state(obj);
-+				try_wake_any_mutex(obj);
-+			}
-+
-+			spin_unlock(&obj->lock);
-+		}
-+
-+		put_obj(obj);
-+	}
-+
-+	rcu_read_unlock();
-+
-+	return 0;
-+}
-+
- static int winesync_schedule(const struct winesync_q *q, long timeout)
- {
- 	int ret = 0;
-@@ -595,6 +668,7 @@ static int setup_wait(struct winesync_device *dev,
- 	q->owner = args->owner;
- 	atomic_set(&q->signaled, -1);
- 	q->all = all;
-+	q->ownerdead = false;
- 	q->count = count;
- 
- 	for (i = 0; i < count; i++) {
-@@ -706,7 +780,7 @@ static int winesync_wait_any(struct winesync_device *dev, void __user *argp)
- 		struct winesync_wait_args __user *user_args = argp;
- 
- 		/* even if we caught a signal, we need to communicate success */
--		ret = 0;
-+		ret = q->ownerdead ? -EOWNERDEAD : 0;
- 
- 		if (put_user(atomic_read(&q->signaled), &user_args->index))
- 			ret = -EFAULT;
-@@ -785,7 +859,7 @@ static int winesync_wait_all(struct winesync_device *dev, void __user *argp)
- 
- 	if (atomic_read(&q->signaled) != -1) {
- 		/* even if we caught a signal, we need to communicate success */
--		ret = 0;
-+		ret = q->ownerdead ? -EOWNERDEAD : 0;
- 	} else if (!ret) {
- 		ret = -ETIMEDOUT;
- 	}
-@@ -811,6 +885,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_put_sem(dev, argp);
- 	case WINESYNC_IOC_PUT_MUTEX:
- 		return winesync_put_mutex(dev, argp);
-+	case WINESYNC_IOC_KILL_OWNER:
-+		return winesync_kill_owner(dev, argp);
- 	case WINESYNC_IOC_WAIT_ANY:
- 		return winesync_wait_any(dev, argp);
- 	case WINESYNC_IOC_WAIT_ALL:
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 2c8658d5dbe0..d50d76d66705 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -41,6 +41,7 @@ struct winesync_wait_args {
- 					      struct winesync_sem_args)
- #define WINESYNC_IOC_PUT_MUTEX		_IOWR(WINESYNC_IOC_BASE, 6, \
- 					      struct winesync_mutex_args)
-+#define WINESYNC_IOC_KILL_OWNER		_IOW (WINESYNC_IOC_BASE, 9, __u32)
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
- #define WINESYNC_IOC_WAIT_ANY		_IOWR(WINESYNC_IOC_BASE, 11, \
- 					      struct winesync_wait_args)
--- 
-2.11.4.GIT
-
-From 167b234f452ea75be0c9a0d0bbf3d0439d6c50cc Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:47:55 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_READ_SEM.
-
----
- drivers/misc/winesync.c       | 33 +++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  2 ++
- 2 files changed, 35 insertions(+)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index b66ffc740317..b80aa1505cce 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -531,6 +531,37 @@ static int winesync_put_mutex(struct winesync_device *dev, void __user *argp)
- 	return ret;
- }
- 
-+static int winesync_read_sem(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_sem_args __user *user_args = argp;
-+	struct winesync_sem_args args;
-+	struct winesync_obj *sem;
-+	__u32 id;
-+
-+	if (get_user(id, &user_args->sem))
-+		return -EFAULT;
-+
-+	sem = get_obj(dev, id);
-+	if (!sem)
-+		return -EINVAL;
-+	if (sem->type != WINESYNC_TYPE_SEM) {
-+		put_obj(sem);
-+		return -EINVAL;
-+	}
-+
-+	args.sem = id;
-+	spin_lock(&sem->lock);
-+	args.count = sem->u.sem.count;
-+	args.max = sem->u.sem.max;
-+	spin_unlock(&sem->lock);
-+
-+	put_obj(sem);
-+
-+	if (copy_to_user(user_args, &args, sizeof(args)))
-+		return -EFAULT;
-+	return 0;
-+}
-+
- /*
-  * Actually change the mutex state to mark its owner as dead.
-  */
-@@ -885,6 +916,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_put_sem(dev, argp);
- 	case WINESYNC_IOC_PUT_MUTEX:
- 		return winesync_put_mutex(dev, argp);
-+	case WINESYNC_IOC_READ_SEM:
-+		return winesync_read_sem(dev, argp);
- 	case WINESYNC_IOC_KILL_OWNER:
- 		return winesync_kill_owner(dev, argp);
- 	case WINESYNC_IOC_WAIT_ANY:
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index d50d76d66705..15d770683b1a 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -41,6 +41,8 @@ struct winesync_wait_args {
- 					      struct winesync_sem_args)
- #define WINESYNC_IOC_PUT_MUTEX		_IOWR(WINESYNC_IOC_BASE, 6, \
- 					      struct winesync_mutex_args)
-+#define WINESYNC_IOC_READ_SEM		_IOWR(WINESYNC_IOC_BASE, 7, \
-+					      struct winesync_sem_args)
- #define WINESYNC_IOC_KILL_OWNER		_IOW (WINESYNC_IOC_BASE, 9, __u32)
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
- #define WINESYNC_IOC_WAIT_ANY		_IOWR(WINESYNC_IOC_BASE, 11, \
--- 
-2.11.4.GIT
-
-From 1f068c710831fff29cbd6f1034e3f40ae3407032 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:48:10 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_READ_MUTEX.
-
----
- drivers/misc/winesync.c       | 35 +++++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  2 ++
- 2 files changed, 37 insertions(+)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index b80aa1505cce..aaab874ad7ee 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -562,6 +562,39 @@ static int winesync_read_sem(struct winesync_device *dev, void __user *argp)
- 	return 0;
- }
- 
-+static int winesync_read_mutex(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_mutex_args __user *user_args = argp;
-+	struct winesync_mutex_args args;
-+	struct winesync_obj *mutex;
-+	__u32 id;
-+	int ret;
-+
-+	if (get_user(id, &user_args->mutex))
-+		return -EFAULT;
-+
-+	mutex = get_obj(dev, id);
-+	if (!mutex)
-+		return -EINVAL;
-+	if (mutex->type != WINESYNC_TYPE_MUTEX) {
-+		put_obj(mutex);
-+		return -EINVAL;
-+	}
-+
-+	args.mutex = id;
-+	spin_lock(&mutex->lock);
-+	args.count = mutex->u.mutex.count;
-+	args.owner = mutex->u.mutex.owner;
-+	ret = mutex->u.mutex.ownerdead ? -EOWNERDEAD : 0;
-+	spin_unlock(&mutex->lock);
-+
-+	put_obj(mutex);
-+
-+	if (copy_to_user(user_args, &args, sizeof(args)))
-+		return -EFAULT;
-+	return ret;
-+}
-+
- /*
-  * Actually change the mutex state to mark its owner as dead.
-  */
-@@ -918,6 +951,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_put_mutex(dev, argp);
- 	case WINESYNC_IOC_READ_SEM:
- 		return winesync_read_sem(dev, argp);
-+	case WINESYNC_IOC_READ_MUTEX:
-+		return winesync_read_mutex(dev, argp);
- 	case WINESYNC_IOC_KILL_OWNER:
- 		return winesync_kill_owner(dev, argp);
- 	case WINESYNC_IOC_WAIT_ANY:
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 15d770683b1a..1fdc8801845f 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -43,6 +43,8 @@ struct winesync_wait_args {
- 					      struct winesync_mutex_args)
- #define WINESYNC_IOC_READ_SEM		_IOWR(WINESYNC_IOC_BASE, 7, \
- 					      struct winesync_sem_args)
-+#define WINESYNC_IOC_READ_MUTEX		_IOWR(WINESYNC_IOC_BASE, 8, \
-+					      struct winesync_mutex_args)
- #define WINESYNC_IOC_KILL_OWNER		_IOW (WINESYNC_IOC_BASE, 9, __u32)
- #define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
- #define WINESYNC_IOC_WAIT_ANY		_IOWR(WINESYNC_IOC_BASE, 11, \
--- 
-2.11.4.GIT
-
-From 6bcb3bf51f447970751a075771a21efd5eaae9f1 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 11:50:49 -0600
-Subject: [PATCH] doc: Add documentation for the winesync uAPI.
-
----
- Documentation/userspace-api/index.rst    |   1 +
- Documentation/userspace-api/winesync.rst | 315 +++++++++++++++++++++++++++++++
- 2 files changed, 316 insertions(+)
- create mode 100644 Documentation/userspace-api/winesync.rst
-
-diff --git a/Documentation/userspace-api/index.rst b/Documentation/userspace-api/index.rst
-index acd2cc2a538d..1950883c333e 100644
---- a/Documentation/userspace-api/index.rst
-+++ b/Documentation/userspace-api/index.rst
-@@ -24,6 +24,7 @@ place where this information is gathered.
-    ioctl/index
-    iommu
-    media/index
-+   winesync
- 
- .. only::  subproject and html
- 
 diff --git a/Documentation/userspace-api/winesync.rst b/Documentation/userspace-api/winesync.rst
 new file mode 100644
-index 000000000000..7b4e5767c3ec
+index 000000000000..c980eab9f2ee
 --- /dev/null
 +++ b/Documentation/userspace-api/winesync.rst
-@@ -0,0 +1,315 @@
+@@ -0,0 +1,373 @@
 +=====================================
 +Wine synchronization primitive driver
 +=====================================
@@ -1900,6 +106,7 @@ index 000000000000..7b4e5767c3ec
 +   	__u32 sem;
 +   	__u32 count;
 +   	__u32 max;
++   	__u32 flags;
 +   };
 +
 +   struct winesync_mutex_args {
@@ -1932,6 +139,13 @@ index 000000000000..7b4e5767c3ec
 +
 +    ``count`` and ``max`` are input-only arguments, denoting the
 +    initial and maximum count of the semaphore.
++
++    ``flags`` is an input-only argument, which specifies additional
++    flags modifying the behaviour of the semaphore. There is only one
++    flag defined, ``WINESYNC_SEM_GETONWAIT``. If present, wait
++    operations on this semaphore will acquire it, decrementing its
++    count by one; otherwise, wait operations will not affect the
++    semaphore's state.
 +
 +    ``sem`` is an output-only argument, which will be filled with the
 +    allocated identifier if successful.
@@ -1978,7 +192,7 @@ index 000000000000..7b4e5767c3ec
 +    ``count`` contains on input the count to add to the semaphore, and
 +    on output is filled with its previous count.
 +
-+    ``max`` is not used.
++    ``max`` and ``flags`` are not used.
 +
 +  The operation is atomic and totally ordered with respect to other
 +  operations on the same semaphore. If adding ``count`` to the
@@ -1988,6 +202,46 @@ index 000000000000..7b4e5767c3ec
 +  causes it to become signaled, eligible threads waiting on this
 +  semaphore will be woken and the semaphore's count decremented
 +  appropriately.
++
++.. c:macro:: WINESYNC_IOC_PULSE_SEM
++
++  This operation is identical to ``WINESYNC_IOC_PUT_SEM``, with one
++  notable exception: the semaphore is always left in an *unsignaled*
++  state, regardless of the initial count or the count added by the
++  ioctl. That is, the count after a pulse operation will always be
++  zero. The entire operation is atomic.
++
++  Hence, if the semaphore was created with the
++  ``WINESYNC_SEM_GETONWAIT`` flag set, and an unsignaled semaphore is
++  "pulsed" with a count of 2, at most two eligible threads (i.e.
++  threads not otherwise constrained due to ``WINESYNC_IOC_WAIT_ALL``)
++  will be woken up, and any others will remain sleeping. If less than
++  two eligible threads are waiting on the semaphore, all of them will
++  be woken up, and the semaphore's count will remain at zero. On the
++  other hand, if the semaphore was created without the
++  ``WINESYNC_SEM_GETONWAIT``, all eligible threads will be woken up,
++  making ``count`` effectively redundant. In either case, a
++  simultaneous ``WINESYNC_IOC_READ_SEM`` ioctl from another thread
++  will always report a count of zero.
++
++  If adding ``count`` to the semaphore's current count would raise the
++  latter past the semaphore's maximum count, the ioctl fails with
++  ``EOVERFLOW``. However, in this case the semaphore's count will
++  still be reset to zero.
++
++.. c:macro:: WINESYNC_IOC_GET_SEM
++
++  Attempt to acquire a semaphore object. Takes an input-only pointer
++  to a 32-bit integer denoting the semaphore to acquire.
++
++  This operation does not block. If the semaphore's count was zero, it
++  fails with ``EWOULDBLOCK``. Otherwise, the semaphore's count is
++  decremented by one. The behaviour of this operation is unaffected by
++  whether the semaphore was created with the
++  ``WINESYNC_SEM_GETONWAIT`` flag set.
++
++  The operation is atomic and totally ordered with respect to other
++  operations on the same semaphore.
 +
 +.. c:macro:: WINESYNC_IOC_PUT_MUTEX
 +
@@ -2023,6 +277,9 @@ index 000000000000..7b4e5767c3ec
 +
 +    ``count`` and ``max`` are output-only arguments, which will be
 +    filled with the current and maximum count of the given semaphore.
++
++    ``flags`` is an output-only argument, which will be filled with
++    the flags used to create the semaphore.
 +
 +  The operation is atomic and totally ordered with respect to other
 +  operations on the same semaphore.
@@ -2094,19 +351,26 @@ index 000000000000..7b4e5767c3ec
 +  case the ioctl fails with ``ETIMEDOUT``. The function only acquires
 +  one object, even if multiple objects are signaled.
 +
-+  A semaphore is considered to be signaled if its count is nonzero,
-+  and is acquired by decrementing its count by one. A mutex is
-+  considered to be signaled if it is unowned or if its owner matches
-+  the ``owner`` argument, and is acquired by incrementing its
-+  recursion count by one and setting its owner to the ``owner``
-+  argument.
++  A semaphore is considered to be signaled if its count is nonzero. It
++  is acquired by decrementing its count by one if the
++  ``WINESYNC_SEM_GETONWAIT`` flag was used to create it; otherwise no
++  operation is done to acquire the semaphore. A mutex is considered to
++  be signaled if it is unowned or if its owner matches the ``owner``
++  argument, and is acquired by incrementing its recursion count by one
++  and setting its owner to the ``owner`` argument.
 +
 +  Acquisition is atomic and totally ordered with respect to other
 +  operations on the same object. If two wait operations (with
 +  different ``owner`` identifiers) are queued on the same mutex, only
 +  one is signaled. If two wait operations are queued on the same
-+  semaphore, and a value of one is posted to it, only one is signaled.
++  semaphore (which was not created with the ``WINESYNC_SEM_GETONWAIT``
++  flag set), and a value of one is posted to it, only one is signaled.
 +  The order in which threads are signaled is not guaranteed.
++
++  (If two wait operations are queued on the same semaphore, and the
++  semaphore was created with the ``WINESYNC_SEM_GETONWAIT`` flag set,
++  and a value of one is posted to it, both threads are signaled, and
++  the semaphore retains a count of one.)
 +
 +  If an inconsistent mutex is acquired, the ioctl fails with
 +  ``EOWNERDEAD``. Although this is a failure return, the function may
@@ -2153,24 +417,1189 @@ index 000000000000..7b4e5767c3ec
 +
 +  Fails with ``ENOMEM`` if not enough memory is available, or
 +  ``EINTR`` if a signal is received.
--- 
-2.11.4.GIT
-
-From 98c2f22e2bc7921703b2f9081fd98c8410fa331a Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:06:23 -0600
-Subject: [PATCH] selftests: winesync: Add some tests for semaphore state.
-
----
- tools/testing/selftests/Makefile                   |   1 +
- tools/testing/selftests/drivers/winesync/Makefile  |   8 ++
- tools/testing/selftests/drivers/winesync/config    |   1 +
- .../testing/selftests/drivers/winesync/winesync.c  | 153 +++++++++++++++++++++
- 4 files changed, 163 insertions(+)
- create mode 100644 tools/testing/selftests/drivers/winesync/Makefile
- create mode 100644 tools/testing/selftests/drivers/winesync/config
- create mode 100644 tools/testing/selftests/drivers/winesync/winesync.c
-
+diff --git a/MAINTAINERS b/MAINTAINERS
+index bfc1b86e3e73..67ffab43fcd3 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -19194,6 +19194,15 @@ M:	David Härdeman <david@hardeman.nu>
+ S:	Maintained
+ F:	drivers/media/rc/winbond-cir.c
+ 
++WINESYNC SYNCHRONIZATION PRIMITIVE DRIVER
++M:	Zebediah Figura <zfigura@codeweavers.com>
++L:	wine-devel@winehq.org
++S:	Supported
++F:	Documentation/userspace-api/winesync.rst
++F:	drivers/misc/winesync.c
++F:	include/uapi/linux/winesync.c
++F:	tools/testing/selftests/drivers/winesync/
++
+ WINSYSTEMS EBC-C384 WATCHDOG DRIVER
+ M:	William Breathitt Gray <vilhelm.gray@gmail.com>
+ L:	linux-watchdog@vger.kernel.org
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index fafa8b0d8099..25bf30ab958a 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -466,6 +466,17 @@ config HISI_HIKEY_USB
+ 	  switching between the dual-role USB-C port and the USB-A host ports
+ 	  using only one USB controller.
+ 
++config WINESYNC
++	tristate "Synchronization primitives for Wine"
++	help
++	  This module provides kernel support for synchronization primitives
++	  used by Wine. It is not a hardware driver.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called winesync.
++
++	  If unsure, say N.
++
+ source "drivers/misc/c2port/Kconfig"
+ source "drivers/misc/eeprom/Kconfig"
+ source "drivers/misc/cb710/Kconfig"
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index d23231e73330..8b1d4ae4ed1b 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -57,3 +57,4 @@ obj-$(CONFIG_HABANA_AI)		+= habanalabs/
+ obj-$(CONFIG_UACCE)		+= uacce/
+ obj-$(CONFIG_XILINX_SDFEC)	+= xilinx_sdfec.o
+ obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
++obj-$(CONFIG_WINESYNC)		+= winesync.o
+diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
+new file mode 100644
+index 000000000000..a4c1dbc2a33e
+--- /dev/null
++++ b/drivers/misc/winesync.c
+@@ -0,0 +1,1047 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * winesync.c - Kernel driver for Wine synchronization primitives
++ *
++ * Copyright (C) 2021 Zebediah Figura
++ */
++
++#include <linux/fs.h>
++#include <linux/idr.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/slab.h>
++#include <uapi/linux/winesync.h>
++
++#define WINESYNC_NAME	"winesync"
++
++enum winesync_type {
++	WINESYNC_TYPE_SEM,
++	WINESYNC_TYPE_MUTEX,
++};
++
++struct winesync_obj {
++	struct kref refcount;
++	spinlock_t lock;
++
++	/*
++	 * any_waiters is protected by the object lock, but all_waiters is
++	 * protected by the device wait_all_lock.
++	 */
++	struct list_head any_waiters;
++	struct list_head all_waiters;
++
++	/*
++	 * Hint describing how many tasks are queued on this object in a
++	 * wait-all operation.
++	 *
++	 * Any time we do a wake, we may need to wake "all" waiters as well as
++	 * "any" waiters. In order to atomically wake "all" waiters, we must
++	 * lock all of the objects, and that means grabbing the wait_all_lock
++	 * below (and, due to lock ordering rules, before locking this object).
++	 * However, wait-all is a rare operation, and grabbing the wait-all
++	 * lock for every wake would create unnecessary contention. Therefore we
++	 * first check whether all_hint is one, and, if it is, we skip trying
++	 * to wake "all" waiters.
++	 *
++	 * This "refcount" isn't protected by any lock. It might change during
++	 * the course of a wake, but there's no meaningful race there; it's only
++	 * a hint.
++	 *
++	 * Use refcount_t rather than atomic_t to take advantage of saturation.
++	 * This does mean that the "no waiters" case is signified by all_hint
++	 * being one, rather than zero (otherwise we would get spurious
++	 * warnings).
++	 */
++	refcount_t all_hint;
++
++	enum winesync_type type;
++
++	/* The following fields are protected by the object lock. */
++	union {
++		struct {
++			__u32 count;
++			__u32 max;
++			__u32 flags;
++		} sem;
++		struct {
++			__u32 count;
++			__u32 owner;
++			bool ownerdead;
++		} mutex;
++	} u;
++};
++
++struct winesync_q_entry {
++	struct list_head node;
++	struct winesync_q *q;
++	struct winesync_obj *obj;
++	__u32 index;
++};
++
++struct winesync_q {
++	struct task_struct *task;
++	__u32 owner;
++
++	/*
++	 * Protected via atomic_cmpxchg(). Only the thread that wins the
++	 * compare-and-swap may actually change object states and wake this
++	 * task.
++	 */
++	atomic_t signaled;
++
++	bool all;
++	bool ownerdead;
++	__u32 count;
++	struct winesync_q_entry entries[];
++};
++
++struct winesync_device {
++	/*
++	 * Wait-all operations must atomically grab all objects, and be totally
++	 * ordered with respect to each other and wait-any operations. If one
++	 * thread is trying to acquire several objects, another thread cannot
++	 * touch the object at the same time.
++	 *
++	 * We achieve this by grabbing multiple object locks at the same time.
++	 * However, this creates a lock ordering problem. To solve that problem,
++	 * wait_all_lock is taken first whenever multiple objects must be locked
++	 * at the same time.
++	 */
++	spinlock_t wait_all_lock;
++	struct mutex table_lock;
++	struct idr objects;
++};
++
++static struct winesync_obj *get_obj(struct winesync_device *dev, int id)
++{
++	struct winesync_obj *obj;
++
++	rcu_read_lock();
++	obj = idr_find(&dev->objects, id);
++	if (obj && !kref_get_unless_zero(&obj->refcount))
++		obj = NULL;
++	rcu_read_unlock();
++
++	return obj;
++}
++
++static void destroy_obj(struct kref *ref)
++{
++	struct winesync_obj *obj;
++
++	obj = container_of(ref, struct winesync_obj, refcount);
++	kfree(obj);
++}
++
++static void put_obj(struct winesync_obj *obj)
++{
++	kref_put(&obj->refcount, destroy_obj);
++}
++
++static int winesync_char_open(struct inode *inode, struct file *file)
++{
++	struct winesync_device *dev;
++
++	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
++	if (!dev)
++		return -ENOMEM;
++
++	idr_init(&dev->objects);
++	spin_lock_init(&dev->wait_all_lock);
++	mutex_init(&dev->table_lock);
++
++	file->private_data = dev;
++	return nonseekable_open(inode, file);
++}
++
++static int winesync_char_release(struct inode *inode, struct file *file)
++{
++	struct winesync_device *dev = file->private_data;
++	struct winesync_obj *obj;
++	int id;
++
++	mutex_lock(&dev->table_lock);
++	idr_for_each_entry(&dev->objects, obj, id) {
++		idr_remove(&dev->objects, id);
++		synchronize_rcu();
++		put_obj(obj);
++	}
++	mutex_unlock(&dev->table_lock);
++
++	kfree(dev);
++
++	return 0;
++}
++
++static void winesync_init_obj(struct winesync_obj *obj)
++{
++	kref_init(&obj->refcount);
++	refcount_set(&obj->all_hint, 1);
++	spin_lock_init(&obj->lock);
++	INIT_LIST_HEAD(&obj->any_waiters);
++	INIT_LIST_HEAD(&obj->all_waiters);
++}
++
++static bool is_signaled(struct winesync_obj *obj, __u32 owner)
++{
++	lockdep_assert_held(&obj->lock);
++
++	switch (obj->type) {
++	case WINESYNC_TYPE_SEM:
++		return !!obj->u.sem.count;
++	case WINESYNC_TYPE_MUTEX:
++		if (obj->u.mutex.owner && obj->u.mutex.owner != owner)
++			return false;
++		return obj->u.mutex.count < UINT_MAX;
++	}
++
++	WARN(1, "bad object type %#x\n", obj->type);
++	return false;
++}
++
++/*
++ * "locked_obj" is an optional pointer to an object which is already locked and
++ * should not be locked again. This is necessary so that changing an object's
++ * state and waking it can be a single atomic operation.
++ */
++static void try_wake_all(struct winesync_device *dev, struct winesync_q *q,
++			 struct winesync_obj *locked_obj)
++{
++	__u32 count = q->count;
++	bool can_wake = true;
++	__u32 i;
++
++	lockdep_assert_held(&dev->wait_all_lock);
++	if (locked_obj)
++		lockdep_assert_held(&locked_obj->lock);
++
++	for (i = 0; i < count; i++) {
++		if (q->entries[i].obj != locked_obj)
++			spin_lock(&q->entries[i].obj->lock);
++	}
++
++	for (i = 0; i < count; i++) {
++		if (!is_signaled(q->entries[i].obj, q->owner)) {
++			can_wake = false;
++			break;
++		}
++	}
++
++	if (can_wake && atomic_cmpxchg(&q->signaled, -1, 0) == -1) {
++		for (i = 0; i < count; i++) {
++			struct winesync_obj *obj = q->entries[i].obj;
++
++			switch (obj->type) {
++			case WINESYNC_TYPE_SEM:
++				if (obj->u.sem.flags & WINESYNC_SEM_GETONWAIT)
++					obj->u.sem.count--;
++				break;
++			case WINESYNC_TYPE_MUTEX:
++				if (obj->u.mutex.ownerdead)
++					q->ownerdead = true;
++				obj->u.mutex.ownerdead = false;
++				obj->u.mutex.count++;
++				obj->u.mutex.owner = q->owner;
++				break;
++			}
++		}
++		wake_up_process(q->task);
++	}
++
++	for (i = 0; i < count; i++) {
++		if (q->entries[i].obj != locked_obj)
++			spin_unlock(&q->entries[i].obj->lock);
++	}
++}
++
++static void try_wake_all_obj(struct winesync_device *dev,
++			     struct winesync_obj *obj)
++{
++	struct winesync_q_entry *entry;
++
++	lockdep_assert_held(&dev->wait_all_lock);
++	lockdep_assert_held(&obj->lock);
++
++	list_for_each_entry(entry, &obj->all_waiters, node)
++		try_wake_all(dev, entry->q, obj);
++}
++
++static void try_wake_any_sem(struct winesync_obj *sem)
++{
++	struct winesync_q_entry *entry;
++
++	lockdep_assert_held(&sem->lock);
++
++	list_for_each_entry(entry, &sem->any_waiters, node) {
++		struct winesync_q *q = entry->q;
++
++		if (!sem->u.sem.count)
++			break;
++
++		if (atomic_cmpxchg(&q->signaled, -1, entry->index) == -1) {
++			if (sem->u.sem.flags & WINESYNC_SEM_GETONWAIT)
++				sem->u.sem.count--;
++			wake_up_process(q->task);
++		}
++	}
++}
++
++static void try_wake_any_mutex(struct winesync_obj *mutex)
++{
++	struct winesync_q_entry *entry;
++
++	lockdep_assert_held(&mutex->lock);
++
++	list_for_each_entry(entry, &mutex->any_waiters, node) {
++		struct winesync_q *q = entry->q;
++
++		if (mutex->u.mutex.count == UINT_MAX)
++			break;
++		if (mutex->u.mutex.owner && mutex->u.mutex.owner != q->owner)
++			continue;
++
++		if (atomic_cmpxchg(&q->signaled, -1, entry->index) == -1) {
++			if (mutex->u.mutex.ownerdead)
++				q->ownerdead = true;
++			mutex->u.mutex.ownerdead = false;
++			mutex->u.mutex.count++;
++			mutex->u.mutex.owner = q->owner;
++			wake_up_process(q->task);
++		}
++	}
++}
++
++static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_sem_args __user *user_args = argp;
++	struct winesync_sem_args args;
++	struct winesync_obj *sem;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++
++	if (args.count > args.max)
++		return -EINVAL;
++
++	if (args.flags & ~WINESYNC_SEM_GETONWAIT)
++		return -EINVAL;
++
++	sem = kzalloc(sizeof(*sem), GFP_KERNEL);
++	if (!sem)
++		return -ENOMEM;
++
++	winesync_init_obj(sem);
++	sem->type = WINESYNC_TYPE_SEM;
++	sem->u.sem.count = args.count;
++	sem->u.sem.max = args.max;
++	sem->u.sem.flags = args.flags;
++
++	mutex_lock(&dev->table_lock);
++	ret = idr_alloc(&dev->objects, sem, 0, 0, GFP_KERNEL);
++	mutex_unlock(&dev->table_lock);
++
++	if (ret < 0) {
++		kfree(sem);
++		return ret;
++	}
++
++	return put_user(ret, &user_args->sem);
++}
++
++static int winesync_create_mutex(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_mutex_args __user *user_args = argp;
++	struct winesync_mutex_args args;
++	struct winesync_obj *mutex;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++
++	if (!args.owner != !args.count)
++		return -EINVAL;
++
++	mutex = kzalloc(sizeof(*mutex), GFP_KERNEL);
++	if (!mutex)
++		return -ENOMEM;
++
++	winesync_init_obj(mutex);
++	mutex->type = WINESYNC_TYPE_MUTEX;
++	mutex->u.mutex.count = args.count;
++	mutex->u.mutex.owner = args.owner;
++
++	mutex_lock(&dev->table_lock);
++	ret = idr_alloc(&dev->objects, mutex, 0, 0, GFP_KERNEL);
++	mutex_unlock(&dev->table_lock);
++
++	if (ret < 0) {
++		kfree(mutex);
++		return ret;
++	}
++
++	return put_user(ret, &user_args->mutex);
++}
++
++static int winesync_delete(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_obj *obj;
++	__u32 id;
++
++	if (get_user(id, (__u32 __user *)argp))
++		return -EFAULT;
++
++	mutex_lock(&dev->table_lock);
++	obj = idr_remove(&dev->objects, id);
++	mutex_unlock(&dev->table_lock);
++
++	if (!obj)
++		return -EINVAL;
++
++	put_obj(obj);
++	return 0;
++}
++
++static int winesync_get_sem(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_obj *sem;
++	int ret = -EWOULDBLOCK;
++	__u32 id;
++
++	if (get_user(id, (__u32 __user *)argp))
++		return -EFAULT;
++
++	sem = get_obj(dev, id);
++	if (!sem)
++		return -EINVAL;
++	if (sem->type != WINESYNC_TYPE_SEM) {
++		put_obj(sem);
++		return -EINVAL;
++	}
++
++	spin_lock(&sem->lock);
++
++	if (sem->u.sem.count) {
++		/*
++		 * Decrement the semaphore's count, regardless of whether it
++		 * has the WINESYNC_SEM_GETONWAIT flag set.
++		 */
++		sem->u.sem.count--;
++		ret = 0;
++	}
++
++	spin_unlock(&sem->lock);
++
++	put_obj(sem);
++
++	return ret;
++}
++
++/*
++ * Actually change the semaphore state, returning -EOVERFLOW if it is made
++ * invalid.
++ */
++static int put_sem_state(struct winesync_obj *sem, __u32 count)
++{
++	lockdep_assert_held(&sem->lock);
++
++	if (sem->u.sem.count + count < sem->u.sem.count ||
++	    sem->u.sem.count + count > sem->u.sem.max)
++		return -EOVERFLOW;
++
++	sem->u.sem.count += count;
++	return 0;
++}
++
++static int winesync_put_sem(struct winesync_device *dev, void __user *argp,
++			    bool pulse)
++{
++	struct winesync_sem_args __user *user_args = argp;
++	struct winesync_sem_args args;
++	struct winesync_obj *sem;
++	__u32 prev_count;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++
++	sem = get_obj(dev, args.sem);
++	if (!sem)
++		return -EINVAL;
++	if (sem->type != WINESYNC_TYPE_SEM) {
++		put_obj(sem);
++		return -EINVAL;
++	}
++
++	if (refcount_read(&sem->all_hint) > 1) {
++		spin_lock(&dev->wait_all_lock);
++		spin_lock(&sem->lock);
++
++		prev_count = sem->u.sem.count;
++		ret = put_sem_state(sem, args.count);
++		if (!ret) {
++			try_wake_all_obj(dev, sem);
++			try_wake_any_sem(sem);
++		}
++
++		if (pulse)
++			sem->u.sem.count = 0;
++
++		spin_unlock(&sem->lock);
++		spin_unlock(&dev->wait_all_lock);
++	} else {
++		spin_lock(&sem->lock);
++
++		prev_count = sem->u.sem.count;
++		ret = put_sem_state(sem, args.count);
++		if (!ret)
++			try_wake_any_sem(sem);
++
++		if (pulse)
++			sem->u.sem.count = 0;
++
++		spin_unlock(&sem->lock);
++	}
++
++	put_obj(sem);
++
++	if (!ret && put_user(prev_count, &user_args->count))
++		ret = -EFAULT;
++
++	return ret;
++}
++
++/*
++ * Actually change the mutex state, returning -EPERM if not the owner.
++ */
++static int put_mutex_state(struct winesync_obj *mutex,
++			   const struct winesync_mutex_args *args)
++{
++	lockdep_assert_held(&mutex->lock);
++
++	if (mutex->u.mutex.owner != args->owner)
++		return -EPERM;
++
++	if (!--mutex->u.mutex.count)
++		mutex->u.mutex.owner = 0;
++	return 0;
++}
++
++static int winesync_put_mutex(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_mutex_args __user *user_args = argp;
++	struct winesync_mutex_args args;
++	struct winesync_obj *mutex;
++	__u32 prev_count;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++	if (!args.owner)
++		return -EINVAL;
++
++	mutex = get_obj(dev, args.mutex);
++	if (!mutex)
++		return -EINVAL;
++	if (mutex->type != WINESYNC_TYPE_MUTEX) {
++		put_obj(mutex);
++		return -EINVAL;
++	}
++
++	if (refcount_read(&mutex->all_hint) > 1) {
++		spin_lock(&dev->wait_all_lock);
++		spin_lock(&mutex->lock);
++
++		prev_count = mutex->u.mutex.count;
++		ret = put_mutex_state(mutex, &args);
++		if (!ret) {
++			try_wake_all_obj(dev, mutex);
++			try_wake_any_mutex(mutex);
++		}
++
++		spin_unlock(&mutex->lock);
++		spin_unlock(&dev->wait_all_lock);
++	} else {
++		spin_lock(&mutex->lock);
++
++		prev_count = mutex->u.mutex.count;
++		ret = put_mutex_state(mutex, &args);
++		if (!ret)
++			try_wake_any_mutex(mutex);
++
++		spin_unlock(&mutex->lock);
++	}
++
++	put_obj(mutex);
++
++	if (!ret && put_user(prev_count, &user_args->count))
++		ret = -EFAULT;
++
++	return ret;
++}
++
++static int winesync_read_sem(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_sem_args __user *user_args = argp;
++	struct winesync_sem_args args;
++	struct winesync_obj *sem;
++	__u32 id;
++
++	if (get_user(id, &user_args->sem))
++		return -EFAULT;
++
++	sem = get_obj(dev, id);
++	if (!sem)
++		return -EINVAL;
++	if (sem->type != WINESYNC_TYPE_SEM) {
++		put_obj(sem);
++		return -EINVAL;
++	}
++
++	args.sem = id;
++	spin_lock(&sem->lock);
++	args.count = sem->u.sem.count;
++	args.max = sem->u.sem.max;
++	args.flags = sem->u.sem.flags;
++	spin_unlock(&sem->lock);
++
++	put_obj(sem);
++
++	if (copy_to_user(user_args, &args, sizeof(args)))
++		return -EFAULT;
++	return 0;
++}
++
++static int winesync_read_mutex(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_mutex_args __user *user_args = argp;
++	struct winesync_mutex_args args;
++	struct winesync_obj *mutex;
++	__u32 id;
++	int ret;
++
++	if (get_user(id, &user_args->mutex))
++		return -EFAULT;
++
++	mutex = get_obj(dev, id);
++	if (!mutex)
++		return -EINVAL;
++	if (mutex->type != WINESYNC_TYPE_MUTEX) {
++		put_obj(mutex);
++		return -EINVAL;
++	}
++
++	args.mutex = id;
++	spin_lock(&mutex->lock);
++	args.count = mutex->u.mutex.count;
++	args.owner = mutex->u.mutex.owner;
++	ret = mutex->u.mutex.ownerdead ? -EOWNERDEAD : 0;
++	spin_unlock(&mutex->lock);
++
++	put_obj(mutex);
++
++	if (copy_to_user(user_args, &args, sizeof(args)))
++		return -EFAULT;
++	return ret;
++}
++
++/*
++ * Actually change the mutex state to mark its owner as dead.
++ */
++static void put_mutex_ownerdead_state(struct winesync_obj *mutex)
++{
++	lockdep_assert_held(&mutex->lock);
++
++	mutex->u.mutex.ownerdead = true;
++	mutex->u.mutex.owner = 0;
++	mutex->u.mutex.count = 0;
++}
++
++static int winesync_kill_owner(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_obj *obj;
++	__u32 owner;
++	int id;
++
++	if (get_user(owner, (__u32 __user *)argp))
++		return -EFAULT;
++	if (!owner)
++		return -EINVAL;
++
++	rcu_read_lock();
++
++	idr_for_each_entry(&dev->objects, obj, id) {
++		if (!kref_get_unless_zero(&obj->refcount))
++			continue;
++
++		if (obj->type != WINESYNC_TYPE_MUTEX) {
++			put_obj(obj);
++			continue;
++		}
++
++		if (refcount_read(&obj->all_hint) > 1) {
++			spin_lock(&dev->wait_all_lock);
++			spin_lock(&obj->lock);
++
++			if (obj->u.mutex.owner == owner) {
++				put_mutex_ownerdead_state(obj);
++				try_wake_all_obj(dev, obj);
++				try_wake_any_mutex(obj);
++			}
++
++			spin_unlock(&obj->lock);
++			spin_unlock(&dev->wait_all_lock);
++		} else {
++			spin_lock(&obj->lock);
++
++			if (obj->u.mutex.owner == owner) {
++				put_mutex_ownerdead_state(obj);
++				try_wake_any_mutex(obj);
++			}
++
++			spin_unlock(&obj->lock);
++		}
++
++		put_obj(obj);
++	}
++
++	rcu_read_unlock();
++
++	return 0;
++}
++
++static int winesync_schedule(const struct winesync_q *q, ktime_t *timeout)
++{
++	int ret = 0;
++
++	do {
++		if (signal_pending(current)) {
++			ret = -ERESTARTSYS;
++			break;
++		}
++
++		set_current_state(TASK_INTERRUPTIBLE);
++		if (atomic_read(&q->signaled) != -1) {
++			ret = 0;
++			break;
++		}
++		ret = schedule_hrtimeout(timeout, HRTIMER_MODE_ABS);
++	} while (ret < 0);
++	__set_current_state(TASK_RUNNING);
++
++	return ret;
++}
++
++/*
++ * Allocate and initialize most of the winesync_q structure, but do not queue us
++ * yet. Also, calculate the relative timeout in jiffies.
++ */
++static int setup_wait(struct winesync_device *dev,
++		      const struct winesync_wait_args *args, bool all,
++		      ktime_t *ret_timeout, struct winesync_q **ret_q)
++{
++	const __u32 count = args->count;
++	struct winesync_q *q;
++	ktime_t timeout = 0;
++	__u32 *ids;
++	__u32 i, j;
++
++	if (args->timeout) {
++		struct timespec64 to;
++
++		if (get_timespec64(&to, u64_to_user_ptr(args->timeout)))
++			return -EFAULT;
++		if (!timespec64_valid(&to))
++			return -EINVAL;
++
++		timeout = timespec64_to_ns(&to);
++	}
++
++	ids = kmalloc_array(args->count, sizeof(*ids), GFP_KERNEL);
++	if (!ids)
++		return -ENOMEM;
++	if (copy_from_user(ids, u64_to_user_ptr(args->objs),
++			   array_size(args->count, sizeof(*ids)))) {
++		kfree(ids);
++		return -EFAULT;
++	}
++
++	q = kmalloc(struct_size(q, entries, count), GFP_KERNEL);
++	if (!q) {
++		kfree(ids);
++		return -ENOMEM;
++	}
++	q->task = current;
++	q->owner = args->owner;
++	atomic_set(&q->signaled, -1);
++	q->all = all;
++	q->ownerdead = false;
++	q->count = count;
++
++	for (i = 0; i < count; i++) {
++		struct winesync_q_entry *entry = &q->entries[i];
++		struct winesync_obj *obj = get_obj(dev, ids[i]);
++
++		if (!obj)
++			goto err;
++
++		if (all) {
++			/* Check that the objects are all distinct. */
++			for (j = 0; j < i; j++) {
++				if (obj == q->entries[j].obj) {
++					put_obj(obj);
++					goto err;
++				}
++			}
++		}
++
++		entry->obj = obj;
++		entry->q = q;
++		entry->index = i;
++	}
++
++	kfree(ids);
++
++	*ret_q = q;
++	*ret_timeout = timeout;
++	return 0;
++
++err:
++	for (j = 0; j < i; j++)
++		put_obj(q->entries[j].obj);
++	kfree(ids);
++	kfree(q);
++	return -EINVAL;
++}
++
++static void try_wake_any_obj(struct winesync_obj *obj)
++{
++	switch (obj->type) {
++	case WINESYNC_TYPE_SEM:
++		try_wake_any_sem(obj);
++		break;
++	case WINESYNC_TYPE_MUTEX:
++		try_wake_any_mutex(obj);
++		break;
++	}
++}
++
++static int winesync_wait_any(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_wait_args args;
++	struct winesync_q *q;
++	ktime_t timeout;
++	__u32 i;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++	if (!args.owner)
++		return -EINVAL;
++
++	ret = setup_wait(dev, &args, false, &timeout, &q);
++	if (ret < 0)
++		return ret;
++
++	/* queue ourselves */
++
++	for (i = 0; i < args.count; i++) {
++		struct winesync_q_entry *entry = &q->entries[i];
++		struct winesync_obj *obj = q->entries[i].obj;
++
++		spin_lock(&obj->lock);
++		list_add_tail(&entry->node, &obj->any_waiters);
++		spin_unlock(&obj->lock);
++	}
++
++	/* check if we are already signaled */
++
++	for (i = 0; i < args.count; i++) {
++		struct winesync_obj *obj = q->entries[i].obj;
++
++		if (atomic_read(&q->signaled) != -1)
++			break;
++
++		spin_lock(&obj->lock);
++		try_wake_any_obj(obj);
++		spin_unlock(&obj->lock);
++	}
++
++	/* sleep */
++
++	ret = winesync_schedule(q, args.timeout ? &timeout : NULL);
++
++	/* and finally, unqueue */
++
++	for (i = 0; i < args.count; i++) {
++		struct winesync_obj *obj = q->entries[i].obj;
++
++		spin_lock(&obj->lock);
++		list_del(&q->entries[i].node);
++		spin_unlock(&obj->lock);
++
++		put_obj(obj);
++	}
++
++	if (atomic_read(&q->signaled) != -1) {
++		struct winesync_wait_args __user *user_args = argp;
++
++		/* even if we caught a signal, we need to communicate success */
++		ret = q->ownerdead ? -EOWNERDEAD : 0;
++
++		if (put_user(atomic_read(&q->signaled), &user_args->index))
++			ret = -EFAULT;
++	} else if (!ret) {
++		ret = -ETIMEDOUT;
++	}
++
++	kfree(q);
++	return ret;
++}
++
++static int winesync_wait_all(struct winesync_device *dev, void __user *argp)
++{
++	struct winesync_wait_args args;
++	struct winesync_q *q;
++	ktime_t timeout;
++	__u32 i;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++	if (!args.owner)
++		return -EINVAL;
++
++	ret = setup_wait(dev, &args, true, &timeout, &q);
++	if (ret < 0)
++		return ret;
++
++	/* queue ourselves */
++
++	spin_lock(&dev->wait_all_lock);
++
++	for (i = 0; i < args.count; i++) {
++		struct winesync_q_entry *entry = &q->entries[i];
++		struct winesync_obj *obj = q->entries[i].obj;
++
++		refcount_inc(&obj->all_hint);
++
++		/*
++		 * obj->all_waiters is protected by dev->wait_all_lock rather
++		 * than obj->lock, so there is no need to acquire it here.
++		 */
++		list_add_tail(&entry->node, &obj->all_waiters);
++	}
++
++	/* check if we are already signaled */
++
++	try_wake_all(dev, q, NULL);
++
++	spin_unlock(&dev->wait_all_lock);
++
++	/* sleep */
++
++	ret = winesync_schedule(q, args.timeout ? &timeout : NULL);
++
++	/* and finally, unqueue */
++
++	spin_lock(&dev->wait_all_lock);
++
++	for (i = 0; i < args.count; i++) {
++		struct winesync_q_entry *entry = &q->entries[i];
++		struct winesync_obj *obj = q->entries[i].obj;
++
++		/*
++		 * obj->all_waiters is protected by dev->wait_all_lock rather
++		 * than obj->lock, so there is no need to acquire it here.
++		 */
++		list_del(&entry->node);
++
++		refcount_dec(&obj->all_hint);
++
++		put_obj(obj);
++	}
++
++	spin_unlock(&dev->wait_all_lock);
++
++	if (atomic_read(&q->signaled) != -1) {
++		/* even if we caught a signal, we need to communicate success */
++		ret = q->ownerdead ? -EOWNERDEAD : 0;
++	} else if (!ret) {
++		ret = -ETIMEDOUT;
++	}
++
++	kfree(q);
++	return ret;
++}
++
++static long winesync_char_ioctl(struct file *file, unsigned int cmd,
++				unsigned long parm)
++{
++	struct winesync_device *dev = file->private_data;
++	void __user *argp = (void __user *)parm;
++
++	switch (cmd) {
++	case WINESYNC_IOC_CREATE_SEM:
++		return winesync_create_sem(dev, argp);
++	case WINESYNC_IOC_CREATE_MUTEX:
++		return winesync_create_mutex(dev, argp);
++	case WINESYNC_IOC_DELETE:
++		return winesync_delete(dev, argp);
++	case WINESYNC_IOC_GET_SEM:
++		return winesync_get_sem(dev, argp);
++	case WINESYNC_IOC_PUT_SEM:
++		return winesync_put_sem(dev, argp, false);
++	case WINESYNC_IOC_PULSE_SEM:
++		return winesync_put_sem(dev, argp, true);
++	case WINESYNC_IOC_PUT_MUTEX:
++		return winesync_put_mutex(dev, argp);
++	case WINESYNC_IOC_READ_SEM:
++		return winesync_read_sem(dev, argp);
++	case WINESYNC_IOC_READ_MUTEX:
++		return winesync_read_mutex(dev, argp);
++	case WINESYNC_IOC_KILL_OWNER:
++		return winesync_kill_owner(dev, argp);
++	case WINESYNC_IOC_WAIT_ANY:
++		return winesync_wait_any(dev, argp);
++	case WINESYNC_IOC_WAIT_ALL:
++		return winesync_wait_all(dev, argp);
++	default:
++		return -ENOSYS;
++	}
++}
++
++static const struct file_operations winesync_fops = {
++	.owner		= THIS_MODULE,
++	.open		= winesync_char_open,
++	.release	= winesync_char_release,
++	.unlocked_ioctl	= winesync_char_ioctl,
++	.compat_ioctl	= winesync_char_ioctl,
++	.llseek		= no_llseek,
++};
++
++static struct miscdevice winesync_misc = {
++	.minor		= WINESYNC_MINOR,
++	.name		= WINESYNC_NAME,
++	.fops		= &winesync_fops,
++};
++
++static int __init winesync_init(void)
++{
++	return misc_register(&winesync_misc);
++}
++
++static void __exit winesync_exit(void)
++{
++	misc_deregister(&winesync_misc);
++}
++
++module_init(winesync_init);
++module_exit(winesync_exit);
++
++MODULE_AUTHOR("Zebediah Figura");
++MODULE_DESCRIPTION("Kernel driver for Wine synchronization primitives");
++MODULE_LICENSE("GPL");
++MODULE_ALIAS("devname:" WINESYNC_NAME);
++MODULE_ALIAS_MISCDEV(WINESYNC_MINOR);
+diff --git a/include/linux/miscdevice.h b/include/linux/miscdevice.h
+index 0676f18093f9..350aecfcfb29 100644
+--- a/include/linux/miscdevice.h
++++ b/include/linux/miscdevice.h
+@@ -71,6 +71,7 @@
+ #define USERIO_MINOR		240
+ #define VHOST_VSOCK_MINOR	241
+ #define RFKILL_MINOR		242
++#define WINESYNC_MINOR		243
+ #define MISC_DYNAMIC_MINOR	255
+ 
+ struct device;
+diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
+new file mode 100644
+index 000000000000..c16f423dad48
+--- /dev/null
++++ b/include/uapi/linux/winesync.h
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++/*
++ * Kernel support for Wine synchronization primitives
++ *
++ * Copyright (C) 2021 Zebediah Figura
++ */
++
++#ifndef __LINUX_WINESYNC_H
++#define __LINUX_WINESYNC_H
++
++#include <linux/types.h>
++
++#define WINESYNC_SEM_GETONWAIT 1
++
++struct winesync_sem_args {
++	__u32 sem;
++	__u32 count;
++	__u32 max;
++	__u32 flags;
++};
++
++struct winesync_mutex_args {
++	__u32 mutex;
++	__u32 owner;
++	__u32 count;
++};
++
++struct winesync_wait_args {
++	__u64 timeout;
++	__u64 objs;
++	__u32 count;
++	__u32 owner;
++	__u32 index;
++	__u32 pad;
++};
++
++#define WINESYNC_IOC_BASE 0xf7
++
++#define WINESYNC_IOC_CREATE_SEM		_IOWR(WINESYNC_IOC_BASE, 0, \
++					      struct winesync_sem_args)
++#define WINESYNC_IOC_CREATE_MUTEX	_IOWR(WINESYNC_IOC_BASE, 1, \
++					      struct winesync_mutex_args)
++#define WINESYNC_IOC_GET_SEM		_IOW (WINESYNC_IOC_BASE, 2, __u32)
++#define WINESYNC_IOC_PULSE_SEM		_IOWR(WINESYNC_IOC_BASE, 3, \
++					      struct winesync_sem_args)
++#define WINESYNC_IOC_PUT_SEM		_IOWR(WINESYNC_IOC_BASE, 5, \
++					      struct winesync_sem_args)
++#define WINESYNC_IOC_PUT_MUTEX		_IOWR(WINESYNC_IOC_BASE, 6, \
++					      struct winesync_mutex_args)
++#define WINESYNC_IOC_READ_SEM		_IOWR(WINESYNC_IOC_BASE, 7, \
++					      struct winesync_sem_args)
++#define WINESYNC_IOC_READ_MUTEX		_IOWR(WINESYNC_IOC_BASE, 8, \
++					      struct winesync_mutex_args)
++#define WINESYNC_IOC_KILL_OWNER		_IOW (WINESYNC_IOC_BASE, 9, __u32)
++#define WINESYNC_IOC_DELETE		_IOW (WINESYNC_IOC_BASE, 10, __u32)
++#define WINESYNC_IOC_WAIT_ANY		_IOWR(WINESYNC_IOC_BASE, 11, \
++					      struct winesync_wait_args)
++#define WINESYNC_IOC_WAIT_ALL		_IOW (WINESYNC_IOC_BASE, 12, \
++					      struct winesync_wait_args)
++
++#endif
 diff --git a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
 index 8a917cb4426a..ed5a7b052ef2 100644
 --- a/tools/testing/selftests/Makefile
@@ -2206,10 +1635,10 @@ index 000000000000..60539c826d06
 +CONFIG_WINESYNC=y
 diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
 new file mode 100644
-index 000000000000..077d9322923c
+index 000000000000..c4ac22b7fdb7
 --- /dev/null
 +++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,1482 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +/*
 + * Various unit tests for the "winesync" synchronization primitive driver.
@@ -2241,6 +1670,209 @@ index 000000000000..077d9322923c
 +	sem_args.count = 3;
 +	sem_args.max = 2;
 +	sem_args.sem = 0xdeadbeef;
++	sem_args.flags = 0;
++	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	sem_args.count = 2;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	sem_args.flags = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++	EXPECT_EQ(0, sem_args.flags);
++
++	sem_args.count = 0;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOVERFLOW, errno);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	wait_args.timeout = (uintptr_t)&timeout;
++	wait_args.objs = (uintptr_t)&sem_args.sem;
++	wait_args.count = 1;
++	wait_args.owner = 123;
++	wait_args.index = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_WAIT_ANY, &wait_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, wait_args.index);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(0, ret);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(0, ret);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EWOULDBLOCK, errno);
++
++	sem_args.count = 3;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOVERFLOW, errno);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 2;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(0, ret);
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(0, ret);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	/* Test PULSE. */
++
++	sem_args.count = 2;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOVERFLOW, errno);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 2;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	ret = ioctl(fd, WINESYNC_IOC_DELETE, &sem_args.sem);
++	EXPECT_EQ(0, ret);
++
++	close(fd);
++}
++
++TEST(semaphore_state_getonwait)
++{
++	struct winesync_wait_args wait_args;
++	struct winesync_sem_args sem_args;
++	struct timespec timeout;
++	int fd, ret;
++
++	clock_gettime(CLOCK_MONOTONIC, &timeout);
++
++	fd = open("/dev/winesync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 3;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	sem_args.flags = WINESYNC_SEM_GETONWAIT;
 +	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EINVAL, errno);
@@ -2356,33 +1988,105 @@ index 000000000000..077d9322923c
 +	EXPECT_EQ(1, sem_args.count);
 +	EXPECT_EQ(2, sem_args.max);
 +
++	/* Test GET. */
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(0, ret);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EWOULDBLOCK, errno);
++
++	sem_args.count = 2;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
++	EXPECT_EQ(0, ret);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	/* Test PULSE. */
++
++	sem_args.count = 2;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOVERFLOW, errno);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
++	sem_args.count = 2;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	sem_args.count = 0xdeadbeef;
++	sem_args.max = 0xdeadbeef;
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++	EXPECT_EQ(2, sem_args.max);
++
 +	ret = ioctl(fd, WINESYNC_IOC_DELETE, &sem_args.sem);
 +	EXPECT_EQ(0, ret);
 +
 +	close(fd);
 +}
 +
-+TEST_HARNESS_MAIN
--- 
-2.11.4.GIT
-
-From 89cd64b1783ae18daf767df8d0edaff9f1617e89 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:07:04 -0600
-Subject: [PATCH] selftests: winesync: Add some tests for mutex state.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 250 +++++++++++++++++++++
- 1 file changed, 250 insertions(+)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index 077d9322923c..713711dd4bf0 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -150,4 +150,254 @@ TEST(semaphore_state)
- 	close(fd);
- }
- 
 +TEST(mutex_state)
 +{
 +	struct winesync_wait_args wait_args;
@@ -2633,28 +2337,6 @@ index 077d9322923c..713711dd4bf0 100644
 +	close(fd);
 +}
 +
- TEST_HARNESS_MAIN
--- 
-2.11.4.GIT
-
-From 0eab9521e08dc00c90d468dfdf24e275d7721435 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:07:45 -0600
-Subject: [PATCH] selftests: winesync: Add some tests for
- WINESYNC_IOC_WAIT_ANY.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 197 +++++++++++++++++++++
- 1 file changed, 197 insertions(+)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index 713711dd4bf0..774e7a0b0efe 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -400,4 +400,201 @@ TEST(mutex_state)
- 	close(fd);
- }
- 
 +TEST(wait_any)
 +{
 +	struct winesync_mutex_args mutex_args = {0};
@@ -2672,6 +2354,7 @@ index 713711dd4bf0..774e7a0b0efe 100644
 +	sem_args.count = 2;
 +	sem_args.max = 3;
 +	sem_args.sem = 0xdeadbeef;
++	sem_args.flags = WINESYNC_SEM_GETONWAIT;
 +	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_NE(0xdeadbeef, sem_args.sem);
@@ -2852,28 +2535,6 @@ index 713711dd4bf0..774e7a0b0efe 100644
 +	close(fd);
 +}
 +
- TEST_HARNESS_MAIN
--- 
-2.11.4.GIT
-
-From 522adce0a1ad4c2b331744f7360dba166676b6d1 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:08:25 -0600
-Subject: [PATCH] selftests: winesync: Add some tests for
- WINESYNC_IOC_WAIT_ALL.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 151 +++++++++++++++++++++
- 1 file changed, 151 insertions(+)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index 774e7a0b0efe..6c1f7fa325fd 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -597,4 +597,155 @@ TEST(wait_any)
- 	close(fd);
- }
- 
 +TEST(wait_all)
 +{
 +	struct winesync_mutex_args mutex_args = {0};
@@ -2891,6 +2552,7 @@ index 774e7a0b0efe..6c1f7fa325fd 100644
 +	sem_args.count = 2;
 +	sem_args.max = 3;
 +	sem_args.sem = 0xdeadbeef;
++	sem_args.flags = WINESYNC_SEM_GETONWAIT;
 +	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_NE(0xdeadbeef, sem_args.sem);
@@ -3025,28 +2687,6 @@ index 774e7a0b0efe..6c1f7fa325fd 100644
 +	close(fd);
 +}
 +
- TEST_HARNESS_MAIN
--- 
-2.11.4.GIT
-
-From 8219e7aa1fa4ad02ed4ca007260aa58ad6393d46 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:08:54 -0600
-Subject: [PATCH] selftests: winesync: Add some tests for invalid object
- handling.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 93 ++++++++++++++++++++++
- 1 file changed, 93 insertions(+)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index 6c1f7fa325fd..28e6d13afe73 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -748,4 +748,97 @@ TEST(wait_all)
- 	close(fd);
- }
- 
 +TEST(invalid_objects)
 +{
 +	struct winesync_mutex_args mutex_args = {0};
@@ -3062,7 +2702,15 @@ index 6c1f7fa325fd..28e6d13afe73 100644
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EINVAL, errno);
 +
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
 +	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EINVAL, errno);
 +
@@ -3140,28 +2788,6 @@ index 6c1f7fa325fd..28e6d13afe73 100644
 +	close(fd);
 +}
 +
- TEST_HARNESS_MAIN
--- 
-2.11.4.GIT
-
-From 8ed1b725e6258435ae90e7c18309686ac8f74e32 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:09:32 -0600
-Subject: [PATCH] selftests: winesync: Add some tests for wakeup signaling with
- WINESYNC_IOC_WAIT_ANY.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 166 +++++++++++++++++++++
- 1 file changed, 166 insertions(+)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index 28e6d13afe73..ddeaba1bfd2a 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -841,4 +841,170 @@ TEST(invalid_objects)
- 	close(fd);
- }
- 
 +struct wake_args
 +{
 +	int fd;
@@ -3219,6 +2845,7 @@ index 28e6d13afe73..ddeaba1bfd2a 100644
 +	sem_args.count = 0;
 +	sem_args.max = 3;
 +	sem_args.sem = 0xdeadbeef;
++	sem_args.flags = WINESYNC_SEM_GETONWAIT;
 +	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_NE(0xdeadbeef, sem_args.sem);
@@ -3252,6 +2879,30 @@ index 28e6d13afe73..ddeaba1bfd2a 100644
 +
 +	sem_args.count = 1;
 +	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(0, wait_args.index);
++
++	/* test waking the semaphore via pulse */
++
++	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 1000);
++	wait_args.owner = 456;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	sem_args.count = 2;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, sem_args.count);
 +
@@ -3307,7 +2958,7 @@ index 28e6d13afe73..ddeaba1bfd2a 100644
 +
 +	/* delete an object while it's being waited on */
 +
-+	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 100);
++	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 200);
 +	wait_args.owner = 123;
 +	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
 +	EXPECT_EQ(0, ret);
@@ -3328,28 +2979,6 @@ index 28e6d13afe73..ddeaba1bfd2a 100644
 +	close(fd);
 +}
 +
- TEST_HARNESS_MAIN
--- 
-2.11.4.GIT
-
-From 5903c1d77090f5e1b29c7bb6c1c882e62cfb79cd Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:09:36 -0600
-Subject: [PATCH] selftests: winesync: Add some tests for wakeup signaling with
- WINESYNC_IOC_WAIT_ALL.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 121 +++++++++++++++++++++
- 1 file changed, 121 insertions(+)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index ddeaba1bfd2a..c738395b11df 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -1007,4 +1007,125 @@ TEST(wake_any)
- 	close(fd);
- }
- 
 +TEST(wake_all)
 +{
 +	struct winesync_wait_args wait_args = {0}, wait_args2 = {0};
@@ -3367,6 +2996,7 @@ index ddeaba1bfd2a..c738395b11df 100644
 +	sem_args.count = 0;
 +	sem_args.max = 3;
 +	sem_args.sem = 0xdeadbeef;
++	sem_args.flags = WINESYNC_SEM_GETONWAIT;
 +	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_NE(0xdeadbeef, sem_args.sem);
@@ -3430,14 +3060,14 @@ index ddeaba1bfd2a..c738395b11df 100644
 +	EXPECT_EQ(0, mutex_args.count);
 +	EXPECT_EQ(0, mutex_args.owner);
 +
-+	sem_args.count = 2;
++	sem_args.count = 1;
 +	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, sem_args.count);
 +
 +	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
 +	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(1, sem_args.count);
++	EXPECT_EQ(0, sem_args.count);
 +
 +	ret = ioctl(fd, WINESYNC_IOC_READ_MUTEX, &mutex_args);
 +	EXPECT_EQ(0, ret);
@@ -3448,9 +3078,28 @@ index ddeaba1bfd2a..c738395b11df 100644
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, thread_args.ret);
 +
++	/* test waking the semaphore via pulse */
++
++	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 1000);
++	wait_args.owner = 456;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	sem_args.count = 1;
++	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, sem_args.count);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++
 +	/* delete an object while it's being waited on */
 +
-+	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 100);
++	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 200);
 +	wait_args.owner = 123;
 +	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
 +	EXPECT_EQ(0, ret);
@@ -3471,932 +3120,4 @@ index ddeaba1bfd2a..c738395b11df 100644
 +	close(fd);
 +}
 +
- TEST_HARNESS_MAIN
--- 
-2.11.4.GIT
-
-From 75e48755d55ebe467377617ab31c42b5fb823b5e Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 12:22:55 -0600
-Subject: [PATCH] maintainers: Add an entry for winesync.
-
----
- MAINTAINERS | 9 +++++++++
- 1 file changed, 9 insertions(+)
-
-diff --git a/MAINTAINERS b/MAINTAINERS
-index bfc1b86e3e73..67ffab43fcd3 100644
---- a/MAINTAINERS
-+++ b/MAINTAINERS
-@@ -19194,6 +19194,15 @@ M:	David Härdeman <david@hardeman.nu>
- S:	Maintained
- F:	drivers/media/rc/winbond-cir.c
- 
-+WINESYNC SYNCHRONIZATION PRIMITIVE DRIVER
-+M:	Zebediah Figura <zfigura@codeweavers.com>
-+L:	wine-devel@winehq.org
-+S:	Supported
-+F:	Documentation/userspace-api/winesync.rst
-+F:	drivers/misc/winesync.c
-+F:	include/uapi/linux/winesync.c
-+F:	tools/testing/selftests/drivers/winesync/
-+
- WINSYSTEMS EBC-C384 WATCHDOG DRIVER
- M:	William Breathitt Gray <vilhelm.gray@gmail.com>
- L:	linux-watchdog@vger.kernel.org
--- 
-2.11.4.GIT
-
-From bd5821c3df040f2f208aa50b1739a7952579e6fa Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 16:12:55 -0600
-Subject: [PATCH] winesync: Introduce the WINESYNC_SEM_GETONWAIT flag.
-
----
- drivers/misc/winesync.c                             | 12 ++++++++++--
- include/uapi/linux/winesync.h                       |  3 +++
- tools/testing/selftests/drivers/winesync/winesync.c |  5 +++++
- 3 files changed, 18 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index aaab874ad7ee..0ee3a3b0c9ab 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -61,6 +61,7 @@ struct winesync_obj {
- 		struct {
- 			__u32 count;
- 			__u32 max;
-+			__u32 flags;
- 		} sem;
- 		struct {
- 			__u32 count;
-@@ -232,7 +233,8 @@ static void try_wake_all(struct winesync_device *dev, struct winesync_q *q,
- 
- 			switch (obj->type) {
- 			case WINESYNC_TYPE_SEM:
--				obj->u.sem.count--;
-+				if (obj->u.sem.flags & WINESYNC_SEM_GETONWAIT)
-+					obj->u.sem.count--;
- 				break;
- 			case WINESYNC_TYPE_MUTEX:
- 				if (obj->u.mutex.ownerdead)
-@@ -277,7 +279,8 @@ static void try_wake_any_sem(struct winesync_obj *sem)
- 			break;
- 
- 		if (atomic_cmpxchg(&q->signaled, -1, entry->index) == -1) {
--			sem->u.sem.count--;
-+			if (sem->u.sem.flags & WINESYNC_SEM_GETONWAIT)
-+				sem->u.sem.count--;
- 			wake_up_process(q->task);
- 		}
- 	}
-@@ -321,6 +324,9 @@ static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
- 	if (args.count > args.max)
- 		return -EINVAL;
- 
-+	if (args.flags & ~WINESYNC_SEM_GETONWAIT)
-+		return -EINVAL;
-+
- 	sem = kzalloc(sizeof(*sem), GFP_KERNEL);
- 	if (!sem)
- 		return -ENOMEM;
-@@ -329,6 +335,7 @@ static int winesync_create_sem(struct winesync_device *dev, void __user *argp)
- 	sem->type = WINESYNC_TYPE_SEM;
- 	sem->u.sem.count = args.count;
- 	sem->u.sem.max = args.max;
-+	sem->u.sem.flags = args.flags;
- 
- 	spin_lock(&dev->table_lock);
- 	ret = idr_alloc(&dev->objects, sem, 0, 0, GFP_KERNEL);
-@@ -553,6 +560,7 @@ static int winesync_read_sem(struct winesync_device *dev, void __user *argp)
- 	spin_lock(&sem->lock);
- 	args.count = sem->u.sem.count;
- 	args.max = sem->u.sem.max;
-+	args.flags = sem->u.sem.flags;
- 	spin_unlock(&sem->lock);
- 
- 	put_obj(sem);
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 1fdc8801845f..8acf54e997ba 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -10,10 +10,13 @@
- 
- #include <linux/types.h>
- 
-+#define WINESYNC_SEM_GETONWAIT 1
-+
- struct winesync_sem_args {
- 	__u32 sem;
- 	__u32 count;
- 	__u32 max;
-+	__u32 flags;
- };
- 
- struct winesync_mutex_args {
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index c738395b11df..59024f99f3f2 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -29,6 +29,7 @@ TEST(semaphore_state)
- 	sem_args.count = 3;
- 	sem_args.max = 2;
- 	sem_args.sem = 0xdeadbeef;
-+	sem_args.flags = WINESYNC_SEM_GETONWAIT;
- 	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
- 	EXPECT_EQ(-1, ret);
- 	EXPECT_EQ(EINVAL, errno);
-@@ -417,6 +418,7 @@ TEST(wait_any)
- 	sem_args.count = 2;
- 	sem_args.max = 3;
- 	sem_args.sem = 0xdeadbeef;
-+	sem_args.flags = WINESYNC_SEM_GETONWAIT;
- 	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
- 	EXPECT_EQ(0, ret);
- 	EXPECT_NE(0xdeadbeef, sem_args.sem);
-@@ -614,6 +616,7 @@ TEST(wait_all)
- 	sem_args.count = 2;
- 	sem_args.max = 3;
- 	sem_args.sem = 0xdeadbeef;
-+	sem_args.flags = WINESYNC_SEM_GETONWAIT;
- 	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
- 	EXPECT_EQ(0, ret);
- 	EXPECT_NE(0xdeadbeef, sem_args.sem);
-@@ -898,6 +901,7 @@ TEST(wake_any)
- 	sem_args.count = 0;
- 	sem_args.max = 3;
- 	sem_args.sem = 0xdeadbeef;
-+	sem_args.flags = WINESYNC_SEM_GETONWAIT;
- 	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
- 	EXPECT_EQ(0, ret);
- 	EXPECT_NE(0xdeadbeef, sem_args.sem);
-@@ -1024,6 +1028,7 @@ TEST(wake_all)
- 	sem_args.count = 0;
- 	sem_args.max = 3;
- 	sem_args.sem = 0xdeadbeef;
-+	sem_args.flags = WINESYNC_SEM_GETONWAIT;
- 	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
- 	EXPECT_EQ(0, ret);
- 	EXPECT_NE(0xdeadbeef, sem_args.sem);
--- 
-2.11.4.GIT
-
-From 9187b4b637bc14a45998c751160b0c3e7721e4fd Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 16:13:07 -0600
-Subject: [PATCH] doc: Document the WINESYNC_SEM_GETONWAIT flag.
-
----
- Documentation/userspace-api/winesync.rst | 34 ++++++++++++++++++++++++--------
- 1 file changed, 26 insertions(+), 8 deletions(-)
-
-diff --git a/Documentation/userspace-api/winesync.rst b/Documentation/userspace-api/winesync.rst
-index 7b4e5767c3ec..3c5e986ddd8c 100644
---- a/Documentation/userspace-api/winesync.rst
-+++ b/Documentation/userspace-api/winesync.rst
-@@ -60,6 +60,7 @@ structures used in ioctl calls::
-    	__u32 sem;
-    	__u32 count;
-    	__u32 max;
-+   	__u32 flags;
-    };
- 
-    struct winesync_mutex_args {
-@@ -93,6 +94,13 @@ The ioctls are as follows:
-     ``count`` and ``max`` are input-only arguments, denoting the
-     initial and maximum count of the semaphore.
- 
-+    ``flags`` is an input-only argument, which specifies additional
-+    flags modifying the behaviour of the semaphore. There is only one
-+    flag defined, ``WINESYNC_SEM_GETONWAIT``. If present, wait
-+    operations on this semaphore will acquire it, decrementing its
-+    count by one; otherwise, wait operations will not affect the
-+    semaphore's state.
-+
-     ``sem`` is an output-only argument, which will be filled with the
-     allocated identifier if successful.
- 
-@@ -138,7 +146,7 @@ The ioctls are as follows:
-     ``count`` contains on input the count to add to the semaphore, and
-     on output is filled with its previous count.
- 
--    ``max`` is not used.
-+    ``max`` and ``flags`` are not used.
- 
-   The operation is atomic and totally ordered with respect to other
-   operations on the same semaphore. If adding ``count`` to the
-@@ -184,6 +192,9 @@ The ioctls are as follows:
-     ``count`` and ``max`` are output-only arguments, which will be
-     filled with the current and maximum count of the given semaphore.
- 
-+    ``flags`` is an output-only argument, which will be filled with
-+    the flags used to create the semaphore.
-+
-   The operation is atomic and totally ordered with respect to other
-   operations on the same semaphore.
- 
-@@ -254,20 +265,27 @@ The ioctls are as follows:
-   case the ioctl fails with ``ETIMEDOUT``. The function only acquires
-   one object, even if multiple objects are signaled.
- 
--  A semaphore is considered to be signaled if its count is nonzero,
--  and is acquired by decrementing its count by one. A mutex is
--  considered to be signaled if it is unowned or if its owner matches
--  the ``owner`` argument, and is acquired by incrementing its
--  recursion count by one and setting its owner to the ``owner``
--  argument.
-+  A semaphore is considered to be signaled if its count is nonzero. It
-+  is acquired by decrementing its count by one if the
-+  ``WINESYNC_SEM_GETONWAIT`` flag was used to create it; otherwise no
-+  operation is done to acquire the semaphore. A mutex is considered to
-+  be signaled if it is unowned or if its owner matches the ``owner``
-+  argument, and is acquired by incrementing its recursion count by one
-+  and setting its owner to the ``owner`` argument.
- 
-   Acquisition is atomic and totally ordered with respect to other
-   operations on the same object. If two wait operations (with
-   different ``owner`` identifiers) are queued on the same mutex, only
-   one is signaled. If two wait operations are queued on the same
--  semaphore, and a value of one is posted to it, only one is signaled.
-+  semaphore (which was not created with the ``WINESYNC_SEM_GETONWAIT``
-+  flag set), and a value of one is posted to it, only one is signaled.
-   The order in which threads are signaled is not guaranteed.
- 
-+  (If two wait operations are queued on the same semaphore, and the
-+  semaphore was created with the ``WINESYNC_SEM_GETONWAIT`` flag set,
-+  and a value of one is posted to it, both threads are signaled, and
-+  the semaphore retains a count of one.)
-+
-   If an inconsistent mutex is acquired, the ioctl fails with
-   ``EOWNERDEAD``. Although this is a failure return, the function may
-   otherwise be considered successful. The mutex is marked as owned by
--- 
-2.11.4.GIT
-
-From 973ed9dd6d21b86829eebf18044ca0a0cae0a0cb Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 16:19:53 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_GET_SEM.
-
----
- drivers/misc/winesync.c       | 37 +++++++++++++++++++++++++++++++++++++
- include/uapi/linux/winesync.h |  1 +
- 2 files changed, 38 insertions(+)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 0ee3a3b0c9ab..37d335ae07bf 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -402,6 +402,41 @@ static int winesync_delete(struct winesync_device *dev, void __user *argp)
- 	return 0;
- }
- 
-+static int winesync_get_sem(struct winesync_device *dev, void __user *argp)
-+{
-+	struct winesync_obj *sem;
-+	int ret = -EWOULDBLOCK;
-+	__u32 id;
-+
-+	if (get_user(id, (__u32 __user *)argp))
-+		return -EFAULT;
-+
-+	sem = get_obj(dev, id);
-+	if (!sem)
-+		return -EINVAL;
-+	if (sem->type != WINESYNC_TYPE_SEM) {
-+		put_obj(sem);
-+		return -EINVAL;
-+	}
-+
-+	spin_lock(&sem->lock);
-+
-+	if (sem->u.sem.count) {
-+		/*
-+		 * Decrement the semaphore's count, regardless of whether it
-+		 * has the WINESYNC_SEM_GETONWAIT flag set.
-+		 */
-+		sem->u.sem.count--;
-+		ret = 0;
-+	}
-+
-+	spin_unlock(&sem->lock);
-+
-+	put_obj(sem);
-+
-+	return ret;
-+}
-+
- /*
-  * Actually change the semaphore state, returning -EOVERFLOW if it is made
-  * invalid.
-@@ -953,6 +988,8 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 		return winesync_create_mutex(dev, argp);
- 	case WINESYNC_IOC_DELETE:
- 		return winesync_delete(dev, argp);
-+	case WINESYNC_IOC_GET_SEM:
-+		return winesync_get_sem(dev, argp);
- 	case WINESYNC_IOC_PUT_SEM:
- 		return winesync_put_sem(dev, argp);
- 	case WINESYNC_IOC_PUT_MUTEX:
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 8acf54e997ba..96bceacb8091 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -40,6 +40,7 @@ struct winesync_wait_args {
- 					      struct winesync_sem_args)
- #define WINESYNC_IOC_CREATE_MUTEX	_IOWR(WINESYNC_IOC_BASE, 1, \
- 					      struct winesync_mutex_args)
-+#define WINESYNC_IOC_GET_SEM		_IOW (WINESYNC_IOC_BASE, 2, __u32)
- #define WINESYNC_IOC_PUT_SEM		_IOWR(WINESYNC_IOC_BASE, 5, \
- 					      struct winesync_sem_args)
- #define WINESYNC_IOC_PUT_MUTEX		_IOWR(WINESYNC_IOC_BASE, 6, \
--- 
-2.11.4.GIT
-
-From 748a26461e29347eb345f834c3cd4c2b014d9bf3 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 17:21:26 -0600
-Subject: [PATCH] winesync: Introduce WINESYNC_IOC_PULSE_SEM.
-
----
- drivers/misc/winesync.c       | 13 +++++++++++--
- include/uapi/linux/winesync.h |  2 ++
- 2 files changed, 13 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/misc/winesync.c b/drivers/misc/winesync.c
-index 37d335ae07bf..57c7bc31823a 100644
---- a/drivers/misc/winesync.c
-+++ b/drivers/misc/winesync.c
-@@ -453,7 +453,8 @@ static int put_sem_state(struct winesync_obj *sem, __u32 count)
- 	return 0;
- }
- 
--static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
-+static int winesync_put_sem(struct winesync_device *dev, void __user *argp,
-+			    bool pulse)
- {
- 	struct winesync_sem_args __user *user_args = argp;
- 	struct winesync_sem_args args;
-@@ -483,6 +484,9 @@ static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
- 			try_wake_any_sem(sem);
- 		}
- 
-+		if (pulse)
-+			sem->u.sem.count = 0;
-+
- 		spin_unlock(&sem->lock);
- 		spin_unlock(&dev->wait_all_lock);
- 	} else {
-@@ -493,6 +497,9 @@ static int winesync_put_sem(struct winesync_device *dev, void __user *argp)
- 		if (!ret)
- 			try_wake_any_sem(sem);
- 
-+		if (pulse)
-+			sem->u.sem.count = 0;
-+
- 		spin_unlock(&sem->lock);
- 	}
- 
-@@ -991,7 +998,9 @@ static long winesync_char_ioctl(struct file *file, unsigned int cmd,
- 	case WINESYNC_IOC_GET_SEM:
- 		return winesync_get_sem(dev, argp);
- 	case WINESYNC_IOC_PUT_SEM:
--		return winesync_put_sem(dev, argp);
-+		return winesync_put_sem(dev, argp, false);
-+	case WINESYNC_IOC_PULSE_SEM:
-+		return winesync_put_sem(dev, argp, true);
- 	case WINESYNC_IOC_PUT_MUTEX:
- 		return winesync_put_mutex(dev, argp);
- 	case WINESYNC_IOC_READ_SEM:
-diff --git a/include/uapi/linux/winesync.h b/include/uapi/linux/winesync.h
-index 96bceacb8091..c16f423dad48 100644
---- a/include/uapi/linux/winesync.h
-+++ b/include/uapi/linux/winesync.h
-@@ -41,6 +41,8 @@ struct winesync_wait_args {
- #define WINESYNC_IOC_CREATE_MUTEX	_IOWR(WINESYNC_IOC_BASE, 1, \
- 					      struct winesync_mutex_args)
- #define WINESYNC_IOC_GET_SEM		_IOW (WINESYNC_IOC_BASE, 2, __u32)
-+#define WINESYNC_IOC_PULSE_SEM		_IOWR(WINESYNC_IOC_BASE, 3, \
-+					      struct winesync_sem_args)
- #define WINESYNC_IOC_PUT_SEM		_IOWR(WINESYNC_IOC_BASE, 5, \
- 					      struct winesync_sem_args)
- #define WINESYNC_IOC_PUT_MUTEX		_IOWR(WINESYNC_IOC_BASE, 6, \
--- 
-2.11.4.GIT
-
-From 2cc4ea78bde0dcbcd90430433273f063bdb0dd37 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 17:21:47 -0600
-Subject: [PATCH] doc: Document WINESYNC_IOC_GET_SEM and
- WINESYNC_IOC_PULSE_SEM.
-
----
- Documentation/userspace-api/winesync.rst | 40 ++++++++++++++++++++++++++++++++
- 1 file changed, 40 insertions(+)
-
-diff --git a/Documentation/userspace-api/winesync.rst b/Documentation/userspace-api/winesync.rst
-index 3c5e986ddd8c..c980eab9f2ee 100644
---- a/Documentation/userspace-api/winesync.rst
-+++ b/Documentation/userspace-api/winesync.rst
-@@ -157,6 +157,46 @@ The ioctls are as follows:
-   semaphore will be woken and the semaphore's count decremented
-   appropriately.
- 
-+.. c:macro:: WINESYNC_IOC_PULSE_SEM
-+
-+  This operation is identical to ``WINESYNC_IOC_PUT_SEM``, with one
-+  notable exception: the semaphore is always left in an *unsignaled*
-+  state, regardless of the initial count or the count added by the
-+  ioctl. That is, the count after a pulse operation will always be
-+  zero. The entire operation is atomic.
-+
-+  Hence, if the semaphore was created with the
-+  ``WINESYNC_SEM_GETONWAIT`` flag set, and an unsignaled semaphore is
-+  "pulsed" with a count of 2, at most two eligible threads (i.e.
-+  threads not otherwise constrained due to ``WINESYNC_IOC_WAIT_ALL``)
-+  will be woken up, and any others will remain sleeping. If less than
-+  two eligible threads are waiting on the semaphore, all of them will
-+  be woken up, and the semaphore's count will remain at zero. On the
-+  other hand, if the semaphore was created without the
-+  ``WINESYNC_SEM_GETONWAIT``, all eligible threads will be woken up,
-+  making ``count`` effectively redundant. In either case, a
-+  simultaneous ``WINESYNC_IOC_READ_SEM`` ioctl from another thread
-+  will always report a count of zero.
-+
-+  If adding ``count`` to the semaphore's current count would raise the
-+  latter past the semaphore's maximum count, the ioctl fails with
-+  ``EOVERFLOW``. However, in this case the semaphore's count will
-+  still be reset to zero.
-+
-+.. c:macro:: WINESYNC_IOC_GET_SEM
-+
-+  Attempt to acquire a semaphore object. Takes an input-only pointer
-+  to a 32-bit integer denoting the semaphore to acquire.
-+
-+  This operation does not block. If the semaphore's count was zero, it
-+  fails with ``EWOULDBLOCK``. Otherwise, the semaphore's count is
-+  decremented by one. The behaviour of this operation is unaffected by
-+  whether the semaphore was created with the
-+  ``WINESYNC_SEM_GETONWAIT`` flag set.
-+
-+  The operation is atomic and totally ordered with respect to other
-+  operations on the same semaphore.
-+
- .. c:macro:: WINESYNC_IOC_PUT_MUTEX
- 
-   Release a mutex object. Takes a pointer to struct
--- 
-2.11.4.GIT
-
-From 9f357d1c26ae84ba3a319a6ba82ec1cbae2f0a71 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 17:23:16 -0600
-Subject: [PATCH] selftests: winesync: Add tests for semaphores without
- WINESYNC_SEM_GETONWAIT and for WINESYNC_IOC_GET_SEM.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 189 +++++++++++++++++++++
- 1 file changed, 189 insertions(+)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index 59024f99f3f2..97fdf92e32f9 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -29,6 +29,153 @@ TEST(semaphore_state)
- 	sem_args.count = 3;
- 	sem_args.max = 2;
- 	sem_args.sem = 0xdeadbeef;
-+	sem_args.flags = 0;
-+	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EINVAL, errno);
-+
-+	sem_args.count = 2;
-+	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	sem_args.flags = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(2, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+	EXPECT_EQ(0, sem_args.flags);
-+
-+	sem_args.count = 0;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(2, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(2, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EOVERFLOW, errno);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(2, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	wait_args.timeout = (uintptr_t)&timeout;
-+	wait_args.objs = (uintptr_t)&sem_args.sem;
-+	wait_args.count = 1;
-+	wait_args.owner = 123;
-+	wait_args.index = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_WAIT_ANY, &wait_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, wait_args.index);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(2, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(0, ret);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(1, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(0, ret);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EWOULDBLOCK, errno);
-+
-+	sem_args.count = 3;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EOVERFLOW, errno);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 2;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(2, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(0, ret);
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(0, ret);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(1, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_DELETE, &sem_args.sem);
-+	EXPECT_EQ(0, ret);
-+
-+	close(fd);
-+}
-+
-+TEST(semaphore_state_getonwait)
-+{
-+	struct winesync_wait_args wait_args;
-+	struct winesync_sem_args sem_args;
-+	struct timespec timeout;
-+	int fd, ret;
-+
-+	clock_gettime(CLOCK_MONOTONIC, &timeout);
-+
-+	fd = open("/dev/winesync", O_CLOEXEC | O_RDONLY);
-+	ASSERT_LE(0, fd);
-+
-+	sem_args.count = 3;
-+	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
- 	sem_args.flags = WINESYNC_SEM_GETONWAIT;
- 	ret = ioctl(fd, WINESYNC_IOC_CREATE_SEM, &sem_args);
- 	EXPECT_EQ(-1, ret);
-@@ -145,6 +292,44 @@ TEST(semaphore_state)
- 	EXPECT_EQ(1, sem_args.count);
- 	EXPECT_EQ(2, sem_args.max);
- 
-+	/* Test GET. */
-+
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(0, ret);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EWOULDBLOCK, errno);
-+
-+	sem_args.count = 2;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(2, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(0, ret);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(1, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
- 	ret = ioctl(fd, WINESYNC_IOC_DELETE, &sem_args.sem);
- 	EXPECT_EQ(0, ret);
- 
-@@ -770,6 +955,10 @@ TEST(invalid_objects)
- 	EXPECT_EQ(-1, ret);
- 	EXPECT_EQ(EINVAL, errno);
- 
-+	ret = ioctl(fd, WINESYNC_IOC_GET_SEM, &sem_args.sem);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EINVAL, errno);
-+
- 	ret = ioctl(fd, WINESYNC_IOC_PUT_MUTEX, &mutex_args);
- 	EXPECT_EQ(-1, ret);
- 	EXPECT_EQ(EINVAL, errno);
--- 
-2.11.4.GIT
-
-From e97dfb6b3ee6792cd1fe8242df4dafd8f10cca99 Mon Sep 17 00:00:00 2001
-From: Zebediah Figura <z.figura12@gmail.com>
-Date: Fri, 5 Mar 2021 17:23:35 -0600
-Subject: [PATCH] selftests: winesync: Add tests for WINESYNC_IOC_PULSE_SEM.
-
----
- .../testing/selftests/drivers/winesync/winesync.c  | 161 ++++++++++++++++++++-
- 1 file changed, 159 insertions(+), 2 deletions(-)
-
-diff --git a/tools/testing/selftests/drivers/winesync/winesync.c b/tools/testing/selftests/drivers/winesync/winesync.c
-index 97fdf92e32f9..6510a36e9b80 100644
---- a/tools/testing/selftests/drivers/winesync/winesync.c
-+++ b/tools/testing/selftests/drivers/winesync/winesync.c
-@@ -155,6 +155,61 @@ TEST(semaphore_state)
- 	EXPECT_EQ(1, sem_args.count);
- 	EXPECT_EQ(2, sem_args.max);
- 
-+	/* Test PULSE. */
-+
-+	sem_args.count = 2;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EOVERFLOW, errno);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(1, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 2;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
- 	ret = ioctl(fd, WINESYNC_IOC_DELETE, &sem_args.sem);
- 	EXPECT_EQ(0, ret);
- 
-@@ -330,6 +385,61 @@ TEST(semaphore_state_getonwait)
- 	EXPECT_EQ(1, sem_args.count);
- 	EXPECT_EQ(2, sem_args.max);
- 
-+	/* Test PULSE. */
-+
-+	sem_args.count = 2;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EOVERFLOW, errno);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(1, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
-+	sem_args.count = 2;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	sem_args.count = 0xdeadbeef;
-+	sem_args.max = 0xdeadbeef;
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+	EXPECT_EQ(2, sem_args.max);
-+
- 	ret = ioctl(fd, WINESYNC_IOC_DELETE, &sem_args.sem);
- 	EXPECT_EQ(0, ret);
- 
-@@ -951,6 +1061,10 @@ TEST(invalid_objects)
- 	EXPECT_EQ(-1, ret);
- 	EXPECT_EQ(EINVAL, errno);
- 
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(-1, ret);
-+	EXPECT_EQ(EINVAL, errno);
-+
- 	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
- 	EXPECT_EQ(-1, ret);
- 	EXPECT_EQ(EINVAL, errno);
-@@ -1136,6 +1250,30 @@ TEST(wake_any)
- 	EXPECT_EQ(0, thread_args.ret);
- 	EXPECT_EQ(0, wait_args.index);
- 
-+	/* test waking the semaphore via pulse */
-+
-+	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 1000);
-+	wait_args.owner = 456;
-+	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
-+	EXPECT_EQ(0, ret);
-+
-+	ret = wait_for_thread(thread, 100);
-+	EXPECT_EQ(ETIMEDOUT, ret);
-+
-+	sem_args.count = 2;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	ret = wait_for_thread(thread, 100);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, thread_args.ret);
-+	EXPECT_EQ(0, wait_args.index);
-+
- 	/* test waking the mutex */
- 
- 	/* first grab it again for owner 123 */
-@@ -1281,14 +1419,14 @@ TEST(wake_all)
- 	EXPECT_EQ(0, mutex_args.count);
- 	EXPECT_EQ(0, mutex_args.owner);
- 
--	sem_args.count = 2;
-+	sem_args.count = 1;
- 	ret = ioctl(fd, WINESYNC_IOC_PUT_SEM, &sem_args);
- 	EXPECT_EQ(0, ret);
- 	EXPECT_EQ(0, sem_args.count);
- 
- 	ret = ioctl(fd, WINESYNC_IOC_READ_SEM, &sem_args);
- 	EXPECT_EQ(0, ret);
--	EXPECT_EQ(1, sem_args.count);
-+	EXPECT_EQ(0, sem_args.count);
- 
- 	ret = ioctl(fd, WINESYNC_IOC_READ_MUTEX, &mutex_args);
- 	EXPECT_EQ(0, ret);
-@@ -1299,6 +1437,25 @@ TEST(wake_all)
- 	EXPECT_EQ(0, ret);
- 	EXPECT_EQ(0, thread_args.ret);
- 
-+	/* test waking the semaphore via pulse */
-+
-+	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 1000);
-+	wait_args.owner = 456;
-+	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
-+	EXPECT_EQ(0, ret);
-+
-+	ret = wait_for_thread(thread, 100);
-+	EXPECT_EQ(ETIMEDOUT, ret);
-+
-+	sem_args.count = 1;
-+	ret = ioctl(fd, WINESYNC_IOC_PULSE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, sem_args.count);
-+
-+	ret = wait_for_thread(thread, 100);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_EQ(0, thread_args.ret);
-+
- 	/* delete an object while it's being waited on */
- 
- 	get_abs_timeout(&timeout, CLOCK_MONOTONIC, 100);
--- 
-2.11.4.GIT
-
++TEST_HARNESS_MAIN
