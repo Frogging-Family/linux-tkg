@@ -250,7 +250,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   esac
 
   if [ "$opt_alternative_url" != "true" ]; then
-    wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-${opt_ver}.patch"
+    wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-${opt_ver}.patch"
   else
     wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch"
   fi
