@@ -837,10 +837,10 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..7b99fdbb48df
+index 000000000000..0066b97100bb
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,6910 @@
+@@ -0,0 +1,6914 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -895,7 +895,7 @@ index 000000000000..7b99fdbb48df
 + */
 +EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
 +
-+#define ALT_SCHED_VERSION "v5.11-r2"
++#define ALT_SCHED_VERSION "v5.11-r3"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -2025,6 +2025,9 @@ index 000000000000..7b99fdbb48df
 +void migrate_enable(void)
 +{
 +	struct task_struct *p = current;
++
++	if (0 == p->migration_disabled)
++		return;
 +
 +	if (p->migration_disabled > 1) {
 +		p->migration_disabled--;
@@ -4232,7 +4235,8 @@ index 000000000000..7b99fdbb48df
 +	rq->active_balance = 0;
 +	/* _something_ may have changed the task, double check again */
 +	if (task_on_rq_queued(p) && task_rq(p) == rq &&
-+	    cpumask_and(&tmp, p->cpus_ptr, &sched_sg_idle_mask)) {
++	    cpumask_and(&tmp, p->cpus_ptr, &sched_sg_idle_mask) &&
++	    !is_migration_disabled(p)) {
 +		int cpu = cpu_of(rq);
 +		int dcpu = __best_mask_cpu(cpu, &tmp,
 +					   per_cpu(sched_cpu_llc_mask, cpu));
@@ -4260,7 +4264,7 @@ index 000000000000..7b99fdbb48df
 +	curr = rq->curr;
 +	res = (!is_idle_task(curr)) && (1 == rq->nr_running) &&\
 +	      cpumask_intersects(curr->cpus_ptr, &sched_sg_idle_mask) &&\
-+	      (!rq->active_balance);
++	      !is_migration_disabled(curr) && (!rq->active_balance);
 +
 +	if (res)
 +		rq->active_balance = 1;
@@ -7790,10 +7794,10 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..51f11bf416f4
+index 000000000000..7bcd96cc6bed
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,683 @@
+@@ -0,0 +1,684 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -8394,7 +8398,8 @@ index 000000000000..51f11bf416f4
 +{
 +	struct update_util_data *data;
 +
-+	data = rcu_dereference_sched(*this_cpu_ptr(&cpufreq_update_util_data));
++	data = rcu_dereference_sched(*per_cpu_ptr(&cpufreq_update_util_data,
++						  cpu_of(rq)));
 +	if (data)
 +		data->func(data, rq_clock(rq), flags);
 +}
@@ -8704,7 +8709,7 @@ index 000000000000..13eda4b26b6a
 +		boost_task(p);
 +}
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
-index 6931f0cdeb80..0c074c53c60a 100644
+index 6931f0cdeb80..c5e3d3839650 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
 @@ -171,6 +171,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
@@ -8715,31 +8720,37 @@ index 6931f0cdeb80..0c074c53c60a 100644
  /*
   * This function computes an effective utilization for the given CPU, to be
   * used for frequency selection given the linear relation: f = u * f_max.
-@@ -287,6 +288,13 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu)
- 	sg_cpu->util = schedutil_cpu_util(sg_cpu->cpu, cpu_util_cfs(rq), max,
+@@ -288,6 +289,18 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu)
  					  FREQUENCY_UTIL, NULL);
  }
+ 
 +#else /* CONFIG_SCHED_ALT */
-+static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
++
++static void sugov_get_util(struct sugov_cpu *sg_cpu)
 +{
-+	sg_cpu->max = arch_scale_cpu_capacity(sg_cpu->cpu);
-+	return sg_cpu->max;
++	unsigned long max = arch_scale_cpu_capacity(sg_cpu->cpu);
++
++	sg_cpu->max = max;
++	sg_cpu->bw_dl = 0;
++	sg_cpu->util = cpu_rq(sg_cpu->cpu)->nr_running ? max:0UL;
 +}
 +#endif
- 
++
  /**
   * sugov_iowait_reset() - Reset the IO boost status of a CPU.
-@@ -428,7 +436,9 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
+  * @sg_cpu: the sugov data for the CPU to boost
+@@ -428,8 +441,10 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
   */
  static inline void ignore_dl_rate_limit(struct sugov_cpu *sg_cpu, struct sugov_policy *sg_policy)
  {
 +#ifndef CONFIG_SCHED_ALT
  	if (cpu_bw_dl(cpu_rq(sg_cpu->cpu)) > sg_cpu->bw_dl)
-+#endif
  		sg_policy->limits_changed = true;
++#endif
  }
  
-@@ -711,6 +721,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
+ static inline bool sugov_update_single_common(struct sugov_cpu *sg_cpu,
+@@ -711,6 +726,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
  	}
  
  	ret = sched_setattr_nocheck(thread, &attr);
@@ -8747,7 +8758,7 @@ index 6931f0cdeb80..0c074c53c60a 100644
  	if (ret) {
  		kthread_stop(thread);
  		pr_warn("%s: failed to set SCHED_DEADLINE\n", __func__);
-@@ -943,6 +954,7 @@ struct cpufreq_governor *cpufreq_default_governor(void)
+@@ -943,6 +959,7 @@ struct cpufreq_governor *cpufreq_default_governor(void)
  cpufreq_governor_init(schedutil_gov);
  
  #ifdef CONFIG_ENERGY_MODEL
@@ -8755,7 +8766,7 @@ index 6931f0cdeb80..0c074c53c60a 100644
  static void rebuild_sd_workfn(struct work_struct *work)
  {
  	rebuild_sched_domains_energy();
-@@ -966,4 +978,10 @@ void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
+@@ -966,4 +983,10 @@ void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
  	}
  
  }
