@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=142
+pkgrel=143
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -70,7 +70,7 @@ case $_basever in
 	opt_ver="4.19-v5.4"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-gcc-v10-and-kernel-4.19-v5.4.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-4.19-5.4.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -95,7 +95,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '4b662960e4d1324f00f5c82c65bdc0b7a400c19f2d2b228bebc005ab7b55c847'
+            '7426efc1be3c5a8464423184238bb553a062494fdcbf1ff23a5c60cb05af5d85'
             'SKIP'
             'be2066dd6133357007e8c7da9d5de3194b13409ebbfba8821db1849588fced1e'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -309,9 +309,9 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '5bbc24f360f6b02597769a73ba89cfd085cdff2118aa76a0a33f021e1febdea4'
+            '9058a5ba820e8a6e76bf0f7e622484b919666447fc266e3ed9b2c3d0d747470e'
             'SKIP'
-            '3be7878c591973c723dbcb0f5f9228dcd4c4e610b4ce03a9eafef7309c72e733'
+            '4720ffe4c063ec948918cadf7498e96be8a035717e587b4c949d3c2a4471d5d9'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -373,9 +373,9 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
-            '0d74c5bb650fdbcc7297c6f906a04bf0c3c330bb9992e519246b27d3e3a33138'
+            'e5e0f6b2e0137e6a8afcfea7aca1c3f1ac1b5c72debcc79f3cb4ddd84df3f199'
             'SKIP'
-            '569f615ed3cf8c8e8e4c26aca156ae59886c3b91b46967a3ac95a615ca2e8874'
+            '4e4340b66ee899c3459c39e6481d4aaf3078f113fe50ccea4afb42ec9b53d58d'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
