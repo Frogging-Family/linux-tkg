@@ -336,9 +336,11 @@ _tkg_srcprep() {
     exit 1
   fi
 
+  msg2 "Setting version..."
+  scripts/setlocalversion --save-scmversion
+  
   if [ "${_distro}" = "Arch" ]; then
-    msg2 "Setting version..."
-    scripts/setlocalversion --save-scmversion
+    
     echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
     echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/prepare.log
     echo "" > localversion.20-pkgname
@@ -494,11 +496,22 @@ _tkg_srcprep() {
     cd ${wrksrc}/linux-${_kern_ver}
   fi
 
-  if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
-    if [ -z "${_configfile}" ]; then
-      _configfile="config.x86_64"
+  
+  if [ -z "${_configfile}" ]; then    
+    if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
+      cat "${srcdir}"/config.x86_64 > ./.config
+    else
+      if [ -f /boot/config-`uname -r` ];then
+        msg2 "Using /boot/config-`uname -r` as config file"
+        cp /boot/config-`uname -r` .config
+      elif [ -f /proc/config.gz ];then
+        msg2 "Using /proc/config.gz as config file"
+        zcat --verbose /proc/config.gz > .config
+      else
+        msg2 "Current kernel config not found! Falling back to default..."
+      fi
     fi
-
+  else
     cat "${srcdir}/${_configfile}" > ./.config
   fi
 
@@ -1215,7 +1228,14 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     read -rp "`echo $'    > N/y : '`" CONDITIONMPDB;
   fi
   if [[ "$CONDITIONMPDB" =~ [yY] ]] || [ "$_modprobeddb" = "true" ]; then
-    yes "" | make LSMOD=${HOME}/.config/modprobed.db localmodconfig ${llvm_opt}
+    if [ -f "$where"/"$_modprobeddb_db_path" ];then
+      _modprobeddb_db_path="$where"/"$_modprobeddb_db_path"
+    fi
+    if [ ! -f $_modprobeddb_db_path ]; then
+      msg2 "modprobed-db database not found"
+      exit 1
+    fi
+    yes "" | make LSMOD=$_modprobeddb_db_path localmodconfig ${llvm_opt}
   fi
 
   if [ true = "$_config_fragments" ]; then
@@ -1311,6 +1331,9 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     make -s kernelrelease > version
     msg2 "Prepared %s version %s" "$pkgbase" "$(<version)"
   fi
+
+  # copy new config file back to the user's git folder for an eventual future use
+  cp .config "${_where}"/kernelconfig.new
 }
 
 exit_cleanup() {
