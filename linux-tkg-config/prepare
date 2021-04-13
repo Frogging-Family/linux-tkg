@@ -220,15 +220,9 @@ _tkg_initscript() {
   fi
 
   case $_compileroptlevel in
-	"2")
-	_compileropt="-O3"
-	;;
-	"3")
-	_compileropt="-Os"
-	;;
-	*)
-	_compileropt="-O2"
-	;;
+	"2") _compileropt="-O3" ;;
+	"3") _compileropt="-Os" ;;
+	*) _compileropt="-O2" ;;
   esac
 
 # Compiler selector
@@ -238,12 +232,23 @@ _tkg_initscript() {
     if [ "$_CONDITION_CMPLR" = "2" ];then
       echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
       echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
+      if [ $_basever -ge 512 ] && [ -z "$_lto_mode" ]; then
+        plain "Would you like to enable Clang LTO?"
+        read -rp "`echo $'  >N/y : '`" _lto_enable;
+        if [[ "$_lto_enable" =~ [yY] ]] ;then
+          echo "llvm_opt=\"LLVM=1 LLVM_IAS=1\"" >> ${_path}/compilerset
+        fi	
+      fi
+
     else
       echo "_compiler_name=" >> ${_path}/compilerset
     fi
   elif [ "$_compiler" = "llvm" ]; then
       echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
       echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
+      if [ $_basever -ge 512 ] && [ -n "$_lto_mode" ]; then
+	echo "_llvm_opt=\"LLVM=1 LLVM_IAS=1\"" >> ${_path}/compilerset
+      fi
   elif [ "$_compiler" = "gcc" ]; then
       echo "_compiler_name=" >> ${_path}/compilerset
   else
@@ -338,6 +343,10 @@ _tkg_srcprep() {
 
   msg2 "Setting version..."
   scripts/setlocalversion --save-scmversion
+  if [ $_basever -ge 512 ] && [[ "$lto_enable" =~ [yY] ]] || [ -n "$_lto_mode" ]; then
+    scripts/config -e LTO_CLANG_THIN 
+  fi
+
   
   if [ "${_distro}" = "Arch" ]; then
     
@@ -638,6 +647,14 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }\
 	    || { [ "$_distro" = "Void" ] && xbps-query -s ccache > /dev/null; } ; then
       sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
+    fi
+  fi
+  # Clang LTO
+  if [ $_basever -ge 512 ]; then
+    if [ "$_lto_mode" = "full" ]; then
+      echo "CONFIG_LTO_CLANG_FULL=y" >> ./.config
+    elif [ "$_lto_mode" = "thin" ]; then
+      echo "CONFIG_LTO_CLANG_THIN=y" >> ./.config
     fi
   fi
   # Void uses LibreSSL
