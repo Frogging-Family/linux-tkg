@@ -61,7 +61,7 @@ _install_dependencies() {
     if [ $(rpm -E %fedora) = "32" ]; then
       sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build ${clang_deps} -y
     else
-      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel elfutils-devel openssl openssl-devel dwarves rpm-build perl-devel perl-generators python3-devel make -y ${clang_deps} -y
+      sudo dnf install qt5-qtbase-devel fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel elfutils-devel openssl openssl-devel dwarves rpm-build perl-devel perl-generators python3-devel make -y ${clang_deps} -y
     fi
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
