@@ -175,11 +175,11 @@ srcdir="$_where"
 
 source customization.cfg
 
-source linux-tkg-config/prepare 
+source linux-tkg-config/prepare
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file 
+        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file
                    by copying the one from the currently running linux system and updates it. 
         - install : [for RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
         - uninstall-help : [for RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
@@ -205,7 +205,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
-  if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
+  if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse)$ ]]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
     msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
     exit 0
@@ -224,7 +224,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   # Git clone (if necessary) and checkout the asked branch by the user
   _linux_git_branch_checkout
-  
+
   cd "$_where"
 
   msg2 "Downloading Graysky2's CPU optimisations patch"
@@ -303,16 +303,16 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
-
-    if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
+    # Todo: deal with generic and paths, maybe just export boths possibilities and not care
+    if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
-    elif [ "$_distro" = "Fedora" ] || [ "$_distro" = "Suse" ]; then
-      export PATH="/usr/lib64/ccache/:$PATH" 
+    elif [[ "$_distro" =~ ^(Fedora|Suse)$ ]]; then
+      export PATH="/usr/lib64/ccache/:$PATH"
     fi
 
     export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
     export CCACHE_NOHASHDIR="true"
-    msg2 'ccache was found and will be used'
+    msg2 'Enabled ccache'
 
   fi
 
