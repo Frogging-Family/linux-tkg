@@ -332,14 +332,14 @@ if [ "$1" = "install" ]; then
 
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
-    if make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
+    if make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
 
       # Create DEBS folder if it doesn't exist
       mkdir -p DEBS
-      
+
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv "$_where"/*.deb "$_where"/DEBS/
 
@@ -353,10 +353,9 @@ if [ "$1" = "install" ]; then
         fi
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
-        _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
-        
+
         cd DEBS
-        sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
+        sudo dpkg -i $_headers_deb $_image_deb
       fi
     fi
 
@@ -372,20 +371,20 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
 
       # Create RPMS folder if it doesn't exist
       mkdir -p RPMS
-      
+
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv ${HOME}/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-        
+
         if [[ "$_sub" = rc* ]]; then
           _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
         else
@@ -393,18 +392,15 @@ if [ "$1" = "install" ]; then
         fi
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
-        _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
-        
+
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
+          sudo dnf install $_headers_rpm $_kernel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
-          msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'" 
-          sudo zypper install --replacefiles --allow-unsigned-rpm $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
+          sudo zypper install --allow-unsigned-rpm $_headers_rpm $_kernel_rpm
         fi
-        
-        msg2 "Install successful" 
+
+        msg2 "Install successful"
       fi
     fi
   fi
