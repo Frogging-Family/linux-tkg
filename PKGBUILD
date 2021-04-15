@@ -53,7 +53,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=147
+pkgrel=148
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -342,7 +342,7 @@ case $_basever in
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
         'config.x86_64' # stock Arch config
-        #'config_hardened.x86_64' # hardened Arch config
+        'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
         cleanup
         # ARCH Patches
@@ -366,7 +366,7 @@ case $_basever in
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
         0009-prjc_v5.11-r3.patch
-        #0012-linux-hardened.patch
+        0012-linux-hardened.patch
         0012-misc-additions.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
@@ -375,7 +375,8 @@ case $_basever in
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
             'f4bc3454b5068ac94e5c42bea7e6f37641ec1cea0ff8c438be6bf1317afe32ed'
             'SKIP'
-            '4e4340b66ee899c3459c39e6481d4aaf3078f113fe50ccea4afb42ec9b53d58d'
+            '2622b27dc89e90688aa4b01bef7d9b4f93f3433085200fda08ae9f38a852b45d'
+            '837ad05b68d0443580f78f5eb316db46c6b67abfefa66c22b6cb94f4915a52ba'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -396,6 +397,7 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '5cd64937e3a517f49f4311c47bd692eb8e117f09d655cd456e03366373ba8060'
+            '9e7b1663f5247f15e883ce04e1dc2b18164aa19ebe47f75967be09659eff1101'
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
             'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
