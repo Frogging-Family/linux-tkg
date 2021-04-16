@@ -17,7 +17,7 @@ plain() {
 }
 
 _distro_prompt() {
-  
+
   while true; do
     echo "Which linux distribution are you running ?"
     echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
@@ -43,7 +43,7 @@ _distro_prompt() {
       echo "Wrong index."
     fi
   done
-  
+
 }
 
 _install_dependencies() {
@@ -61,7 +61,7 @@ _install_dependencies() {
     if [ $(rpm -E %fedora) = "32" ]; then
       sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby qt5-devel libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel openssl-devel dwarves rpm-build ${clang_deps} -y
     else
-      sudo dnf install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel elfutils-devel openssl openssl-devel dwarves rpm-build perl-devel perl-generators python3-devel make -y ${clang_deps} -y
+      sudo dnf install qt5-qtbase-devel fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby libXi-devel gcc-c++ git ccache flex bison elfutils-libelf-devel elfutils-devel openssl openssl-devel dwarves rpm-build perl-devel perl-generators python3-devel make -y ${clang_deps} -y
     fi
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
@@ -79,7 +79,7 @@ _linux_git_branch_checkout() {
       echo "   0) kernel.org (official)"
       echo "   1) googlesource.com (faster mirror)"
       read -p "[0-1]: " _git_repo_index
-      
+
       if [ "$_git_repo_index" = "0" ]; then
         _git_mirror="kernel.org"
         break
@@ -97,11 +97,16 @@ _linux_git_branch_checkout() {
     mkdir linux-src-git
     cd linux-src-git
     git init
-    
+
     git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
     git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
   else
     cd linux-src-git
+
+    # Remove "origin" remote if present
+    if git remote -v | grep "origin" ; then
+      git remote rm origin
+    fi
 
     if ! git remote -v | grep "kernel.org" ; then
       git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
@@ -112,29 +117,28 @@ _linux_git_branch_checkout() {
 
     msg2 "Current branch: $(git branch | grep "\*")"
     msg2 "Reseting files to their original state"
-    
+
     git reset --hard HEAD
     git clean -f -d -x
   fi
 
-  _clone_start_date=$(date -d "$(date +"%Y/%m/%d") - 21 day" +"%Y/%m/%d")
-
   if [[ "$_sub" = rc* ]]; then
-    msg2 "Switching to master branch for RC Kernel"    
+    msg2 "Switching to master branch for RC Kernel"
 
-    if ! git branch --list | grep "master" ; then
+    if ! git branch --list | grep "master-${_git_mirror}" ; then
       msg2 "master branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add $_git_mirror master        
-      git fetch $_git_mirror master --shallow-since=$_clone_start_date
-      git checkout -b master ${_git_mirror}/master      
+      git remote set-branches --add kernel.org master
+      git remote set-branches --add googlesource.com master
+      git fetch --depth=1 $_git_mirror master
+      git fetch --depth 1 $_git_mirror tag "v${_basekernel}-${_sub}"
+      git checkout -b master-${_git_mirror} ${_git_mirror}/master
     else
       msg2 "master branch exists locally, updating..."
-      git checkout master
-      git fetch $_git_mirror master --shallow-since=$_clone_start_date
+      git checkout master-${_git_mirror}
+      git fetch --depth 1 $_git_mirror tag "v${_basekernel}-${_sub}"
       git reset --hard ${_git_mirror}/master
     fi
     msg2 "Checking out latest RC tag: v${_basekernel}-${_sub}"
-    git fetch $_git_mirror tag "v${_basekernel}-${_sub}" 
     git checkout "v${_basekernel}-${_sub}"
   else
     # define kernel tag so we treat the 0 subver properly
@@ -144,19 +148,20 @@ _linux_git_branch_checkout() {
     fi
 
     msg2 "Switching to linux-${_basekernel}.y"
-    if ! git branch --list | grep "linux-${_basekernel}.y" ; then
+    if ! git branch --list | grep "linux-${_basekernel}-${_git_mirror}" ; then
       msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add $_git_mirror linux-${_basekernel}.y
-      git fetch $_git_mirror linux-${_basekernel}.y --shallow-since=$_clone_start_date
-      git checkout -b linux-${_basekernel}.y ${_git_mirror}/linux-${_basekernel}.y
+      git remote set-branches --add kernel.org linux-${_basekernel}.y
+      git remote set-branches --add googlesource.com linux-${_basekernel}.y
+      git fetch --depth=1 $_git_mirror linux-${_basekernel}.y
+      git fetch --depth=1 $_git_mirror tag "${_kernel_tag}"
+      git checkout -b linux-${_basekernel}-${_git_mirror} ${_git_mirror}/linux-${_basekernel}.y
     else
       msg2 "${_basekernel}.y branch exists locally, updating..."
-      git checkout linux-${_basekernel}.y
-      git fetch $_git_mirror linux-${_basekernel}.y --shallow-since=$_clone_start_date
+      git checkout linux-${_basekernel}-${_git_mirror}
+      git fetch --depth 1 $_git_mirror tag "${_kernel_tag}"
       git reset --hard ${_git_mirror}/linux-${_basekernel}.y
     fi
     msg2 "Checking out latest release: ${_kernel_tag}"
-    git fetch $_git_mirror tag "${_kernel_tag}"
     git checkout "${_kernel_tag}"
   fi
 
@@ -170,11 +175,11 @@ srcdir="$_where"
 
 source customization.cfg
 
-source linux-tkg-config/prepare 
+source linux-tkg-config/prepare
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file 
+        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file
                    by copying the one from the currently running linux system and updates it. 
         - install : [for RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
         - uninstall-help : [for RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
@@ -200,7 +205,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
-  if [[ $1 = "install" && "$_distro" != "Ubuntu" && "$_distro" != "Debian" &&  "$_distro" != "Fedora" && "$_distro" != "Suse" ]]; then 
+  if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse)$ ]]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
     msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
     exit 0
@@ -219,7 +224,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   # Git clone (if necessary) and checkout the asked branch by the user
   _linux_git_branch_checkout
-  
+
   cd "$_where"
 
   msg2 "Downloading Graysky2's CPU optimisations patch"
@@ -298,16 +303,16 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
-
-    if [ "$_distro" = "Ubuntu" ] || [ "$_distro" = "Debian" ]; then
+    # Todo: deal with generic and paths, maybe just export boths possibilities and not care
+    if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
       export PATH="/usr/lib/ccache/bin/:$PATH"
-    elif [ "$_distro" = "Fedora" ] || [ "$_distro" = "Suse" ]; then
-      export PATH="/usr/lib64/ccache/:$PATH" 
+    elif [[ "$_distro" =~ ^(Fedora|Suse)$ ]]; then
+      export PATH="/usr/lib64/ccache/:$PATH"
     fi
 
     export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
     export CCACHE_NOHASHDIR="true"
-    msg2 'ccache was found and will be used'
+    msg2 'Enabled ccache'
 
   fi
 
@@ -327,14 +332,14 @@ if [ "$1" = "install" ]; then
 
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
-    if make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
+    if make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
 
       # Create DEBS folder if it doesn't exist
       mkdir -p DEBS
-      
+
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv "$_where"/*.deb "$_where"/DEBS/
 
@@ -348,10 +353,9 @@ if [ "$1" = "install" ]; then
         fi
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
-        _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
-        
+
         cd DEBS
-        sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
+        sudo dpkg -i $_headers_deb $_image_deb
       fi
     fi
 
@@ -367,20 +371,20 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
 
       # Create RPMS folder if it doesn't exist
       mkdir -p RPMS
-      
+
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv ${HOME}/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-        
+
         if [[ "$_sub" = rc* ]]; then
           _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
         else
@@ -388,18 +392,15 @@ if [ "$1" = "install" ]; then
         fi
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
-        _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
-        
+
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
+          sudo dnf install $_headers_rpm $_kernel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
-          msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'" 
-          sudo zypper install --replacefiles --allow-unsigned-rpm $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
+          sudo zypper install --allow-unsigned-rpm $_headers_rpm $_kernel_rpm
         fi
-        
-        msg2 "Install successful" 
+
+        msg2 "Install successful"
       fi
     fi
   fi
