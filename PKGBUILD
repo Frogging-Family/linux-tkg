@@ -95,7 +95,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '7ea835e629b01c1a01d77310023e8b552ee7962b515d376d6c0c6f9e7fab2700'
+            'aceed2c4f5d4e28e0e4f6bd17066c84038e2b2d9122e086b3711a2c14b71647e'
             'SKIP'
             'be2066dd6133357007e8c7da9d5de3194b13409ebbfba8821db1849588fced1e'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -309,7 +309,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'c56bc587a1d61145bf3e0b0163d390d08d490b38dbc304138a84fe1f6140aed6'
+            '31dba2ffac90ed64577b9a5e18cf252faef3d5d27cffc552aebba48fff4b9adc'
             'SKIP'
             '4720ffe4c063ec948918cadf7498e96be8a035717e587b4c949d3c2a4471d5d9'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -373,7 +373,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
-            'f4bc3454b5068ac94e5c42bea7e6f37641ec1cea0ff8c438be6bf1317afe32ed'
+            'c6e3d81d5c3e70a2fcc2dd2e622761d3b12b36fdc7d168d47831ac215eed142b'
             'SKIP'
             '2622b27dc89e90688aa4b01bef7d9b4f93f3433085200fda08ae9f38a852b45d'
             '837ad05b68d0443580f78f5eb316db46c6b67abfefa66c22b6cb94f4915a52ba'
