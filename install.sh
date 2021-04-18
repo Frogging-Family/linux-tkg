@@ -303,17 +303,11 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [ "$_noccache" != "true" ]; then
-    # Todo: deal with generic and paths, maybe just export boths possibilities and not care
-    if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
-      export PATH="/usr/lib/ccache/bin/:$PATH"
-    elif [[ "$_distro" =~ ^(Fedora|Suse)$ ]]; then
-      export PATH="/usr/lib64/ccache/:$PATH"
-    fi
+    export PATH="/usr/lib64/ccache/:/usr/lib/ccache/bin/:$PATH"
 
     export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
     export CCACHE_NOHASHDIR="true"
     msg2 'Enabled ccache'
-
   fi
 
   if [ -z $_kernel_localversion ]; then
