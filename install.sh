@@ -184,9 +184,12 @@ source linux-tkg-config/prepare
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
         - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file
-                   by copying the one from the currently running linux system and updates it. 
-        - install : [for RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
-        - uninstall-help : [for RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
+                   by copying the one from the currently running linux system and updates it.
+        - install : does the config step, proceeds to compile, then prompts to install
+                    - 'DEB' distros: it creates .deb packages that will be installed then stored in the DEBS folder.
+                    - 'RPM' distros: it creates .rpm packages that will be installed then stored in the RPMS folder.
+                    - 'Generic' distro: it uses 'make modules_install' and 'make install', uses 'dracut' to create an initramfs, then updates grub's boot entry.
+        - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
   exit 0
 fi
 
@@ -442,9 +445,9 @@ if [ "$1" = "uninstall-help" ]; then
   fi
 
   cd "$_where"
-  msg2 "List of installed custom tkg kernels: "
 
   if [ "$_distro" = "Ubuntu" ]; then
+    msg2 "List of installed custom tkg kernels: "
     dpkg -l "*tkg*" | grep "linux.*tkg"
     dpkg -l "*linux-libc-dev*" | grep "linux.*tkg"
     msg2 "To uninstall a version, you should remove the linux-image, linux-headers and linux-libc-dev associated to it (if installed), with: "
@@ -452,17 +455,28 @@ if [ "$1" = "uninstall-help" ]; then
     msg2 "       where VERSION is displayed in the lists above, uninstall only versions that have \"tkg\" in its name"
     msg2 "Note: linux-libc-dev packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Fedora" ]; then
+    msg2 "List of installed custom tkg kernels: "
     dnf list --installed kernel*
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second column"
     msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Suse" ]; then
+    msg2 "List of installed custom tkg kernels: "
     zypper packages --installed-only | grep "kernel.*tkg"
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo zypper remove --no-clean-deps kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second to last column"
     msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
+  elif [ "$_distro" = "Generic" ]; then
+    msg2 "Folders in /lib/modules :"
+    ls /lib/modules
+    msg2 "Files in /boot :"
+    ls /boot
+    msg2 "To uninstall a kernel version installed through install.sh with 'Generic' as a distro:"
+    msg2 "  - Remove manually the corresponding folder in '/lib/modules'"
+    msg2 "  - Remove manually the corresponding 'System.map', 'vmlinuz', 'config' and 'initramfs' in the folder :/boot"
+    msg2 "  - Update the boot menu. e.g. 'sudo grub-mkconfig -o /boot/grub/grub.cfg'"
   fi
 
 fi
