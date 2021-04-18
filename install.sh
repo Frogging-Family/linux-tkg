@@ -25,7 +25,8 @@ _distro_prompt() {
     echo "   2) Fedora"
     echo "   3) Suse"
     echo "   4) Ubuntu"
-    read -p "[1-4]: " _distro_index
+    echo "   5) Generic"
+    read -p "[1-5]: " _distro_index
 
     if [ "$_distro_index" = "1" ]; then
       _distro="Debian"
@@ -38,6 +39,9 @@ _distro_prompt() {
       break
     elif [ "$_distro_index" = "4" ]; then
       _distro="Ubuntu"
+      break
+    elif [ "$_distro_index" = "5" ]; then
+      _distro="Generic"
       break
     else
       echo "Wrong index."
@@ -205,7 +209,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
-  if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse)$ ]]; then
+  if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Generic)$ ]]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
     msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
     exit 0
@@ -397,6 +401,36 @@ if [ "$1" = "install" ]; then
 
         msg2 "Install successful"
       fi
+    fi
+
+  elif [ "$_distro" = "Generic" ]; then
+
+    ./scripts/config --set-str LOCALVERSION "-${_kernel_flavor}"
+
+    if make ${llvm_opt} -j ${_thread_num}; then
+
+      if [[ "$_sub" = rc* ]]; then
+        _kernelname=$_basekernel.${_kernel_subver}-${_sub}-$_kernel_flavor
+      else
+        _kernelname=$_basekernel.${_kernel_subver}-$_kernel_flavor
+      fi
+
+      msg2 "Building successful"
+      msg2 "The installation process will run the following commands:"
+      msg2 "  sudo make modules_install"
+      msg2 "  sudo make install"
+      msg2 "  sudo dracut --hostonly --kver $_kernelname"
+      msg2 "  sudo grub-mkconfig -o /boot/grub/grub.cfg"
+      read -p "Continue ? [Y/n]: " _continue
+
+      if ! [[ $_continue =~ ^(Y|y|Yes|yes)$ ]];then
+        exit 0
+      fi
+
+      sudo make modules_install
+      sudo make install
+      sudo dracut --hostonly --kver $_kernelname
+      sudo grub-mkconfig -o /boot/grub/grub.cfg
     fi
   fi
 fi
