@@ -180,7 +180,7 @@ source linux-tkg-config/prepare
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
         - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file
-                   by copying the one from the currently running linux system and updates it. 
+                   by copying the one from the currently running linux system and updates it.
         - install : [for RPM and DEB based distros only], does the config step, proceeds to compile, then prompts to install
         - uninstall-help : [for RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
   exit 0
@@ -361,7 +361,7 @@ if [ "$1" = "install" ]; then
 
   elif [[ "$_distro" = "Fedora" ||  "$_distro" = "Suse" ]]; then
 
-    # Replace dashes with underscores, it seems that it's being done by binrpm-pkg
+    # Replace dashes with underscores, it seems that it's being done by rpm-pkg
     # Se we can actually refer properly to the rpm files.
     _kernel_flavor=${_kernel_flavor//-/_}
 
@@ -371,7 +371,7 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -392,10 +392,11 @@ if [ "$1" = "install" ]; then
         fi
         _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
+        _kernel_devel_rpm="kernel-${_kernelname}*.rpm"
 
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install $_headers_rpm $_kernel_rpm
+          sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
           sudo zypper install --allow-unsigned-rpm $_headers_rpm $_kernel_rpm
         fi
