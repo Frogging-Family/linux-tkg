@@ -339,7 +339,7 @@ if [ "$1" = "install" ]; then
 
       # Create DEBS folder if it doesn't exist
       mkdir -p DEBS
-
+      
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv "$_where"/*.deb "$_where"/DEBS/
 
@@ -353,7 +353,7 @@ if [ "$1" = "install" ]; then
         fi
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
-
+        
         cd DEBS
         sudo dpkg -i $_headers_deb $_image_deb
       fi
@@ -371,36 +371,37 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
 
       # Create RPMS folder if it doesn't exist
       mkdir -p RPMS
-
+      
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv ${HOME}/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-
+        
         if [[ "$_sub" = rc* ]]; then
           _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
         else
           _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
         fi
-        _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
-
+        # The headers are actually contained in the kernel-devel RPM and not the headers one...
+        _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
+        
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install $_headers_rpm $_kernel_rpm
+          sudo dnf install $_kernel_rpm $_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          sudo zypper install --allow-unsigned-rpm $_headers_rpm $_kernel_rpm
+          sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm
         fi
-
-        msg2 "Install successful"
+        
+        msg2 "Install successful" 
       fi
     fi
   fi
@@ -421,11 +422,13 @@ if [ "$1" = "uninstall-help" ]; then
     msg2 "To uninstall a version, you should remove the linux-image, linux-headers and linux-libc-dev associated to it (if installed), with: "
     msg2 "      sudo apt remove linux-image-VERSION linux-headers-VERSION linux-libc-dev-VERSION"
     msg2 "       where VERSION is displayed in the lists above, uninstall only versions that have \"tkg\" in its name"
+    msg2 "Note: linux-libc-dev packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Fedora" ]; then
     dnf list --installed kernel*
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second column"
+     msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Suse" ]; then
     zypper packages --installed-only | grep "kernel.*tkg"
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
