@@ -339,7 +339,7 @@ if [ "$1" = "install" ]; then
 
       # Create DEBS folder if it doesn't exist
       mkdir -p DEBS
-      
+
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv "$_where"/*.deb "$_where"/DEBS/
 
@@ -353,7 +353,7 @@ if [ "$1" = "install" ]; then
         fi
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
-        
+
         cd DEBS
         sudo dpkg -i $_headers_deb $_image_deb
       fi
@@ -378,13 +378,13 @@ if [ "$1" = "install" ]; then
 
       # Create RPMS folder if it doesn't exist
       mkdir -p RPMS
-      
+
       # Move rpm files to RPMS folder inside the linux-tkg folder
       mv ${HOME}/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
       read -p "Do you want to install the new Kernel ? y/[n]: " _install
       if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-        
+
         if [[ "$_sub" = rc* ]]; then
           _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
         else
@@ -393,15 +393,15 @@ if [ "$1" = "install" ]; then
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         # The headers are actually contained in the kernel-devel RPM and not the headers one...
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
-        
+
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
           sudo dnf install $_kernel_rpm $_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
           sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm
         fi
-        
-        msg2 "Install successful" 
+
+        msg2 "Install successful"
       fi
     fi
   fi
