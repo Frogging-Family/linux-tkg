@@ -428,12 +428,13 @@ if [ "$1" = "uninstall-help" ]; then
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second column"
-     msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
+    msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Suse" ]; then
     zypper packages --installed-only | grep "kernel.*tkg"
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo zypper remove --no-clean-deps kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second to last column"
+    msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
   fi
 
 fi
