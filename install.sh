@@ -371,7 +371,7 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
+    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -390,14 +390,15 @@ if [ "$1" = "install" ]; then
         else
           _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
         fi
-        _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
+        # The headers are actually contained in the kernel-devel RPM and not the headers one...
+        _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
 
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install $_headers_rpm $_kernel_rpm
+          sudo dnf install $_kernel_rpm $_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          sudo zypper install --allow-unsigned-rpm $_headers_rpm $_kernel_rpm
+          sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm
         fi
 
         msg2 "Install successful"
@@ -421,16 +422,19 @@ if [ "$1" = "uninstall-help" ]; then
     msg2 "To uninstall a version, you should remove the linux-image, linux-headers and linux-libc-dev associated to it (if installed), with: "
     msg2 "      sudo apt remove linux-image-VERSION linux-headers-VERSION linux-libc-dev-VERSION"
     msg2 "       where VERSION is displayed in the lists above, uninstall only versions that have \"tkg\" in its name"
+    msg2 "Note: linux-libc-dev packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Fedora" ]; then
     dnf list --installed kernel*
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second column"
+    msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Suse" ]; then
     zypper packages --installed-only | grep "kernel.*tkg"
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo zypper remove --no-clean-deps kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second to last column"
+    msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
   fi
 
 fi
