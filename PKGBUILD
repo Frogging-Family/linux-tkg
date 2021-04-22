@@ -67,7 +67,7 @@ options=('!strip' 'docs')
 
 case $_basever in
 	54)
-	opt_ver="4.19-v5.4"
+	opt_ver="4.19-5.4"
 	source=("$kernel_site"
         	"$patch_site"
         	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-4.19-5.4.patch"
