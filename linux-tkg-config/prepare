@@ -325,11 +325,14 @@ user_patcher() {
 
 _tkg_patcher() {
   if [ -e "$tkgpatch" ]; then
+    msg2 "$_msg"
     echo -e "### Applying ${tkgpatch##*/}... ###" >> "$_where"/prepare.log
     patch -Np1 -i "$tkgpatch" >> "$_where"/prepare.log || error "An error was encountered applying patches. It was logged to the prepare.log file."
     echo -e "\n" >> "$_where"/prepare.log
   else
-    msg2 "Patch either not found, not available for this kernel version or not needed. Skipping..."
+    if [[ $_msg != *graysky* ]]; then
+      msg2 "Skipping patch ${tkgpatch##*/}...\n         (unavailable for this kernel version)"
+    fi
   fi
 }
 
@@ -350,7 +353,6 @@ _tkg_srcprep() {
 
     # add upstream patch
     if [ "$_sub" != "0" ] && [[ "$_sub" != rc* ]]; then
-      msg2 "Patching from $_basekernel to $pkgver"
       if [ ! -e "$srcdir/patch-${pkgver}" ]; then
         if [ -e "$srcdir/patch-${pkgver}.xz" ]; then
           xz -dk "$(readlink -f "$srcdir/patch-${pkgver}.xz")" --stdout > "$srcdir/patch-${pkgver}"
@@ -358,15 +360,17 @@ _tkg_srcprep() {
           ( cd "$_where" && xz -dk patch-${pkgver}.xz && mv "$_where"/patch-${pkgver} "$srcdir"/ )
         fi
       fi
-      tkgpatch="$srcdir/patch-${pkgver}" && _tkg_patcher
+      tkgpatch="$srcdir/patch-${pkgver}"
+      _msg="Patching from $_basekernel to $pkgver" && _tkg_patcher
     fi
 
     # ARCH Patches
     if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
-      msg2 "Using linux hardened patchset"
-      tkgpatch="$srcdir/0012-linux-hardened.patch" && _tkg_patcher
+      tkgpatch="$srcdir/0012-linux-hardened.patch"
+      _msg="Using linux hardened patchset" && _tkg_patcher
     else
-      tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" && _tkg_patcher
+      tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
+      _msg="Using Arch patches" && _tkg_patcher
     fi
   fi
 
@@ -378,31 +382,30 @@ _tkg_srcprep() {
   fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_gcc_patch
-  
-  msg2 "Applying graysky's cpu opts patch"
   if [ "${_distro}" = "Arch" ]; then
-    tkgpatch="$srcdir/more-uarches-for-kernel-${opt_ver}.patch" && _tkg_patcher
+    tkgpatch="$srcdir/more-uarches-for-kernel-${opt_ver}.patch"
   elif [ "${_distro}" = "Void" ]; then
-    tkgpatch="${wrksrc}/more-uarches-for-kernel-${opt_ver}.patch" && _tkg_patcher
+    tkgpatch="${wrksrc}/more-uarches-for-kernel-${opt_ver}.patch"
   else
-    tkgpatch="$srcdir/more-uarches-for-kernel-${opt_ver}.patch" && _tkg_patcher
+    tkgpatch="$srcdir/more-uarches-for-kernel-${opt_ver}.patch"
   fi
+  _msg="Applying graysky's cpu opts patch" && _tkg_patcher
 
-  msg2 "Applying graysky's cpu opts patch (legacy)"
   if [ "${_distro}" = "Arch" ]; then
-    tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch" && _tkg_patcher
+    tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch"
   elif [ "${_distro}" = "Void" ]; then
-    tkgpatch="${wrksrc}/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch" && _tkg_patcher
+    tkgpatch="${wrksrc}/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch"
   else
-    tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch" && _tkg_patcher
+    tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch"
   fi
+  _msg="Applying graysky's cpu opts patch (legacy)" && _tkg_patcher
 
   # TkG
-  msg2 "Applying clear linux patches"
-  tkgpatch="$srcdir/0002-clear-patches.patch" && _tkg_patcher
+  tkgpatch="$srcdir/0002-clear-patches.patch"
+  _msg="Applying clear linux patches" && _tkg_patcher
 
-  msg2 "Applying glitched base patch"
-  tkgpatch="$srcdir/0003-glitched-base.patch" && _tkg_patcher
+  tkgpatch="$srcdir/0003-glitched-base.patch"
+  _msg="Applying glitched base patch" && _tkg_patcher
 
   if [ -z $_misc_adds ]; then
     plain "Enable misc additions ? They may contain temporary fixes pending upstream, or some other changes that can break on non-Arch distros."
@@ -413,12 +416,12 @@ _tkg_srcprep() {
   fi
 
   if [ "$_misc_adds" = "true" ]; then
-    msg2 "Applying misc additions patch"
-    tkgpatch="$srcdir/0012-misc-additions.patch" && _tkg_patcher
+    tkgpatch="$srcdir/0012-misc-additions.patch"
+    _msg="Applying misc additions patch" && _tkg_patcher
   fi
 
   if [ "$_basever" = "511" ] || [ "$_basever" = "512" ]; then
-    msg2 "Applying patches for WRITE_WATCH support in Wine"
+    _msg="Applying patches for WRITE_WATCH support in Wine"
     tkgpatch="$srcdir/0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch" && _tkg_patcher
     tkgpatch="$srcdir/0002-mm-Support-soft-dirty-flag-read-with-reset.patch" && _tkg_patcher
   fi
@@ -438,15 +441,15 @@ _tkg_srcprep() {
 
   if [ "${_cpusched}" = "MuQSS" ]; then
     # MuQSS
-    msg2 "Applying MuQSS base patch"
+    _msg="Applying MuQSS base patch"
     tkgpatch="$srcdir/0004-${_basekernel}-ck1.patch" && _tkg_patcher
 
     if [ "${_aggressive_ondemand}" = "true" ]; then
-      msg2 "Applying MuQSS agressive ondemand governor patch"
+      _msg="Applying MuQSS agressive ondemand governor patch"
       tkgpatch="$srcdir/0004-glitched-ondemand-muqss.patch" && _tkg_patcher
     fi
 
-    msg2 "Applying Glitched MuQSS patch"
+    _msg="Applying Glitched MuQSS patch"
     tkgpatch="$srcdir/0004-glitched-muqss.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "upds" ] || [ "${_cpusched}" = "pds" ]; then
@@ -457,27 +460,27 @@ _tkg_srcprep() {
     fi
 
     # PDS-mq
-    msg2 "Applying PDS base patch"
+    _msg="Applying PDS base patch"
     if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
       tkgpatch="$srcdir/0005-v${_basekernel}_undead-pds099o.patch" && _tkg_patcher
       if [ "${_aggressive_ondemand}" = "true" ]; then
-        msg2 "Applying PDS agressive ondemand governor patch"
+        _msg="Applying PDS agressive ondemand governor patch"
         tkgpatch="$srcdir/0005${doa}-glitched-ondemand-pds.patch" && _tkg_patcher
       fi
     else
       tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
       if [ "${_aggressive_ondemand}" = "true" ]; then
-        msg2 "Applying prjc PDS/BMQ agressive ondemand governor patch"
+        _msg="Applying prjc PDS/BMQ agressive ondemand governor patch"
         tkgpatch="$srcdir/0009-glitched-ondemand-bmq.patch" && _tkg_patcher
       fi
     fi
 
-    msg2 "Applying Glitched PDS patch"
+    _msg="Applying Glitched PDS patch"
     tkgpatch="$srcdir/0005${doa}-glitched-pds.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
-    msg2 "Applying Project C / BMQ base patch"
+    _msg="Applying Project C / BMQ base patch"
     if [ "$_basever" != "54" ]; then
       tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
     else
@@ -485,15 +488,15 @@ _tkg_srcprep() {
     fi
 
     if [ "${_aggressive_ondemand}" = "true" ] && [ "$_basever" != "54" ]; then
-      msg2 "Applying BMQ agressive ondemand governor patch"
+      _msg="Applying BMQ agressive ondemand governor patch"
       tkgpatch="$srcdir/0009-glitched-ondemand-bmq.patch" && _tkg_patcher
     fi
 
-    msg2 "Applying Glitched BMQ patch"
+    _msg="Applying Glitched BMQ patch"
     tkgpatch="$srcdir/0009-glitched-bmq.patch" && _tkg_patcher
 
   elif [ "${_cpusched}" = "cfs" ]; then
-    msg2 "Applying Glitched CFS patch"
+    _msg="Applying Glitched CFS patch"
     tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
   fi
 
@@ -509,13 +512,13 @@ _tkg_srcprep() {
       cat "${srcdir}"/config.x86_64 > ./.config
     else
       if [ -f /boot/config-`uname -r` ];then
-        msg2 "Using /boot/config-`uname -r` as config file"
+        _msg="Using /boot/config-`uname -r` as config file"
         cp /boot/config-`uname -r` .config
       elif [ -f /proc/config.gz ];then
-        msg2 "Using /proc/config.gz as config file"
+        _msg="Using /proc/config.gz as config file"
         zcat --verbose /proc/config.gz > .config
       else
-        msg2 "Current kernel config not found! Falling back to default..."
+        _msg="Current kernel config not found! Falling back to default..."
       fi
     fi
   else
@@ -534,7 +537,7 @@ _tkg_srcprep() {
     sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
   fi
   echo "# CONFIG_NTP_PPS is not set" >> ./.config
-  echo "# CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF is not set" >> ./.config
+  echo "# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF is not set" >> ./.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4=m/CONFIG_CRYPTO_LZ4=y/' ./.config
   sed -i -e 's/CONFIG_CRYPTO_LZ4HC=m/CONFIG_CRYPTO_LZ4HC=y/' ./.config
   sed -i -e 's/CONFIG_LZ4_COMPRESS=m/CONFIG_LZ4_COMPRESS=y/' ./.config
@@ -1129,81 +1132,98 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
 
   # acs override
-  if [ -z "$_acs_override" ]; then
-    plain ""
-    plain "Use ACS override patch?"
-    plain "https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Bypassing_the_IOMMU_groups_.28ACS_override_patch.29"
-    read -rp "`echo $'    > N/y : '`" CONDITION7;
-  fi
-  if [[ "$CONDITION7" =~ [yY] ]] || [ "$_acs_override" = "true" ]; then
-    msg2 "Patching ACS override"
-    tkgpatch="$srcdir/0006-add-acs-overrides_iommu.patch" && _tkg_patcher
+  tkgpatch="$srcdir/0006-add-acs-overrides_iommu.patch"
+  if [ -e "$tkgpatch" ]; then
+    if [ -z "$_acs_override" ]; then
+      plain ""
+      plain "Use ACS override patch?"
+      plain "https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Bypassing_the_IOMMU_groups_.28ACS_override_patch.29"
+      read -rp "`echo $'    > N/y : '`" CONDITION7;
+    fi
+    if [[ "$CONDITION7" =~ [yY] ]] || [ "$_acs_override" = "true" ]; then
+      _msg="Patching ACS override"
+      _tkg_patcher
+    fi
   fi
 
   # bcachefs
-  if [ -z "$_bcachefs" ] && [ "$_basever" != "54" ]; then
-     plain ""
-     plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
-     plain "https://bcachefs.org/"
-     read -rp "`echo $'    > N/y : '`" CONDITION8;
-  fi
-  if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
-     msg2 "Patching Bcache filesystem support override"
-     tkgpatch="$srcdir/0008-${_basekernel}-bcachefs.patch" && _tkg_patcher
-     echo "CONFIG_BCACHEFS_FS=m" >> ./.config
-     echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
-     echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
-     echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ./.config
-     echo "# CONFIG_BCACHEFS_TESTS is not set" >> ./.config
-     echo "# CONFIG_DEBUG_CLOSURES is not set" >> ./.config
+  tkgpatch="$srcdir/0008-${_basekernel}-bcachefs.patch"
+  if [ -e "$tkgpatch" ]; then
+    if [ -z "$_bcachefs" ] && [ "$_basever" != "54" ]; then
+       plain ""
+       plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
+       plain "https://bcachefs.org/"
+       read -rp "`echo $'    > N/y : '`" CONDITION8;
+    fi
+    if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
+       _msg="Patching Bcache filesystem support override"
+       _tkg_patcher
+       echo "CONFIG_BCACHEFS_FS=m" >> ./.config
+       echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
+       echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
+       echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ./.config
+       echo "# CONFIG_BCACHEFS_TESTS is not set" >> ./.config
+       echo "# CONFIG_DEBUG_CLOSURES is not set" >> ./.config
+    fi
   fi
 
   # fsync support
-  if [ -z "$_fsync" ]; then
-    plain ""
-    plain "Enable support for fsync, an experimental replacement for esync in Valve Proton 4.11+"
-    plain "https://steamcommunity.com/games/221410/announcements/detail/2957094910196249305"
-    read -rp "`echo $'    > N/y : '`" CONDITION9;
-  fi
-  if [[ "$CONDITION9" =~ [yY] ]] || [ "$_fsync" = "true" ]; then
-    msg2 "Patching Fsync support"
-    tkgpatch="$srcdir/0007-v${_basekernel}-fsync.patch" && _tkg_patcher
+  tkgpatch="$srcdir/0007-v${_basekernel}-fsync.patch"
+  if [ -e "$tkgpatch" ]; then
+    if [ -z "$_fsync" ]; then
+      plain ""
+      plain "Enable support for fsync, an experimental replacement for esync in Valve Proton 4.11+"
+      plain "https://steamcommunity.com/games/221410/announcements/detail/2957094910196249305"
+      read -rp "`echo $'    > N/y : '`" CONDITION9;
+    fi
+    if [[ "$CONDITION9" =~ [yY] ]] || [ "$_fsync" = "true" ]; then
+      _msg="Patching Fsync support"
+      _tkg_patcher
+    fi
   fi
 
   # futex2 support
-  if [ -z "$_futex2" ]; then
-    plain ""
-    plain "Enable support for futex2, an experimental replacement for esync and fsync in Valve Proton 5.13 experimental"
-    plain "Can be enabled alongside regular fsync patchset to have a fallback option"
-    plain "https://gitlab.collabora.com/tonyk/linux/-/tree/futex2-dev"
-    plain "https://github.com/ValveSoftware/Proton/issues/4568"
-    read -rp "`echo $'    > N/y : '`" CONDITION10;
-  fi
-  if [[ "$CONDITION10" =~ [yY] ]] || [ "$_futex2" = "true" ]; then
-    msg2 "Patching futex2 support"
-    tkgpatch="$srcdir/0007-v${_basekernel}-futex2_interface.patch" && _tkg_patcher
-    echo "CONFIG_FUTEX2=y" >> ./.config
+  tkgpatch="$srcdir/0007-v${_basekernel}-futex2_interface.patch"
+  if [ -e "$tkgpatch" ]; then
+    if [ -z "$_futex2" ]; then
+      plain ""
+      plain "Enable support for futex2, an experimental replacement for esync and fsync in Valve Proton 5.13 experimental"
+      plain "Can be enabled alongside regular fsync patchset to have a fallback option"
+      plain "https://gitlab.collabora.com/tonyk/linux/-/tree/futex2-dev"
+      plain "https://github.com/ValveSoftware/Proton/issues/4568"
+      read -rp "`echo $'    > N/y : '`" CONDITION10;
+    fi
+    if [[ "$CONDITION10" =~ [yY] ]] || [ "$_futex2" = "true" ]; then
+      _msg="Patching futex2 support"
+      _tkg_patcher
+      echo "CONFIG_FUTEX2=y" >> ./.config
+    fi
   fi
 
   # winesync support
-  if [ -z "$_winesync" ]; then
-    plain ""
-    plain "Enable support for winesync/fastsync, an experimental replacement for esync"
-    plain "https://repo.or.cz/linux/zf.git/shortlog/refs/heads/winesync"
-    warning "Alternatively, on Arch you can use the DKMS module which allows for using the feature on multiple kernels side by side: https://aur.archlinux.org/packages/winesync-dkms/"
-    read -rp "`echo $'    > N/y : '`" CONDITION_winesync;
-  fi
-  if [[ "$CONDITION_winesync" =~ [yY] ]] || [ "$_winesync" = "true" ]; then
-    msg2 "Patching winesync/fastsync support"
-    tkgpatch="$srcdir/0007-v${_basekernel}-winesync.patch" && _tkg_patcher
-    if [ "$_skip" != "true" ]; then
+  tkgpatch="$srcdir/0007-v${_basekernel}-winesync.patch"
+  if [ -e "$tkgpatch" ]; then
+    if [ -z "$_winesync" ]; then
+      plain ""
+      plain "Enable support for winesync/fastsync, an experimental replacement for esync"
+      plain "https://repo.or.cz/linux/zf.git/shortlog/refs/heads/winesync"
+      warning "Alternatively, on Arch you can use the DKMS module which allows for using the feature on multiple kernels side by side: https://aur.archlinux.org/packages/winesync-dkms/"
+      read -rp "`echo $'    > N/y : '`" CONDITION_winesync;
+    fi
+    if [[ "$CONDITION_winesync" =~ [yY] ]] || [ "$_winesync" = "true" ]; then
+      _msg="Patching winesync/fastsync support"
+      _tkg_patcher
       echo "CONFIG_WINESYNC=m" >> ./.config
       echo "KERNEL==\"winesync\", MODE=\"0644\"" > ../winesync.rules
       echo "winesync" > ../winesync.conf
     fi
   fi
 
- # Anbox modules
+  # We're done with tkgpatch
+  unset tkgpatch
+  unset _msg
+
+  # Anbox modules
   if [ "$_basever" != "54" ]; then
     if [ -z "$_anbox" ]; then
       plain ""
