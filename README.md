@@ -119,3 +119,11 @@ The command to do for that is:
 ./install.sh config
 ```
 
+If one chooses `Generic` as distro. `./install.sh install` will compile the kernel then prompt before doing the following:
+```shell
+sudo make modules_install
+sudo make install
+sudo dracut --hostonly --kver $_kernelname
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+```
+
