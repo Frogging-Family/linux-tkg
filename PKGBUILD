@@ -26,6 +26,7 @@ plain '             `.-:///////:-.`'
 
 _where="$PWD" # track basedir as different Arch based distros are moving srcdir around
 _ispkgbuild="true"
+_distro="Arch"
 
 source "$_where"/customization.cfg # load default configuration from file
 source "$_where"/linux-tkg-config/prepare
