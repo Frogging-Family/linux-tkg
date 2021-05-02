@@ -96,7 +96,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '147e510ca177d66e4ef2d1507440ac9683b8c25dc75d2721e393a49213183c2c'
+            'd80241fa9cb4927d80afa045a070f1311733263c41570cc8f495789102efbba8'
             'SKIP'
             'be2066dd6133357007e8c7da9d5de3194b13409ebbfba8821db1849588fced1e'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -310,7 +310,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '80e97c7e6ea9fa26875a315065f9b2ee8b38180824e4e559e1fb96dca8bae035'
+            'ca4e6b6f69a5ac75b0deebd67d1b1eb111ed6e874fe765b450ddaa7d97cd0c41'
             'SKIP'
             '4720ffe4c063ec948918cadf7498e96be8a035717e587b4c949d3c2a4471d5d9'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -374,7 +374,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
-            'b30eb037f7225230cdc4c800fc19447ed0b45220138830c1f3f2c020214a4a0a'
+            '352795f98bb046cfe0fbdf9ed91a50886ad01f05c4496a241e3f182e3784001a'
             'SKIP'
             '2622b27dc89e90688aa4b01bef7d9b4f93f3433085200fda08ae9f38a852b45d'
             '837ad05b68d0443580f78f5eb316db46c6b67abfefa66c22b6cb94f4915a52ba'
@@ -406,7 +406,7 @@ case $_basever in
 	512)
 	opt_ver="5.8%2B"
     source=("$kernel_site"
-        #"$patch_site"
+        "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
@@ -439,6 +439,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
+            'd90692a8c4bc8d4ea20a21e30927ba4d01bc772c3ff537059303f01a0bfaa813'
             'SKIP'
             'e183b012ca82b2ec6cf7e0ffc646efe6009da3005583c420d03f2de293fb9028'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
