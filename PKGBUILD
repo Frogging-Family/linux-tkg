@@ -429,6 +429,7 @@ case $_basever in
         0006-add-acs-overrides_iommu.patch
         0007-v5.12-fsync.patch
         0007-v5.12-futex2_interface.patch
+        0007-v5.12-winesync.patch
         #0008-5.12-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
@@ -456,6 +457,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             'fc0a3274e3285278e925f4b3bfe803e5e610344bebe5bba063ba202dbaff49c8'
+            '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '7d8e98f35524fa2db13753c318dc5568d3cca25a4aa306201a02d5aad3045822'
