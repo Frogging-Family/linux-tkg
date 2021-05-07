@@ -54,7 +54,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=152
+pkgrel=153
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -96,7 +96,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'd80241fa9cb4927d80afa045a070f1311733263c41570cc8f495789102efbba8'
+            '8f4e17d18ef00cafc0a67cee1e7ed030bd93334dc68e93f240f6e9de4d8b9696'
             'SKIP'
             'be2066dd6133357007e8c7da9d5de3194b13409ebbfba8821db1849588fced1e'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -310,7 +310,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'ca4e6b6f69a5ac75b0deebd67d1b1eb111ed6e874fe765b450ddaa7d97cd0c41'
+            '12cf440e2f8d7828a3373369638ae8f080f26e264525b8821c249b3b697d8b24'
             'SKIP'
             '4720ffe4c063ec948918cadf7498e96be8a035717e587b4c949d3c2a4471d5d9'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -374,7 +374,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
-            '352795f98bb046cfe0fbdf9ed91a50886ad01f05c4496a241e3f182e3784001a'
+            '7f85da60a9ddd3104e279343d295f4cabb7f9ce4bdf13887889118b4d86e1823'
             'SKIP'
             '2622b27dc89e90688aa4b01bef7d9b4f93f3433085200fda08ae9f38a852b45d'
             '837ad05b68d0443580f78f5eb316db46c6b67abfefa66c22b6cb94f4915a52ba'
@@ -440,9 +440,9 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
-            'd90692a8c4bc8d4ea20a21e30927ba4d01bc772c3ff537059303f01a0bfaa813'
+            'd77076db69357a0b4c4868273f21f987f0c88c194865f43b17e21edd78add561'
             'SKIP'
-            'e183b012ca82b2ec6cf7e0ffc646efe6009da3005583c420d03f2de293fb9028'
+            'bcb8a47c2396af9a2afcd26d1200f9424d2af0fa6f6749d3c09417a919f5c60c'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
