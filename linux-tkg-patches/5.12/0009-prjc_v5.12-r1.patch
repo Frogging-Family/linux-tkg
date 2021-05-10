@@ -831,10 +831,10 @@ index 5fc9c9b70862..eb6d7d87779f 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..f69ed4d89395
+index 000000000000..c85e3ccf9302
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7149 @@
+@@ -0,0 +1,7138 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -889,7 +889,7 @@ index 000000000000..f69ed4d89395
 + */
 +EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_irq_tp);
 +
-+#define ALT_SCHED_VERSION "v5.11-r3"
++#define ALT_SCHED_VERSION "v5.12-r1"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -1934,8 +1934,6 @@ index 000000000000..f69ed4d89395
 +}
 +
 +#define SCA_CHECK		0x01
-+#define SCA_MIGRATE_DISABLE	0x02
-+#define SCA_MIGRATE_ENABLE	0x04
 +
 +#ifdef CONFIG_SMP
 +
@@ -1975,23 +1973,31 @@ index 000000000000..f69ed4d89395
 +	__set_task_cpu(p, new_cpu);
 +}
 +
-+static inline bool is_per_cpu_kthread(struct task_struct *p)
-+{
-+	return ((p->flags & PF_KTHREAD) && (1 == p->nr_cpus_allowed));
-+}
-+
 +#define MDF_FORCE_ENABLED	0x80
 +
 +static void
-+__do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask, u32 flags);
-+
-+static int __set_cpus_allowed_ptr(struct task_struct *p,
-+				  const struct cpumask *new_mask,
-+				  u32 flags);
++__do_set_cpus_ptr(struct task_struct *p, const struct cpumask *new_mask)
++{
++	/*
++	 * This here violates the locking rules for affinity, since we're only
++	 * supposed to change these variables while holding both rq->lock and
++	 * p->pi_lock.
++	 *
++	 * HOWEVER, it magically works, because ttwu() is the only code that
++	 * accesses these variables under p->pi_lock and only does so after
++	 * smp_cond_load_acquire(&p->on_cpu, !VAL), and we're in __schedule()
++	 * before finish_task().
++	 *
++	 * XXX do further audits, this smells like something putrid.
++	 */
++	SCHED_WARN_ON(!p->on_cpu);
++	p->cpus_ptr = new_mask;
++}
 +
 +void migrate_disable(void)
 +{
 +	struct task_struct *p = current;
++	int cpu;
 +
 +	if (p->migration_disabled) {
 +		p->migration_disabled++;
@@ -1999,16 +2005,18 @@ index 000000000000..f69ed4d89395
 +	}
 +
 +	preempt_disable();
-+	this_rq()->nr_pinned++;
-+	p->migration_disabled = 1;
-+	p->migration_flags &= ~MDF_FORCE_ENABLED;
++	cpu = smp_processor_id();
++	if (cpumask_test_cpu(cpu, &p->cpus_mask)) {
++		cpu_rq(cpu)->nr_pinned++;
++		p->migration_disabled = 1;
++		p->migration_flags &= ~MDF_FORCE_ENABLED;
 +
-+	/*
-+	 * Violates locking rules! see comment in __do_set_cpus_allowed().
-+	 */
-+	if (p->cpus_ptr == &p->cpus_mask)
-+		__do_set_cpus_allowed(p, cpumask_of(smp_processor_id()), SCA_MIGRATE_DISABLE);
-+
++		/*
++		 * Violates locking rules! see comment in __do_set_cpus_ptr().
++		 */
++		if (p->cpus_ptr == &p->cpus_mask)
++			__do_set_cpus_ptr(p, cpumask_of(cpu));
++	}
 +	preempt_enable();
 +}
 +EXPORT_SYMBOL_GPL(migrate_disable);
@@ -2035,7 +2043,7 @@ index 000000000000..f69ed4d89395
 +	 */
 +	WARN_ON_ONCE(!cpumask_test_cpu(smp_processor_id(), &p->cpus_mask));
 +	if (p->cpus_ptr != &p->cpus_mask)
-+		__do_set_cpus_allowed(p, &p->cpus_mask, SCA_MIGRATE_ENABLE);
++		__do_set_cpus_ptr(p, &p->cpus_mask);
 +	/*
 +	 * Mustn't clear migration_disabled() until cpus_ptr points back at the
 +	 * regular cpus_mask, otherwise things that race (eg.
@@ -2188,43 +2196,22 @@ index 000000000000..f69ed4d89395
 +}
 +
 +static inline void
-+set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask, u32 flags)
++set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask)
 +{
-+	if (flags & (SCA_MIGRATE_ENABLE | SCA_MIGRATE_DISABLE)) {
-+		p->cpus_ptr = new_mask;
-+		return;
-+	}
-+
 +	cpumask_copy(&p->cpus_mask, new_mask);
 +	p->nr_cpus_allowed = cpumask_weight(new_mask);
 +}
 +
 +static void
-+__do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask, u32 flags)
++__do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 +{
-+	/*
-+	 * This here violates the locking rules for affinity, since we're only
-+	 * supposed to change these variables while holding both rq->lock and
-+	 * p->pi_lock.
-+	 *
-+	 * HOWEVER, it magically works, because ttwu() is the only code that
-+	 * accesses these variables under p->pi_lock and only does so after
-+	 * smp_cond_load_acquire(&p->on_cpu, !VAL), and we're in __schedule()
-+	 * before finish_task().
-+	 *
-+	 * XXX do further audits, this smells like something putrid.
-+	 */
-+	if (flags & (SCA_MIGRATE_DISABLE | SCA_MIGRATE_ENABLE))
-+		SCHED_WARN_ON(!p->on_cpu);
-+	else
-+		lockdep_assert_held(&p->pi_lock);
-+
-+	set_cpus_allowed_common(p, new_mask, flags);
++	lockdep_assert_held(&p->pi_lock);
++	set_cpus_allowed_common(p, new_mask);
 +}
 +
 +void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 +{
-+	__do_set_cpus_allowed(p, new_mask, 0);
++	__do_set_cpus_allowed(p, new_mask);
 +}
 +
 +#endif
@@ -2469,7 +2456,7 @@ index 000000000000..f69ed4d89395
 +{
 +	cpumask_t chk_mask, tmp;
 +
-+	if (unlikely(!cpumask_and(&chk_mask, p->cpus_ptr, cpu_online_mask)))
++	if (unlikely(!cpumask_and(&chk_mask, p->cpus_ptr, cpu_active_mask)))
 +		return select_fallback_rq(task_cpu(p), p);
 +
 +	if (
@@ -2583,15 +2570,15 @@ index 000000000000..f69ed4d89395
 +		goto out;
 +	}
 +
-+	__do_set_cpus_allowed(p, new_mask, flags);
++	__do_set_cpus_allowed(p, new_mask);
 +
 +	/* Can the task run on the task's current CPU? If so, we're done */
 +	if (cpumask_test_cpu(task_cpu(p), new_mask))
 +		goto out;
 +
 +	if (p->migration_disabled) {
-+		if (p->cpus_ptr != &p->cpus_mask)
-+			__do_set_cpus_allowed(p, &p->cpus_mask, SCA_MIGRATE_ENABLE);
++		if (likely(p->cpus_ptr != &p->cpus_mask))
++			__do_set_cpus_ptr(p, &p->cpus_mask);
 +		p->migration_disabled = 0;
 +		p->migration_flags |= MDF_FORCE_ENABLED;
 +		/* When p is migrate_disabled, rq->lock should be held */
@@ -4270,6 +4257,10 @@ index 000000000000..f69ed4d89395
 +	if (cpumask_empty(&sched_sg_idle_mask))
 +		return;
 +
++	/* exit when cpu is offline */
++	if (unlikely(!rq->online))
++		return;
++
 +	cpu = cpu_of(rq);
 +	/*
 +	 * Only cpu in slibing idle group will do the checking and then
@@ -4653,15 +4644,13 @@ index 000000000000..f69ed4d89395
 +
 +			if ((nr_migrated = migrate_pending_tasks(src_rq, rq, cpu))) {
 +				src_rq->nr_running -= nr_migrated;
-+#ifdef CONFIG_SMP
 +				if (src_rq->nr_running < 2)
 +					cpumask_clear_cpu(i, &sched_rq_pending_mask);
-+#endif
++
 +				rq->nr_running += nr_migrated;
-+#ifdef CONFIG_SMP
 +				if (rq->nr_running > 1)
 +					cpumask_set_cpu(cpu, &sched_rq_pending_mask);
-+#endif
++
 +				update_sched_rq_watermark(rq);
 +				cpufreq_update_util(rq, 0);
 +
@@ -6921,7 +6910,7 @@ index 000000000000..f69ed4d89395
 +	 *
 +	 * And since this is boot we can forgo the serialisation.
 +	 */
-+	set_cpus_allowed_common(idle, cpumask_of(cpu), 0);
++	set_cpus_allowed_common(idle, cpumask_of(cpu));
 +#endif
 +
 +	/* Silence PROVE_RCU */
@@ -8943,7 +8932,7 @@ index 000000000000..7c71f1141d00
 +		boost_task(p);
 +}
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
-index 50cbad89f7fa..fb703fd370fd 100644
+index 50cbad89f7fa..41946f19468b 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
 @@ -57,6 +57,13 @@ struct sugov_cpu {
@@ -9063,25 +9052,16 @@ index 50cbad89f7fa..fb703fd370fd 100644
  	if (ret) {
  		kthread_stop(thread);
  		pr_warn("%s: failed to set SCHED_DEADLINE\n", __func__);
-@@ -835,6 +903,7 @@ struct cpufreq_governor *cpufreq_default_governor(void)
- cpufreq_governor_init(schedutil_gov);
- 
+@@ -837,7 +905,9 @@ cpufreq_governor_init(schedutil_gov);
  #ifdef CONFIG_ENERGY_MODEL
-+#ifndef CONFIG_SCHED_ALT
  static void rebuild_sd_workfn(struct work_struct *work)
  {
++#ifndef CONFIG_SCHED_ALT
  	rebuild_sched_domains_energy();
-@@ -858,4 +927,10 @@ void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
- 	}
- 
++#endif /* CONFIG_SCHED_ALT */
  }
-+#else /* CONFIG_SCHED_ALT */
-+void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
-+				  struct cpufreq_governor *old_gov)
-+{
-+}
-+#endif
- #endif
+ static DECLARE_WORK(rebuild_sd_work, rebuild_sd_workfn);
+ 
 diff --git a/kernel/sched/cputime.c b/kernel/sched/cputime.c
 index 5f611658eeab..631276f56ba0 100644
 --- a/kernel/sched/cputime.c
