@@ -433,7 +433,7 @@ case $_basever in
         #0008-5.12-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
-        0009-prjc_v5.12-r0.patch
+        0009-prjc_v5.12-r1.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
