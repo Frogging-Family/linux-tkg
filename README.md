@@ -122,8 +122,10 @@ The command to do for that is:
 If one chooses `Generic` as distro. `./install.sh install` will compile the kernel then prompt before doing the following:
 ```shell
 sudo make modules_install
+sudo make headers_install INSTALL_HDR_PATH=/usr # CAUTION: this will replace files in /usr/include
 sudo make install
-sudo dracut --hostonly --kver $_kernelname
+sudo dracut --force --hostonly --kver $_kernelname
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 ```
+**Note:** these changes will not be tracked by your package manager and uninstalling requires manual intervention.
 
