@@ -292,6 +292,12 @@ fi
 
 if [ "$1" = "install" ]; then
 
+  if [ -e "${_where}/winesync.rules" ]; then
+    msg2 "Installing udev rule for winesync"
+    sudo cp "${_where}"/winesync.rules /etc/udev/rules.d/winesync.rules
+    sudo chmod 644 /etc/udev/rules.d/winesync.rules
+  fi
+
   # Use custom compiler paths if defined
   if [ "$_compiler_name" = "-llvm" ] && [ -n "${CUSTOM_LLVM_PATH}" ]; then
     PATH="${CUSTOM_LLVM_PATH}/bin:${CUSTOM_LLVM_PATH}/lib:${CUSTOM_LLVM_PATH}/include:${PATH}"
