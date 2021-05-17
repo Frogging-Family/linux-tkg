@@ -54,7 +54,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=156
+pkgrel=157
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -98,7 +98,7 @@ case $_basever in
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
             'd17ce86643e5edc08e8bbed31895d5a47ce4d11c4f12abaac988fd1ed4cdeb48'
             'SKIP'
-            'be2066dd6133357007e8c7da9d5de3194b13409ebbfba8821db1849588fced1e'
+            '83d7d518dc9592ffcd79511163c49e50b767f539bc552b636810a8ca67ddca7d'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -150,7 +150,7 @@ case $_basever in
 	sha256sums=('de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
             '66a0173a13cd58015f5bf1b14f67bfa15dc1db5d8e7225fcd95ac2e9a5341653'
             'SKIP'
-            '6313ccad7f8e4d8ce09dd5bdb51b8dfa124d0034d7097ba47008380a14a84f09'
+            '357a0db541f7de924ed89c21f5a6f3de4889b134c5d05d5e32ccd234bd81eedf'
             '15ce09447b7e9b28425c1df5961c955378f2829e4115037337eef347b1db3d9d'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -205,7 +205,7 @@ case $_basever in
 	sha256sums=('e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
             '5b558a40c2fdad2c497fe0b1a64679313fd5a7ccbaecef8803d49b3baaccbacd'
             'SKIP'
-            'ac66686b0e1ed057ea5f099cd00366decc00f999aa1cb19ba8d3ccf9f92d60e2'
+            'f4754fbe2619ef321e49a7b560fad058b2459d17cff0b90e839cb475f46e8b63'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -256,7 +256,7 @@ case $_basever in
 	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
             '46c520da2db82d8f9a15c2117d3a50e0faaaf98f05bd4ea1f3105e2724f207d6'
             'SKIP'
-            '958333f18de79c19ccf9eccb4e16e2a217a0619a1d96c2c65ccba23628815bab'
+            'ce2711b9d628e71af62706b830c2f259a43ad1e614871dd90bcb99d8709e1dab'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -312,7 +312,7 @@ case $_basever in
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
             '1e86da1a877f1dd3485c52fc97282351cc5c98ec5e66aa9c626142ada78fab38'
             'SKIP'
-            '4720ffe4c063ec948918cadf7498e96be8a035717e587b4c949d3c2a4471d5d9'
+            'e78e683b9a8c15003d91f810cfe576c6266f330f3b8fe13eb52226c50070e87f'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -376,7 +376,7 @@ case $_basever in
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
             'f26086426c5366ae37b04ee85f1269e271657edcb3e025333cdea605510f406d'
             'SKIP'
-            '2622b27dc89e90688aa4b01bef7d9b4f93f3433085200fda08ae9f38a852b45d'
+            'fc08ac33e3bc47ed0ee595a2e4b84bc45b02682b383db6acfe281792e88f6231'
             '837ad05b68d0443580f78f5eb316db46c6b67abfefa66c22b6cb94f4915a52ba'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -443,7 +443,7 @@ case $_basever in
     sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
             '115306305ab793f87793884d36a8f7c69acba9f06f4947ef8002bb611b14d770'
             'SKIP'
-            'bcb8a47c2396af9a2afcd26d1200f9424d2af0fa6f6749d3c09417a919f5c60c'
+            '55c4cb76754b1db234a0994806106d8481c171d4e3fead12793f0083a48511d4'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -497,7 +497,7 @@ case $_basever in
     )
     sha256sums=('5571c00e27a12705ae6b7dddf7e4b80e8401e19527c8b91ac97b1fdd9aa1d0e4'
             'SKIP'
-            'dbe038aaf194d7b77f4ca687f0c985468e0fb929863e23e801833410a09cc592'
+            'dd66125708efc63d3d1f72a66d401ae9a04e147352b3280ffc774ca2682146d7'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
