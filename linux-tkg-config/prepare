@@ -360,9 +360,11 @@ _tkg_srcprep() {
 
   msg2 "Setting version..."
   scripts/setlocalversion --save-scmversion
-  
+
   if [ "${_distro}" = "Arch" ]; then
-    
+    # Reset local version string if ever it's in the .config file
+    scripts/config --set-str localversion ""
+
     echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
     echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/prepare.log
     echo "" > localversion.20-pkgname
@@ -528,23 +530,24 @@ _tkg_srcprep() {
     cd ${wrksrc}/linux-${_kern_ver}
   fi
 
-  
-  if [ -z "${_configfile}" ]; then    
+
+  if [ -z "${_configfile}" ]; then
     if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
       cat "${srcdir}"/config.x86_64 > ./.config
     else
       if [ -f /boot/config-`uname -r` ];then
-        _msg="Using /boot/config-`uname -r` as config file"
+        msg2 "Using /boot/config-`uname -r` as config file"
         cp /boot/config-`uname -r` .config
       elif [ -f /proc/config.gz ];then
-        _msg="Using /proc/config.gz as config file"
+        msg2 "Using /proc/config.gz as config file"
         zcat --verbose /proc/config.gz > .config
       else
-        _msg="Current kernel config not found! Falling back to default..."
+        msg2 "Current kernel config not found! Falling back to default..."
       fi
     fi
   else
-    cat "${srcdir}/${_configfile}" > ./.config
+    msg2 "Using user-provided config file in ${_where}/${_configfile}"
+    cat "${_where}/${_configfile}" > ./.config
   fi
 
   if [ -z $_debug ]; then
@@ -672,17 +675,17 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
     fi
   fi
-  # Prevent Debian to sign certs (Bios/UEFI) 
-  if [ "$_distro" = "Debian" ]; then 
+  # Prevent Debian to sign certs (Bios/UEFI)
+  if [ "$_distro" = "Debian" ]; then
     #Help Debian cert compile problem.
-    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config 
+    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
     #Help Debian UEFI cert compile problem
     sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/debian-uefi-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
   # Latest versions of Ubuntu require Canonical certifications.
-  if [ "$_distro" = "Ubuntu" ]; then 
+  if [ "$_distro" = "Ubuntu" ]; then
     #Help Ubuntu cert compile problem.
-    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/canonical-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config 
+    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/canonical-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
   fi
   # Skip dbg package creation on non-Arch
   if [ "$_distro" != "Arch" ]; then
@@ -1325,7 +1328,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       msg2 "modprobed-db database not found"
       exit 1
     fi
-    yes "" | make LSMOD=$_modprobeddb_db_path localmodconfig ${llvm_opt}
+    make LSMOD=$_modprobeddb_db_path localmodconfig ${llvm_opt}
   fi
 
   if [ true = "$_config_fragments" ]; then
