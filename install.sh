@@ -292,6 +292,15 @@ fi
 
 if [ "$1" = "install" ]; then
 
+  if [ -e "${_where}/winesync.rules" ]; then
+    msg2 "Installing udev rule for winesync"
+    sudo cp "${_where}"/winesync.rules /etc/udev/rules.d/winesync.rules
+    sudo chmod 644 /etc/udev/rules.d/winesync.rules
+
+    msg2 "Adding winesync to '/etc/modules-load.d' for auto-loading by systemd"
+    sudo echo "winesync" > /etc/modules-load.d/winesync.conf
+  fi
+
   # Use custom compiler paths if defined
   if [ "$_compiler_name" = "-llvm" ] && [ -n "${CUSTOM_LLVM_PATH}" ]; then
     PATH="${CUSTOM_LLVM_PATH}/bin:${CUSTOM_LLVM_PATH}/lib:${CUSTOM_LLVM_PATH}/include:${PATH}"
@@ -333,7 +342,7 @@ if [ "$1" = "install" ]; then
 
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
-    if make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor}; then
+    if make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
       msg2 "Building successfully finished!"
 
       cd "$_where"
@@ -354,9 +363,10 @@ if [ "$1" = "install" ]; then
         fi
         _headers_deb="linux-headers-${_kernelname}*.deb"
         _image_deb="linux-image-${_kernelname}_*.deb"
+        _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
 
         cd DEBS
-        sudo dpkg -i $_headers_deb $_image_deb
+        sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
       fi
     fi
 
@@ -391,15 +401,18 @@ if [ "$1" = "install" ]; then
         else
           _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
         fi
+        _headers_rpm="kernel-headers-${_kernelname}*.rpm"
         _kernel_rpm="kernel-${_kernelname}*.rpm"
         # The headers are actually contained in the kernel-devel RPM and not the headers one...
         _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
 
         cd RPMS
         if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install $_kernel_rpm $_kernel_devel_rpm
+          sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
         elif [ "$_distro" = "Suse" ]; then
-          sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm
+          msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
+          msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'"
+          sudo zypper install --replacefiles --allow-unsigned-rpm $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
         fi
 
         msg2 "Install successful"
@@ -420,19 +433,27 @@ if [ "$1" = "install" ]; then
 
       msg2 "Building successful"
       msg2 "The installation process will run the following commands:"
-      msg2 "  sudo make modules_install"
-      msg2 "  sudo make install"
-      msg2 "  sudo dracut --hostonly --kver $_kernelname"
-      msg2 "  sudo grub-mkconfig -o /boot/grub/grub.cfg"
+      echo "    sudo make modules_install"
+      echo "    sudo make headers_install INSTALL_HDR_PATH=/usr # CAUTION: this will replace files in /usr/include"
+      echo "    sudo make install"
+      echo "    sudo dracut --hostonly --kver $_kernelname"
+      echo "    sudo grub-mkconfig -o /boot/grub/grub.cfg"
+      msg2 "Note: Uninstalling requires manual intervention, use './install.sh uninstall-help' for more information."
       read -p "Continue ? [Y/n]: " _continue
 
       if ! [[ $_continue =~ ^(Y|y|Yes|yes)$ ]];then
         exit 0
       fi
 
+      msg2 "Installing modules"
       sudo make modules_install
+      msg2 "Installing headers"
+      sudo make headers_install INSTALL_HDR_PATH=/usr
+      msg2 "Installing kernel"
       sudo make install
-      sudo dracut --hostonly --kver $_kernelname
+      msg2 "Creating initramfs"
+      sudo dracut --force --hostonly --kver $_kernelname
+      msg2 "Updating GRUB"
       sudo grub-mkconfig -o /boot/grub/grub.cfg
     fi
   fi
