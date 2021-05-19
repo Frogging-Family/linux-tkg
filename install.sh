@@ -297,8 +297,8 @@ if [ "$1" = "install" ]; then
     sudo cp "${_where}"/winesync.rules /etc/udev/rules.d/winesync.rules
     sudo chmod 644 /etc/udev/rules.d/winesync.rules
 
-    msg2 "Adding winesync to '/etc/modules-load.d' for auto-loading by systemd"
-    sudo echo "winesync" > /etc/modules-load.d/winesync.conf
+    msg2 "Adding winesync to '/etc/modules-load.d' for auto-loading by systemd - Password prompt incoming!"
+    sudo sh -c 'echo "winesync" >/etc/modules-load.d/winesync.conf'
   fi
 
   # Use custom compiler paths if defined
