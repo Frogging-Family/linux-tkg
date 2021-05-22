@@ -9,39 +9,140 @@ ver511=22
 ver512=5
 ver513=rc2
 
-_cpuschedselector() {
-  msg2 "Which CPU sched variant do you want to build/install?"
-  msg2 "Project C / BMQ is usually a good balance for gaming."
-  msg2 "Select \"CFS\" (linux kernel's default) if unsure."
-  select CPUSCHED in "${_CPUSCHEDARRAY[@]}"
-  do
-    case $CPUSCHED in
-      "CFS")
-        echo "_cpusched=\"cfs\"" > "${_path}"/cpuschedset
-        ;;
-      "PDS")
-        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
-        ;;
-      "MuQSS")
-        echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
-        ;;
-      "BMQ")
-        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
-        ;;
-      "Project C / PDS")
-        echo "_cpusched=\"pds\"" > "${_path}"/cpuschedset
-        ;;
-      "Project C / BMQ")
-        echo "_cpusched=\"bmq\"" > "${_path}"/cpuschedset
-        ;;
-      "Undead PDS (TkG)")
-        echo "_cpusched=\"upds\"" > "${_path}"/cpuschedset
-        ;;
-      *)
-    esac
-    break
+_prompt_from_array() {
+  select _selected_value; do
+    # Check the selected menu item number
+    if [ 1 -le "$REPLY" ] && [ "$REPLY" -le $# ]; then
+      _selected_index=$(("$REPLY" - 1))
+      break
+    else
+      echo "Wrong selection: select any number in 1-$#"
+    fi
   done
 }
+
+_set_kernel_version() {
+  _kver_list=("5.4" "5.7" "5.8" "5.9" "5.10" "5.11" "5.12" "5.13")
+  _kver_text_list=(
+    "5.4.${ver54} LTS"
+    "5.7.$ver57"
+    "5.8.$ver58"
+    "5.9.$ver59"
+    "5.10.$ver510 LTS"
+    "5.11.$ver511"
+    "5.12.$ver512 (latest stable)"
+    "5.13 $ver513"
+  )
+
+  typeset -A _kver_sub
+  _kver_sub=(
+    ["5.4"]="$ver54"
+    ["5.7"]="$ver57"
+    ["5.8"]="$ver58"
+    ["5.9"]="$ver59"
+    ["5.10"]="$ver510"
+    ["5.11"]="$ver511"
+    ["5.12"]="$ver512"
+    ["5.13"]="$ver513"
+  )
+
+  if [ -z "$_version" ] || ! [[  "${_kver_list[@]}" =~ "$_version" ]]; then
+    msg2 "Which kernel version do you want to install?"
+    # An element from _kver_text_list is selected
+    _prompt_from_array  "${_kver_text_list[@]}"
+    _version=${_kver_list[$_selected_index]}
+  fi
+
+  # _basekernel and _version variables can be merged...
+  _basekernel="$_version"
+  _basever=`echo $_version | tr -d "."`
+  _sub=${_kver_sub[$_version]}
+}
+
+_set_cpu_scheduler() {
+  declare -A _sched_description_array
+  _sched_description_array=(
+    ["pds"]="Project C / PDS"
+    ["bmq"]="Project C / BMQ"
+    ["cfs"]="CFS (Completely Fair Scheduler) Linux kernel's default"
+    ["muqss"]="MuQSS (Multiple Queue Skiplist Scheduler)"
+    ["upds"]="Undead PDS (TkG)"
+  )
+
+  # CPU SCHED selector
+  if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
+    _avail_cpu_scheds=("pds" "muqss" "bmq" "cfs")
+  elif [ "$_basever" = "58" ]; then
+    _avail_cpu_scheds=("upds" "pds" "bmq" "cfs")
+  elif [[ "$_basever" =~ ^(59|510|511)$ ]]; then
+    _avail_cpu_scheds=("upds" "pds" "bmq" "muqss" "cfs")
+  elif [ "$_basever" = "512" ]; then
+    _avail_cpu_scheds=("pds" "bmq" "muqss" "cfs")
+  elif [ "$_basever" = "513" ]; then
+    _avail_cpu_scheds=("pds" "bmq" "cfs")
+  else
+    _avail_cpu_scheds=("cfs")
+  fi
+
+  # Populate descriptions of the available CPU schedulers
+  _avail_cpu_scheds_text=()
+  for _sched in "${_avail_cpu_scheds[@]}"; do
+    _avail_cpu_scheds_text+=("${_sched_description_array[$_sched]}")
+  done
+
+  if [ -z "$_cpusched" ]; then
+    msg2 "Which CPU sched variant do you want to build/install?"
+    msg2 "Project C (pds) / BMQ (bmq) is usually a good balance for gaming."
+    msg2 "Select \"cfs\" (linux kernel's default) if unsure."
+
+    _prompt_from_array "${_avail_cpu_scheds_text[@]}"
+    _cpusched=${_avail_cpu_scheds[$_selected_index]}
+
+  elif ! [[ ${_avail_cpu_scheds[*]} =~ "$_cpusched" ]]; then
+    warning "Your cpusched selection ( $_cpusched ) is not available for the selected kernel version."
+    if [ "$_nofallback" = "true" ]; then
+      warning "Since _nofallback is enabled, let's exit..."
+      exit 1
+    else
+      warning "Please select another:"
+      _prompt_from_array "${_avail_cpu_scheds_text[@]}"
+      _cpusched=${_avail_cpu_scheds[$_selected_index]}
+    fi
+  fi
+}
+
+_set_compiler(){
+  if ! [[ "$_compiler" =~ ^(gcc|llvm)$ ]]; then
+    if [ -n "$_compiler" ] && [ "$_nofallback" = "true" ]; then
+      msg2 "Compiler \" $_compiler \" not recognized, exiting... "
+      exit 1
+    else
+      plain "Which compiler do you want to use?"
+      _compiler_array_text=("GCC (recommended)" "Clang/LLVM")
+      _compiler_array=("gcc" "llvm")
+      _prompt_from_array "${_compiler_array_text[@]}"
+      _compiler="${_compiler_array[$_selected_index]}"
+    fi
+  fi
+
+  if [ "$_compiler" = "llvm" ]; then
+    if [[ -n "$_lto_mode" && ! "$_lto_mode" =~ ^(no|thin|full)$ ]]; then
+      msg2 "Value \" $_lto_mode \" given for _lto_mode not recognized, exiting..."
+      exit 1
+    elif [ -z "$_lto_mode" ]; then
+      plain "Would you like to enable Clang Link Time Optimizations (LTO) ? It may improve the performance of the kernel."
+      _lto_prompt_array=(
+        "No: do not enable LTO"
+        "Full: uses 1 thread for Linking, slow and uses more memory, theoretically with the highest performance gains."
+        "Thin: uses multiple threads, faster and uses less memory, may have a lower runtime performance than Full."
+      )
+      _lto_mode_array=("no" "full" "thin")
+      _prompt_from_array "${_lto_prompt_array[@]}"
+      _lto_mode="${_lto_mode_array[$_selected_index]}"    
+    fi
+  fi
+}
+
 
 _tkg_initscript() {
 
@@ -58,107 +159,11 @@ _tkg_initscript() {
     _path="${_where}"
   fi
 
-  # _basever, _basekernel and _sub are saved to the file "versel"
-  # then this file is sourced at the end of these so these vars are accessible
-  # to the rest of the script
-  if [ -z "$_version" ] && [ ! -e "$_path"/versel ]; then
-    msg2 "Which kernel version do you want to install?"
-    plain "1. 5.4.$ver54 LTS\n    2. 5.7.$ver57\n    3. 5.8.$ver58\n    4. 5.9.$ver59\n    5. 5.10.$ver510 LTS\n    6. 5.11.$ver511\n  > 7. 5.12.$ver512 (latest stable)\n    8. 5.13 $ver513"
-    read -rp "`echo $'  choice[1-7?]'`" _VERSEL;
-    case $_VERSEL in
-          "1")
-          echo "_basever=54" > "$_path"/versel
-          echo "_basekernel=5.4" >> "$_path"/versel
-          echo "_sub=${ver54}" >> "$_path"/versel
-          ;;
-          "2")
-          echo "_basever=57" > "$_path"/versel
-          echo "_basekernel=5.7" >> "$_path"/versel
-          echo "_sub=${ver57}" >> "$_path"/versel
-          ;;
-          "3")
-          echo "_basever=58" > "$_path"/versel
-          echo "_basekernel=5.8" >> "$_path"/versel
-          echo "_sub=${ver58}" >> "$_path"/versel
-          ;;
-          "4")
-          echo "_basever=59" > "$_path"/versel
-          echo "_basekernel=5.9" >> "$_path"/versel
-          echo "_sub=${ver59}" >> "$_path"/versel
-          ;;
-          "5")
-          echo "_basever=510" > "$_path"/versel
-          echo "_basekernel=5.10" >> "$_path"/versel
-          echo "_sub=${ver510}" >> "$_path"/versel
-          ;;
-          "6")
-          echo "_basever=511" > "$_path"/versel
-          echo "_basekernel=5.11" >> "$_path"/versel
-          echo "_sub=${ver511}" >> "$_path"/versel
-          ;;
-          "8")
-          echo "_basever=513" > "$_path"/versel
-          echo "_basekernel=5.13" >> "$_path"/versel
-          echo "_sub=${ver513}" >> "$_path"/versel
-          ;;
-          *)
-          echo "_basever=512" > "$_path"/versel
-          echo "_basekernel=5.12" >> "$_path"/versel
-          echo "_sub=${ver512}" >> "$_path"/versel
-          ;;
-    esac
-  elif [ -n "$_version" ];then
-    case "$_version" in
-		"5.4")
-		echo "_basever=54" > "$_path"/versel
-		echo "_basekernel=5.4" >> "$_path"/versel
-		echo "_sub=${ver54}" >> "$_path"/versel
-		;;
-		"5.7")
-		echo "_basever=57" > "$_path"/versel
-		echo "_basekernel=5.7" >> "$_path"/versel
-		echo "_sub=${ver57}" >> "$_path"/versel
-		;;
-		"5.8")
-		echo "_basever=58" > "$_path"/versel
-		echo "_basekernel=5.8" >> "$_path"/versel
-		echo "_sub=${ver58}" >> "$_path"/versel
-		;;
-		"5.9")
-		echo "_basever=59" > "$_path"/versel
-		echo "_basekernel=5.9" >> "$_path"/versel
-		echo "_sub=${ver59}" >> "$_path"/versel
-		;;
-		"5.10")
-		echo "_basever=510" > "$_path"/versel
-		echo "_basekernel=5.10" >> "$_path"/versel
-		echo "_sub=${ver510}" >> "$_path"/versel
-		;;
-		"5.11")
-		echo "_basever=511" > "$_path"/versel
-		echo "_basekernel=5.11" >> "$_path"/versel
-		echo "_sub=${ver511}" >> "$_path"/versel
-		;;
-		"5.12")
-		echo "_basever=512" > "$_path"/versel
-		echo "_basekernel=5.12" >> "$_path"/versel
-		echo "_sub=${ver512}" >> "$_path"/versel
-		;;
-		"5.13")
-		echo "_basever=513" > "$_path"/versel
-		echo "_basekernel=5.13" >> "$_path"/versel
-		echo "_sub=${ver513}" >> "$_path"/versel
-		;;
-		*)
-		error "There is something wrong with your kernel version selection, exiting..."
-		exit 1
-	esac
-  fi
+  # Select Kernel version
+  _set_kernel_version
 
-  # source versel early if present
-  if [ -e "${_path}"/versel ]; then
-    source "${_path}"/versel
-  fi
+  # Select CPU scheduler
+  _set_cpu_scheduler
 
   if [ "$_distro" != "Void" ]; then
     cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
@@ -168,7 +173,7 @@ _tkg_initscript() {
     cp "$_where"/linux-tkg-config/${_basekernel}/* "$_path"
   fi
 
-  if [ -z "$_OPTIPROFILE" ] && [ ! -e "$_path"/cpuschedset ]; then
+  if [ -z "$_OPTIPROFILE" ]; then
     # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
     plain "Do you want to use a predefined optimized profile?"
     read -rp "`echo $'  > 1.Custom\n    2.Ryzen Desktop (Performance)\n    3.Other Desktop (Performance)\nchoice[1-3?]: '`" _OPTIPROFILE;
@@ -179,109 +184,23 @@ _tkg_initscript() {
     source "$_where"/linux-tkg-config/generic-desktop-profile.cfg && msg2 "Generic Desktop (Performance) profile will be used." && msg2 ""
   fi
 
-  # source cpuschedset early if present
-  if [ -e "${_path}"/cpuschedset ]; then
-    source "${_path}"/cpuschedset
-  fi
+  # Set compiler
+  _set_compiler
 
-  # source compilerset early if present
-  if [ -e "${_path}"/compilerset ]; then
-    source "${_path}"/compilerset
-  fi
-
-  # CPU SCHED selector
-  if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
-    _CPUSCHEDARRAY=("PDS" "MuQSS" "BMQ" "CFS")
-    _CPUSCHEDVARARRAY=("pds" "muqss" "MuQSS" "bmq" "cfs")
-  elif [ "$_basever" = "58" ]; then
-    _CPUSCHEDARRAY=("Undead PDS (TkG)" "Project C / PDS" "Project C / BMQ" "CFS")
-    _CPUSCHEDVARARRAY=("upds" "pds" "bmq" "cfs")
-  elif [ "$_basever" = "59" ] || [ "$_basever" = "510" ]; then
-    _CPUSCHEDARRAY=("Undead PDS (TkG)" "Project C / PDS" "Project C / BMQ" "MuQSS" "CFS")
-    _CPUSCHEDVARARRAY=("upds" "pds" "bmq" "muqss" "MuQSS" "cfs")
-  elif [ "$_basever" = "511" ]; then
-    _CPUSCHEDARRAY=("Undead PDS (TkG)" "Project C / PDS" "Project C / BMQ" "MuQSS" "CFS")
-    _CPUSCHEDVARARRAY=("upds" "pds" "bmq" "muqss" "MuQSS" "cfs")
-  elif [ "$_basever" = "512" ]; then
-    _CPUSCHEDARRAY=("Project C / PDS" "Project C / BMQ" "MuQSS" "CFS")
-    _CPUSCHEDVARARRAY=("pds" "bmq" "muqss" "MuQSS" "cfs")
-  elif [ "$_basever" = "513" ]; then
-    _CPUSCHEDARRAY=("Project C / PDS" "Project C / BMQ" "CFS")
-    _CPUSCHEDVARARRAY=("pds" "bmq" "cfs")
-  else
-    _CPUSCHEDARRAY=("CFS")
-    _CPUSCHEDVARARRAY=("cfs")
-  fi
-
-  if [ -z "$_cpusched" ] && [ ! -e "${_path}"/cpuschedset ]; then
-    _cpuschedselector
-  elif [[ ${_CPUSCHEDVARARRAY[*]} =~ "$_cpusched" ]]; then
-    if ( [ "$_cpusched" = "muqss" ] || [ "$_cpusched" = "MuQSS" ] ); then
-      echo "_cpusched=\"MuQSS\"" > "${_path}"/cpuschedset
-    else
-      echo "_cpusched=\"$_cpusched\"" > "${_path}"/cpuschedset
+  if [  "$_compiler" = "llvm" ]; then
+    _compiler_name="-llvm"
+    llvm_opt="LLVM=1"
+    if [ $_basever -ge 512 ] && [ "$_lto_mode" != "no" ]; then
+      llvm_opt="LLVM=1 LLVM_IAS=1"
     fi
-  else
-    if ! [[ ${_CPUSCHEDVARARRAY[*]} =~ "$_cpusched" ]]; then
-      warning "Your cpusched selection ( $_cpusched ) is not available for the selected kernel version."
-      if [ "$_nofallback" = "true" ]; then
-        warning "Since _nofallback is enabled, let's exit..."
-        exit 1
-      else
-        warning "Please select another:"
-        _cpuschedselector
-      fi
-    fi
-  fi
-
-  if [ -n "$_custom_pkgbase" ]; then
-    echo "_custom_pkgbase=\"${_custom_pkgbase}\"" >> "${_path}"/cpuschedset
-  fi
-
-  case $_compileroptlevel in
-	"2")
-	_compileropt="-O3"
-	;;
-	"3")
-	_compileropt="-Os"
-	;;
-	*)
-	_compileropt="-O2"
-	;;
-  esac
-
-# Compiler selector
-  if [ -z "$_compiler" ] && [ ! -e "${_path}"/compilerset ]; then
-    plain "Which compiler do you want to use?"
-    read -rp "`echo $'  > 1.GCC (recommended)\n    2.Clang/LLVM\nchoice[1-2?]: '`" _CONDITION_CMPLR;
-    if [ "$_CONDITION_CMPLR" = "2" ];then
-      echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
-      echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
-    else
-      echo "_compiler_name=" >> ${_path}/compilerset
-    fi
-  elif [ "$_compiler" = "llvm" ]; then
-      echo "_compiler_name=\"-llvm\"" > ${_path}/compilerset
-      echo "llvm_opt=\"LLVM=1\"" >> ${_path}/compilerset
   elif [ "$_compiler" = "gcc" ]; then
-      echo "_compiler_name=" >> ${_path}/compilerset
+    _compiler="gcc"
+    _compiler_name=""
+    llvm_opt=""
   else
-    if [ "$_nofallback" != "true" ] && [ ! -e "${_path}"/compilerset ] && [ "$_compiler" != "llvm" ]; then
-      warning "Something is wrong with your compiler selection. Do you want to fallback to GCC (default)?"
-      read -rp "`echo $'    > N/y : '`" _fallback;
-    fi
-    if [[ "$_fallback" =~ [yY] ]] || [ "$_nofallback" = "true" ]; then
-      echo "_compiler_name=" >> "${_path}"/compilerset
-    fi
-    if [ ! -e "${_path}"/compilerset ]; then
-      error "Exiting..."
-      exit 1
-    fi
+    error "Compiler set not recognised, exiting..."
+    exit 1
   fi
-
-  source "${_path}"/cpuschedset
-  source "${_path}"/compilerset
-  source "${_path}"/versel
 }
 
 user_patcher() {
@@ -461,7 +380,7 @@ _tkg_srcprep() {
     rev=0
   fi
 
-  if [ "${_cpusched}" = "MuQSS" ]; then
+  if [ "${_cpusched}" = "muqss" ]; then
     # MuQSS
     _msg="Applying MuQSS base patch"
     tkgpatch="$srcdir/0004-${_basekernel}-ck1.patch" && _tkg_patcher
@@ -675,6 +594,22 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
     fi
   fi
+  # Clang LTO
+  if [ "$_compiler_name" = "-llvm" ] && [ $_basever -ge 512 ]; then
+    if [ "$_lto_mode" = "full" ]; then
+      scripts/config -e LTO_CLANG_FULL
+      scripts/config -d LTO_CLANG_THIN
+    elif [ "$_lto_mode" = "thin" ]; then
+      scripts/config -d LTO_CLANG_FULL
+      scripts/config -e LTO_CLANG_THIN
+    fi
+  fi
+  # Void uses LibreSSL
+  if [ "$_distro" = "Void" ]; then
+    sed -i -e 's/CONFIG_MODULE_SIG_SHA512=y/# CONFIG_MODULE_SIG_SHA512 is not set/' ./.config
+    sed -i -e 's/# CONFIG_MODULE_SIG_SHA1 is not set/CONFIG_MODULE_SIG_SHA1=y/' ./.config
+    sed -i -e 's/CONFIG_MODULE_SIG_HASH="sha512"/CONFIG_MODULE_SIG_HASH="sha1"/' ./.config
+  fi
   # Prevent Debian to sign certs (Bios/UEFI)
   if [ "$_distro" = "Debian" ]; then
     #Help Debian cert compile problem.
@@ -797,7 +732,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   #######
 
 
-  if [ "${_cpusched}" = "MuQSS" ]; then
+  if [ "${_cpusched}" = "muqss" ]; then
     # MuQSS default config
     echo "CONFIG_SCHED_MUQSS=y" >> ./.config
   elif [ "${_cpusched}" = "pds" ]; then
@@ -815,7 +750,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     echo "# CONFIG_SCHED_PDS is not set" >> ./.config
   fi
 
-  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
+  if [[ "${_cpusched}" =~ ^(muqss|pds|bmq|upds)$ ]]; then
     # Disable CFS
     sed -i -e 's/CONFIG_FAIR_GROUP_SCHED=y/# CONFIG_FAIR_GROUP_SCHED is not set/' ./.config
     sed -i -e 's/CONFIG_CFS_BANDWIDTH=y/# CONFIG_CFS_BANDWIDTH is not set/' ./.config
@@ -838,7 +773,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       plain "0: No yield."
       plain "1: Deboost and requeue task. (default)"
       plain "2: Set rq skip task."
-      if [ "${_cpusched}" = "MuQSS" ]; then
+      if [ "${_cpusched}" = "muqss" ]; then
         read -rp "`echo $'\n      0. Supposedly best option for gaming performance,\n         but might lead to stability issues on some (AMD) platforms when combined with MuQSS\n    > 1. Default and recommended option for MuQSS - could lead to stability issues on some (Intel) platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
       else
         read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
@@ -846,7 +781,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     fi
     if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
       _sched="pds"
-    elif [ "${_cpusched}" = "MuQSS" ] || ( [ "$_basever" != "54" ] && [ "$_cpusched" != "bmq" ] && [ "$_cpusched" != "pds" ] ) || ( [ "$_basever" = "54" ] && [ "$_cpusched" = "bmq" ] ); then
+    elif [ "${_cpusched}" = "muqss" ] || ( [ "$_basever" != "54" ] && [ "$_cpusched" != "bmq" ] && [ "$_cpusched" != "pds" ] ) || ( [ "$_basever" = "54" ] && [ "$_cpusched" = "bmq" ] ); then
       _sched="${_cpusched}"
     else
       _sched="alt_core"
@@ -858,7 +793,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     elif [ "$CONDITION0" = "2" ]; then
       sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/${_sched}.c
     else
-      if [ "${_cpusched}" = "MuQSS" ]; then
+      if [ "${_cpusched}" = "muqss" ]; then
         msg2 "Using default CPU sched yield type (1)"
       else
         sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
@@ -867,7 +802,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
 
   # Round Robin interval
-  if [ "${_cpusched}" = "MuQSS" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
+  if [ "${_cpusched}" = "muqss" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
     if [ -n "$_rr_interval" ]; then
       CONDITION1="$_rr_interval"
     else
@@ -900,7 +835,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     fi
     if [ "$_basever" != "54" ]; then
       if [ "$_rrvalue" != "default" ]; then
-        if [ "${_cpusched}" = "MuQSS" ]; then
+        if [ "${_cpusched}" = "muqss" ]; then
           sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
 	elif [ "${_cpusched}" = "upds" ]; then
 	  sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/pds.c
@@ -917,7 +852,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       fi
     else
       if [ "$_rrvalue" != "default" ]; then
-        if [ "${_cpusched}" == "MuQSS" ]; then
+        if [ "${_cpusched}" == "muqss" ]; then
           sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
         elif [ "${_cpusched}" == "pds" ]; then
           sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/"${_cpusched}".c
@@ -1041,7 +976,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       echo "CONFIG_HZ_100=y" >> ./.config
       echo "CONFIG_HZ_100_NODEF=y" >> ./.config
     fi
-  elif [ "${_cpusched}" = "MuQSS" ] && [ -z "$_timer_freq" ]; then
+  elif [ "${_cpusched}" = "muqss" ] && [ -z "$_timer_freq" ]; then
       sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=100/' ./.config
       echo "# CONFIG_HZ_500 is not set" >> ./.config
       echo "# CONFIG_HZ_750 is not set" >> ./.config
@@ -1431,10 +1366,6 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
 }
 
 exit_cleanup() {
-  # Remove state tracker
-  rm -f "$_where"/cpuschedset
-  rm -f "$_where"/compilerset
-  rm -f "$_where"/versel
 
   # Remove temporarily copied files
   rm -rf "$_where"/*.patch

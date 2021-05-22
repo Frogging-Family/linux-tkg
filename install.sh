@@ -17,37 +17,9 @@ plain() {
 }
 
 _distro_prompt() {
-
-  while true; do
-    echo "Which linux distribution are you running ?"
-    echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
-    echo "   1) Debian"
-    echo "   2) Fedora"
-    echo "   3) Suse"
-    echo "   4) Ubuntu"
-    echo "   5) Generic"
-    read -p "[1-5]: " _distro_index
-
-    if [ "$_distro_index" = "1" ]; then
-      _distro="Debian"
-      break
-    elif [ "$_distro_index" = "2" ]; then
-      _distro="Fedora"
-      break
-    elif [ "$_distro_index" = "3" ]; then
-      _distro="Suse"
-      break
-    elif [ "$_distro_index" = "4" ]; then
-      _distro="Ubuntu"
-      break
-    elif [ "$_distro_index" = "5" ]; then
-      _distro="Generic"
-      break
-    else
-      echo "Wrong index."
-    fi
-  done
-
+  echo "Which linux distribution are you running ?"
+  echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
+  select _distro in "Debian" "Fedora" "Suse" "Ubuntu" "Generic"; do break; done;
 }
 
 _install_dependencies() {
@@ -278,9 +250,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   # apply linux-tkg patching script
   _tkg_srcprep
-
-  # source cpuschedset since _cpusched isn't set
-  source "$srcdir"/cpuschedset
 
   # Uppercase characters are not allowed in source package name for debian based distros
   if [ "$_distro" = "Debian" ] || [ "$_distro" = "Ubuntu" ] && [ "$_cpusched" = "MuQSS" ]; then
