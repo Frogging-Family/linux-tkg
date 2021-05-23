@@ -1,13 +1,19 @@
 #!/bin/bash
 
-ver54=120
-ver57=19
-ver58=18
-ver59=16
-ver510=38
-ver511=22
-ver512=5
-ver513=rc2
+# Needed for prompting with the correct order
+_supported_kernels=("5.4" "5.7" "5.8" "5.9" "5.10" "5.11" "5.12" "5.13")
+
+typeset -A _kver_subver_map
+_kver_subver_map=(
+  ["5.4"]="120"
+  ["5.7"]="19"
+  ["5.8"]="18"
+  ["5.9"]="16"
+  ["5.10"]="38"
+  ["5.11"]="22"
+  ["5.12"]="5"
+  ["5.13"]="rc2"
+)
 
 _prompt_from_array() {
   select _selected_value; do
@@ -22,41 +28,24 @@ _prompt_from_array() {
 }
 
 _set_kernel_version() {
-  _kver_list=("5.4" "5.7" "5.8" "5.9" "5.10" "5.11" "5.12" "5.13")
-  _kver_text_list=(
-    "5.4.${ver54} LTS"
-    "5.7.$ver57"
-    "5.8.$ver58"
-    "5.9.$ver59"
-    "5.10.$ver510 LTS"
-    "5.11.$ver511"
-    "5.12.$ver512 (latest stable)"
-    "5.13 $ver513"
-  )
 
-  typeset -A _kver_sub
-  _kver_sub=(
-    ["5.4"]="$ver54"
-    ["5.7"]="$ver57"
-    ["5.8"]="$ver58"
-    ["5.9"]="$ver59"
-    ["5.10"]="$ver510"
-    ["5.11"]="$ver511"
-    ["5.12"]="$ver512"
-    ["5.13"]="$ver513"
-  )
-
-  if [ -z "$_version" ] || ! [[  "${_kver_list[@]}" =~ "$_version" ]]; then
+  if [ -z "$_version" ] || ! [[  "${!_kver_subver_map[@]}" =~ "$_version" ]]; then
     msg2 "Which kernel version do you want to install?"
-    # An element from _kver_text_list is selected
-    _prompt_from_array  "${_kver_text_list[@]}"
-    _version=${_kver_list[$_selected_index]}
+    # An element from _kernel_description_list is selected
+
+    _kernel_fullver_list=()
+    for _key in "${_supported_kernels[@]}"; do
+      _kernel_fullver_list+=("${_key}.${_kver_subver_map[$_key]}")
+    done
+
+    _prompt_from_array  "${_kernel_fullver_list[@]}"
+    _version=${_supported_kernels[$_selected_index]}
   fi
 
-  # _basekernel and _version variables can be merged...
+  # Note: _basekernel and _version variables can be merged
   _basekernel="$_version"
   _basever=`echo $_version | tr -d "."`
-  _sub=${_kver_sub[$_version]}
+  _sub=${_kver_subver_map[$_version]}
 }
 
 _set_cpu_scheduler() {
@@ -815,6 +804,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       plain "MuQSS default: 6ms"
       plain "PDS default: 4ms"
       plain "BMQ default: 2ms"
+      # todo: use _prompt_from_array
       read -rp "`echo $'\n    > 0.Keep defaults\n      1.2ms\n      2.4ms\n      3.6ms\n      4.8ms\n    [0-4?]: '`" CONDITION1;
     fi
     if [ "$CONDITION1" = "1" ]; then
