@@ -1,5 +1,9 @@
 #!/bin/bash
 
+source customization.cfg
+
+source linux-tkg-config/prepare
+
 msg2() {
  echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
 }
@@ -19,7 +23,8 @@ plain() {
 _distro_prompt() {
   echo "Which linux distribution are you running ?"
   echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
-  select _distro in "Debian" "Fedora" "Suse" "Ubuntu" "Generic"; do break; done;
+  _prompt_from_array "Debian" "Fedora" "Suse" "Ubuntu" "Generic"
+  _distro="${_selected_value}"
 }
 
 _install_dependencies() {
@@ -148,10 +153,6 @@ set -e
 
 _where=`pwd`
 srcdir="$_where"
-
-source customization.cfg
-
-source linux-tkg-config/prepare
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
