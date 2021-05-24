@@ -115,20 +115,30 @@ _set_compiler(){
   fi
 
   if [ "$_compiler" = "llvm" ]; then
-    if [[ -n "$_lto_mode" && ! "$_lto_mode" =~ ^(no|thin|full)$ ]]; then
-      msg2 "Value \" $_lto_mode \" given for _lto_mode not recognized, exiting..."
-      exit 1
-    elif [ -z "$_lto_mode" ]; then
-      plain "Would you like to enable Clang Link Time Optimizations (LTO) ? It may improve the performance of the kernel."
-      _lto_prompt_array=(
-        "No: do not enable LTO"
-        "Full: uses 1 thread for Linking, slow and uses more memory, theoretically with the highest performance gains."
-        "Thin: uses multiple threads, faster and uses less memory, may have a lower runtime performance than Full."
-      )
-      _lto_mode_array=("no" "full" "thin")
-      _prompt_from_array "${_lto_prompt_array[@]}"
-      _lto_mode="${_lto_mode_array[$_selected_index]}"    
+    _compiler_name="-llvm"
+    llvm_opt="LLVM=1"
+    if [ $_basever -ge 512 ]; then
+      if [[ -z "$_lto_mode" || ! "$_lto_mode" =~ ^(no|thin|full)$ ]]; then
+        plain "Would you like to enable Clang Link Time Optimizations (LTO) ? It may improve the performance of the kernel."
+        _lto_prompt_array=(
+          "No: do not enable LTO"
+          "Full: uses 1 thread for Linking, slow and uses more memory, theoretically with the highest performance gains."
+          "Thin: uses multiple threads, faster and uses less memory, may have a lower runtime performance than Full."
+        )
+        _lto_mode_array=("no" "full" "thin")
+        _prompt_from_array "${_lto_prompt_array[@]}"
+        _lto_mode="${_lto_mode_array[$_selected_index]}"
+      fi
+      if [ "$_lto_mode" != "no" ]; then
+        llvm_opt="LLVM=1 LLVM_IAS=1"
+      fi
+    elif [[ -n "$_lto_mode" && "$_lto_mode" != "no" ]]; then
+      warning "Clang LTO is only available on linux 5.12 onwards."
+      _lto_mode="no"
     fi
+  else # GCC
+    _compiler_name=""
+    llvm_opt=""
   fi
 }
 
@@ -175,21 +185,6 @@ _tkg_initscript() {
 
   # Set compiler
   _set_compiler
-
-  if [  "$_compiler" = "llvm" ]; then
-    _compiler_name="-llvm"
-    llvm_opt="LLVM=1"
-    if [ $_basever -ge 512 ] && [ "$_lto_mode" != "no" ]; then
-      llvm_opt="LLVM=1 LLVM_IAS=1"
-    fi
-  elif [ "$_compiler" = "gcc" ]; then
-    _compiler="gcc"
-    _compiler_name=""
-    llvm_opt=""
-  else
-    error "Compiler set not recognised, exiting..."
-    exit 1
-  fi
 }
 
 user_patcher() {
