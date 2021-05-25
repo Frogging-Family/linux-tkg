@@ -57,7 +57,7 @@ _prompt_from_array() {
 
 _set_kernel_version() {
 
-  if [ -z "$_version" ] || ! [[  "${!_kver_subver_map[@]}" =~ "$_version" ]]; then
+  if [ -z "$_version" ] || ! [[  "${!_kver_subver_map[*]}" =~ "$_version" ]]; then
     msg2 "Which kernel version do you want to install?"
 
     # Create a list of kernels versions with their sub-version added and prompt from it
@@ -822,68 +822,58 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
 
   # Round Robin interval
-  if [ "${_cpusched}" = "muqss" ] || [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "upds" ]; then
-    if [ -n "$_rr_interval" ]; then
-      CONDITION1="$_rr_interval"
-    else
+  if [[ "${_cpusched}" =~ ^(muqss|pds|bmq|upds)$ ]]; then
+    _rr_interval_array=("2" "4" "6" "8")
+    _rr_interval_array_text=("2ms" "4ms" "6ms" "8ms")
+
+    typeset -A _rr_interval_default_indexes
+    _rr_interval_default_indexes=(
+      ["muqss"]="2"
+      ["pds"]="1"
+      ["upds"]="1"
+      ["bmq"]="0"
+    )
+
+    _default_index="${_rr_interval_default_indexes[$_cpusched]}"
+
+    #Remove whitespaces from variable
+    _rr_interval=`echo ${_rr_interval} | tr -d " "`
+
+    if [ "${_rr_interval}" = "default" ]; then
+      _rr_interval="${_rr_interval_array[$_default_index]}"
+    fi
+
+    if [[ -z "${_rr_interval}" || ! "${_rr_interval_array[@]}" =~ "$_rr_interval" ]]; then
       plain ""
       plain "Round Robin interval is the longest duration two tasks with the same nice level will"
       plain "be delayed for. When CPU time is requested by a task, it receives a time slice equal"
       plain "to the rr_interval in addition to a virtual deadline. When using yield_type 2, a low"
       plain "value can help offset the disadvantages of rescheduling a process that has yielded."
       plain ""
-      plain "MuQSS default: 6ms"
-      plain "PDS default: 4ms"
-      plain "BMQ default: 2ms"
-      # todo: use _prompt_from_array
-      read -rp "`echo $'\n    > 0.Keep defaults\n      1.2ms\n      2.4ms\n      3.6ms\n      4.8ms\n    [0-4?]: '`" CONDITION1;
+
+      _prompt_from_array "${_rr_interval_array_text[@]}"
+      _rr_interval="${_rr_interval_array[$_selected_index]}"
     fi
-    if [ "$CONDITION1" = "1" ]; then
-      msg2 "Using 2ms rr_interval"
-      _rrvalue="2"
-    elif [ "$CONDITION1" = "2" ]; then
-      msg2 "Using 4ms rr_interval"
-      _rrvalue="4"
-    elif [ "$CONDITION1" = "3" ]; then
-      msg2 "Using 6ms rr_interval"
-      _rrvalue="6"
-    elif [ "$CONDITION1" = "4" ]; then
-      msg2 "Using 8ms rr_interval"
-      _rrvalue="8"
-    else
-      msg2 "Using default rr_interval"
-      _rrvalue="default"
-    fi
+    msg2 "Using ${_rr_interval}ms rr_interval"
+
     if [ "$_basever" != "54" ]; then
-      if [ "$_rrvalue" != "default" ]; then
-        if [ "${_cpusched}" = "muqss" ]; then
-          sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
-	elif [ "${_cpusched}" = "upds" ]; then
-	  sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/pds.c
-        elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
-          sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rrvalue} * 1000 * 1000);/" ./kernel/sched/${_sched}.c
-        fi
-        if [ "${_cpusched}" == "bmq" ]; then
-          echo "CONFIG_SCHED_TIMESLICE=2" >> ./.config
-        fi
-      else
-        if [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
-          sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (2 * 1000 * 1000);/" ./kernel/sched/${_sched}.c
-        fi
+      if [ "${_cpusched}" = "muqss" ]; then
+        sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rr_interval};/" ./kernel/sched/"${_cpusched}".c
+      elif [ "${_cpusched}" = "upds" ]; then
+        sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rr_interval})/" ./kernel/sched/pds.c
+      elif [ "${_cpusched}" = "bmq" ] || [ "${_cpusched}" = "pds" ]; then
+        sed -i -e "s/u64 sched_timeslice_ns __read_mostly = (4 * 1000 * 1000);/u64 sched_timeslice_ns __read_mostly = (${_rr_interval} * 1000 * 1000);/" ./kernel/sched/${_sched}.c
+      fi
+      if [ "${_cpusched}" = "bmq" ]; then
+        echo "CONFIG_SCHED_TIMESLICE=2" >> ./.config
       fi
     else
-      if [ "$_rrvalue" != "default" ]; then
-        if [ "${_cpusched}" == "muqss" ]; then
-          sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rrvalue};/" ./kernel/sched/"${_cpusched}".c
-        elif [ "${_cpusched}" == "pds" ]; then
-          sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rrvalue})/" ./kernel/sched/"${_cpusched}".c
-        elif [ "${_cpusched}" == "bmq" ]; then
-          echo "CONFIG_SCHED_TIMESLICE=${_rrvalue}" >> ./.config
-        fi
-      else
-        if [ "${_cpusched}" == "bmq" ]; then
-          echo "CONFIG_SCHED_TIMESLICE=2" >> ./.config
-        fi
+      if [ "${_cpusched}" == "muqss" ]; then
+        sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rr_interval};/" ./kernel/sched/"${_cpusched}".c
+      elif [ "${_cpusched}" == "pds" ]; then
+        sed -i -e "s/#define SCHED_DEFAULT_RR (4)/#define SCHED_DEFAULT_RR (${_rr_interval})/" ./kernel/sched/"${_cpusched}".c
+      elif [ "${_cpusched}" == "bmq" ]; then
+        echo "CONFIG_SCHED_TIMESLICE=${_rr_interval}" >> ./.config
       fi
     fi
   fi
@@ -956,13 +946,14 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   # timer freq
   _avail_timer_frequencies=("100" "250" "300" "500" "750" "1000")
 
-  if [[ -n "$_timer_freq" && ! "${_avail_timer_frequencies[@]}" =~ "$_timer_freq" ]]; then
+  if [[ -n "$_timer_freq" && ! "${_avail_timer_frequencies[*]}" =~ "$_timer_freq" ]]; then
     warning "The setup timer frequency is not available, defaulting to 500Hz"
     _timer_freq="500"
   fi
 
   # Default to 500Hz if _timer_freq is not set
   if [ -z "$_timer_freq" ]; then
+    msg2 "Defaulting to 500Hz timer frequency"
     _timer_freq="500"
   fi
 
@@ -975,6 +966,8 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       scripts/config --undefine "HZ_${_freq}_nodef"
     fi
   done
+
+  exit 0
 
   # default cpu gov
   if [ "$_default_cpu_gov" = "performance" ]; then
