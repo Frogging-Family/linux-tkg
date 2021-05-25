@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Stop the script at any ecountered error
+set -e
+
+_where=`pwd`
+srcdir="$_where"
+
 source customization.cfg
 
 source linux-tkg-config/prepare
@@ -147,12 +153,6 @@ _linux_git_branch_checkout() {
   fi
 
 }
-
-# Stop the script at any ecountered error
-set -e
-
-_where=`pwd`
-srcdir="$_where"
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
