@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Needed for prompting with the correct order
-_supported_kernels=("5.4" "5.7" "5.8" "5.9" "5.10" "5.11" "5.12" "5.13")
+_supported_kernels=("5.13" "5.12" "5.11" "5.10" "5.9" "5.8" "5.7" "5.4")
 
 typeset -A _kver_subver_map
 _kver_subver_map=(
@@ -16,28 +16,58 @@ _kver_subver_map=(
 )
 
 _prompt_from_array() {
-  select _selected_value; do
-    # Check the selected menu item number
-    if [ 1 -le "$REPLY" ] && [ "$REPLY" -le $# ]; then
-      _selected_index=$(("$REPLY" - 1))
+  # Prompts from array, selects default index on empty user input
+  # Set the _default_index variable to enable default index selection
+
+  if [ $# = "0" ]; then
+    warning "Prompting on an empty array, please report this issue."
+    exit 1
+  fi
+
+  _N=$(($#-1))
+  _index=0
+  for _value in "$@"; do
+    if [ "$_index" = "$_default_index" ]; then
+      plain "  > ${_index}) ${_value}"
+    else
+      plain "    ${_index}) ${_value}"
+    fi
+    _index=$(($_index + 1))
+  done
+  while true; do
+    read -rp "[0-${_N}]: ";
+    if [[ -z "$REPLY" && -n "$_default_index" ]]; then
+      _selected_index="$_default_index"
+      break
+    elif [[ 1 -le "$REPLY" && "$REPLY" -le $_N ]]; then
+      _selected_index="$REPLY"
       break
     else
-      echo "Wrong selection: select any number in 1-$#"
+      echo "Wrong selection: select any number in 0-$_N"
     fi
   done
+
+  _natural_index=$(($_selected_index + 1))
+  _selected_value="${!_natural_index}"
+  plain "Selected: ${_selected_value}"
+
+  unset _natural_index
+  unset _default_index
 }
 
 _set_kernel_version() {
 
   if [ -z "$_version" ] || ! [[  "${!_kver_subver_map[@]}" =~ "$_version" ]]; then
     msg2 "Which kernel version do you want to install?"
-    
+
     # Create a list of kernels versions with their sub-version added and prompt from it
     _kernel_fullver_list=()
     for _key in "${_supported_kernels[@]}"; do
       _kernel_fullver_list+=("${_key}.${_kver_subver_map[$_key]}")
     done
 
+    #Default index corresponds to latest stable kernel
+    _default_index="1"
     _prompt_from_array  "${_kernel_fullver_list[@]}"
     _version=${_supported_kernels[$_selected_index]}
   fi
@@ -60,7 +90,7 @@ _set_cpu_scheduler() {
 
   # CPU SCHED selector
   if [ "$_basever" = "54" ] || [ "$_basever" = "57" ]; then
-    _avail_cpu_scheds=("pds" "muqss" "bmq" "cfs")
+    _avail_cpu_scheds=("pds" "bmq" "muqss" "cfs")
   elif [ "$_basever" = "58" ]; then
     _avail_cpu_scheds=("upds" "pds" "bmq" "cfs")
   elif [[ "$_basever" =~ ^(59|510|511)$ ]]; then
@@ -95,6 +125,7 @@ _set_cpu_scheduler() {
     msg2 "Project C (pds) / BMQ (bmq) is usually a good balance for gaming."
     msg2 "Select \"cfs\" (linux kernel's default) if unsure."
 
+    _default_index="0"
     _prompt_from_array "${_avail_cpu_scheds_text[@]}"
     _cpusched=${_avail_cpu_scheds[$_selected_index]}
   fi
@@ -109,6 +140,8 @@ _set_compiler(){
       plain "Which compiler do you want to use?"
       _compiler_array_text=("GCC (recommended)" "Clang/LLVM")
       _compiler_array=("gcc" "llvm")
+
+      _default_index="0"
       _prompt_from_array "${_compiler_array_text[@]}"
       _compiler="${_compiler_array[$_selected_index]}"
     fi
@@ -126,6 +159,8 @@ _set_compiler(){
           "Thin: uses multiple threads, faster and uses less memory, may have a lower runtime performance than Full."
         )
         _lto_mode_array=("no" "full" "thin")
+
+        _default_index="0"
         _prompt_from_array "${_lto_prompt_array[@]}"
         _lto_mode="${_lto_mode_array[$_selected_index]}"
       fi
@@ -175,6 +210,7 @@ _tkg_initscript() {
   if [ -z "$_OPTIPROFILE" ]; then
     # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
     plain "Do you want to use a predefined optimized profile?"
+    _default_index="0"
     _prompt_from_array "Custom" "Ryzen Desktop (Performance)" "Other Desktop (Performance)"
   fi
   if [ "$_selected_index" = "1" ]; then
