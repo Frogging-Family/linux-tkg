@@ -15,6 +15,18 @@ _kver_subver_map=(
   ["5.13"]="rc3"
 )
 
+_undefine() {
+  for _config_name in "$@"; do
+    scripts/config --undefine "${_config_name}"
+  done
+}
+
+_enable() {
+  for _config_name in "$@"; do
+    scripts/config --enable "${_config_name}"
+  done
+}
+
 _prompt_from_array() {
   # Prompts from array, selects default index on empty user input
   # Set the _default_index variable to enable default index selection
@@ -39,7 +51,7 @@ _prompt_from_array() {
     if [[ -z "$REPLY" && -n "$_default_index" ]]; then
       _selected_index="$_default_index"
       break
-    elif [[ 1 -le "$REPLY" && "$REPLY" -le $_N ]]; then
+    elif [[ 0 -le "$REPLY" && "$REPLY" -le $_N ]]; then
       _selected_index="$REPLY"
       break
     else
@@ -1029,43 +1041,33 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
 
   # tickless
-  if [ -z "$_tickless" ]; then
-    plain ""
+  if [[ -z "$_tickless" || ! "$_tickless" =~ ^(0|1|2)$ ]]; then
+  # Set to "1" to use CattaRappa mode (enabling full tickless), "2" for tickless idle only, or "0" for periodic ticks.
     plain "Use CattaRappa mode (Tickless/Dynticks) ?"
-    plain "Can give higher performances in many cases but lower consistency on some hardware."
-    plain "Just tickless idle can perform better with some platforms (mostly AMD) or CPU schedulers (mostly MuQSS)."
-    read -rp "`echo $'\n      0.No, use periodic ticks\n      1.Yes, full tickless baby!\n    > 2.Just tickless idle plz\n    [0-2?]: '`" CONDITION4;
+    _tickless_array_text=(
+      "Just tickless idle plz.\n        Just tickless idle can perform better with some platforms (mostly AMD) or CPU schedulers (mostly MuQSS)."
+      "Yes, full tickless baby!\n        Can give higher performances in many cases but lower consistency on some hardware."
+      "No, use periodic ticks."
+    )
+    _default_index="0"
+    _prompt_from_array "${_tickless_array_text[@]}"
+    _tickless="${_selected_index}"
   fi
-  if [ "$CONDITION4" = "0" ] || [ "$_tickless" = "0" ]; then
-    echo "# CONFIG_NO_HZ_FULL_NODEF is not set" >> ./.config
-    sed -i -e 's/# CONFIG_HZ_PERIODIC is not set/CONFIG_HZ_PERIODIC=y/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_IDLE=y/# CONFIG_NO_HZ_IDLE is not set/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_FULL=y/# CONFIG_NO_HZ_FULL is not set/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ=y/# CONFIG_NO_HZ is not set/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_COMMON=y/# CONFIG_NO_HZ_COMMON is not set/' ./.config
-  elif [ "$CONDITION4" = "2" ] || [ "$_tickless" = "1" ]; then
-    echo "CONFIG_NO_HZ_FULL_NODEF=y" >> ./.config
-    sed -i -e 's/CONFIG_HZ_PERIODIC=y/# CONFIG_HZ_PERIODIC is not set/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_IDLE=y/# CONFIG_NO_HZ_IDLE is not set/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ_FULL is not set/CONFIG_NO_HZ_FULL=y/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ is not set/CONFIG_NO_HZ=y/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ_COMMON is not set/CONFIG_NO_HZ_COMMON=y/' ./.config
-    echo "CONFIG_CONTEXT_TRACKING=y" >> ./.config
-    echo "# CONFIG_CONTEXT_TRACKING_FORCE is not set" >> ./.config
+  if [ "$_tickless" = "2" ]; then
+    _undefine "NO_HZ_FULL_NODEF" "NO_HZ_IDLE" "NO_HZ_FULL" "NO_HZ" "NO_HZ_COMMON"
+    _enable "HZ_PERIODIC"
+  elif [ "$_tickless" = "1" ]; then
+    _undefine "HZ_PERIODIC" "NO_HZ_IDLE" "CONTEXT_TRACKING_FORCE"
+    _enable "NO_HZ_FULL_NODEF" "NO_HZ_FULL" "NO_HZ" "NO_HZ_COMMON" "CONTEXT_TRACKING"
   else
-    echo "# CONFIG_NO_HZ_FULL_NODEF is not set" >> ./.config
-    sed -i -e 's/CONFIG_HZ_PERIODIC=y/# CONFIG_HZ_PERIODIC is not set/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ_IDLE is not set/CONFIG_NO_HZ_IDLE=y/' ./.config
-    sed -i -e 's/CONFIG_NO_HZ_FULL=y/# CONFIG_NO_HZ_FULL is not set/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ is not set/CONFIG_NO_HZ=y/' ./.config
-    sed -i -e 's/# CONFIG_NO_HZ_COMMON is not set/CONFIG_NO_HZ_COMMON=y/' ./.config
+    _undefine "NO_HZ_FULL_NODEF" "HZ_PERIODIC" "NO_HZ_FULL"
+    _enable "NO_HZ_IDLE" "NO_HZ" "NO_HZ_COMMON"
   fi
 
   # voluntary preempt
   if [ "$_voluntary_preempt" = "true" ]; then
-    sed -i -e 's/CONFIG_PREEMPT=y/# CONFIG_PREEMPT is not set/' ./.config
-    sed -i -e 's/CONFIG_PREEMPT_LL=y/# CONFIG_PREEMPT_LL is not set/' ./.config
-    sed -i -e 's/# CONFIG_PREEMPT_VOLUNTARY is not set/CONFIG_PREEMPT_VOLUNTARY=y/' ./.config
+    _undefine "PREEMPT" "PREEMPT_LL"
+    _enable "PREEMPT_VOLUNTARY"
   fi
 
   # Open Firmware support
