@@ -918,69 +918,27 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
 
   # timer freq
-  if [ -n "$_timer_freq" ] && [ "$_timer_freq" != "300" ]; then
-    sed -i -e 's/CONFIG_HZ_300=y/# CONFIG_HZ_300 is not set/' ./.config
-    sed -i -e 's/CONFIG_HZ_300_NODEF=y/# CONFIG_HZ_300_NODEF is not set/' ./.config
-    if [ "$_timer_freq" = "1000" ]; then
-      sed -i -e 's/# CONFIG_HZ_1000 is not set/CONFIG_HZ_1000=y/' ./.config
-      sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=1000/' ./.config
-      echo "# CONFIG_HZ_500 is not set" >> ./.config
-      echo "# CONFIG_HZ_500_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_750 is not set" >> ./.config
-      echo "# CONFIG_HZ_750_NODEF is not set" >> ./.config
-      echo "CONFIG_HZ_1000_NODEF=y" >> ./.config
-      echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-    elif [ "$_timer_freq" = "750" ]; then
-      sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=750/' ./.config
-      echo "# CONFIG_HZ_500 is not set" >> ./.config
-      echo "# CONFIG_HZ_500_NODEF is not set" >> ./.config
-      echo "CONFIG_HZ_750=y" >> ./.config
-      echo "CONFIG_HZ_750_NODEF=y" >> ./.config
-      echo "# CONFIG_HZ_1000_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-    elif [ "$_timer_freq" = "500" ]; then
-      sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=500/' ./.config
-      echo "CONFIG_HZ_500=y" >> ./.config
-      echo "CONFIG_HZ_500_NODEF=y" >> ./.config
-      echo "# CONFIG_HZ_750 is not set" >> ./.config
-      echo "# CONFIG_HZ_750_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_1000_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-    elif [ "$_timer_freq" = "100" ]; then
-      sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=100/' ./.config
-      echo "# CONFIG_HZ_500 is not set" >> ./.config
-      echo "# CONFIG_HZ_750 is not set" >> ./.config
-      echo "# CONFIG_HZ_1000_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_750_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_500_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-      echo "CONFIG_HZ_100=y" >> ./.config
-      echo "CONFIG_HZ_100_NODEF=y" >> ./.config
-    fi
-  elif [ "${_cpusched}" = "muqss" ] && [ -z "$_timer_freq" ]; then
-      sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=100/' ./.config
-      echo "# CONFIG_HZ_500 is not set" >> ./.config
-      echo "# CONFIG_HZ_750 is not set" >> ./.config
-      echo "# CONFIG_HZ_1000_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_750_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_500_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-      echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
-      echo "CONFIG_HZ_100=y" >> ./.config
-      echo "CONFIG_HZ_100_NODEF=y" >> ./.config
-  else
-    sed -i -e 's/CONFIG_HZ_300=y/# CONFIG_HZ_300 is not set/' ./.config
-    sed -i -e 's/CONFIG_HZ_300_NODEF=y/# CONFIG_HZ_300_NODEF is not set/' ./.config
-    sed -i -e 's/CONFIG_HZ=300/CONFIG_HZ=500/' ./.config
-    echo "CONFIG_HZ_500=y" >> ./.config
-    echo "CONFIG_HZ_500_NODEF=y" >> ./.config
-    echo "# CONFIG_HZ_250_NODEF is not set" >> ./.config
-    echo "# CONFIG_HZ_300_NODEF is not set" >> ./.config
+  _avail_timer_frequencies=("100" "250" "300" "500" "750" "1000")
+
+  if [[ -n "$_timer_freq" && ! "${_avail_timer_frequencies[@]}" =~ "$_timer_freq" ]]; then
+    warning "The setup timer frequency is not available, defaulting to 500Hz"
+    _timer_freq="500"
   fi
+
+  # Default to 500Hz if _timer_freq is not set
+  if [ -z "$_timer_freq" ]; then
+    _timer_freq="500"
+  fi
+
+  for _freq in "${_avail_timer_frequencies[@]}"; do
+    if [ "$_freq" = "$_timer_freq" ]; then
+      scripts/config --enable "HZ_${_freq}"
+      scripts/config --enable "HZ_${_freq}_nodef"
+    else
+      scripts/config --undefine "HZ_${_freq}"
+      scripts/config --undefine "HZ_${_freq}_nodef"
+    fi
+  done
 
   # default cpu gov
   if [ "$_default_cpu_gov" = "performance" ]; then
