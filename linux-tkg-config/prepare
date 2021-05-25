@@ -754,50 +754,63 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
 
   if [ "${_cpusched}" = "muqss" ]; then
     # MuQSS default config
-    echo "CONFIG_SCHED_MUQSS=y" >> ./.config
+    scripts/config --enable "SCHED_MUQSS"
   elif [ "${_cpusched}" = "pds" ]; then
     # PDS default config
-    echo "CONFIG_SCHED_ALT=y" >> ./.config
-    echo "CONFIG_SCHED_PDS=y" >> ./.config
-    echo "# CONFIG_SCHED_BMQ is not set" >> ./.config
+    scripts/config --enable "SCHED_ALT"
+    scripts/config --enable "SCHED_PDS"
+    scripts/config --undefine "SCHED_BMQ"
   elif [ "${_cpusched}" = "upds" ]; then
     # PDS default config
-    echo "CONFIG_SCHED_PDS=y" >> ./.config
+    scripts/config --enable "SCHED_PDS"
   elif [ "${_cpusched}" = "bmq" ]; then
     # BMQ default config
-    echo "CONFIG_SCHED_ALT=y" >> ./.config
-    echo "CONFIG_SCHED_BMQ=y" >> ./.config
-    echo "# CONFIG_SCHED_PDS is not set" >> ./.config
+    scripts/config --enable "SCHED_ALT"
+    scripts/config --enable "SCHED_BMQ"
+    scripts/config --undefine "SCHED_PDS"
   fi
 
   if [[ "${_cpusched}" =~ ^(muqss|pds|bmq|upds)$ ]]; then
     # Disable CFS
-    sed -i -e 's/CONFIG_FAIR_GROUP_SCHED=y/# CONFIG_FAIR_GROUP_SCHED is not set/' ./.config
-    sed -i -e 's/CONFIG_CFS_BANDWIDTH=y/# CONFIG_CFS_BANDWIDTH is not set/' ./.config
+    scripts/config --undefine "FAIR_GROUP_SCHED"
+    scripts/config --undefine "CFS_BANDWIDTH"
+
+    # for linux59-tkg _sched_yield_type is set to 0
+    if [ "$_basever" = "59" ]; then
+      _sched_yield_type="0"
+    fi
     # sched yield type
-    if [ -n "$_sched_yield_type" ]; then
-      CONDITION0="$_sched_yield_type"
-    # in customization.cfg for linux59-tkg _sched_yield_type is set to 0
-    elif [ "$_basever" = "59" ]; then
-      CONDITION0="0"
-    else
+    if ! [[ "$_sched_yield_type" =~ ^(0|1|2)$ ]]; then
       plain ""
       plain "CPU sched_yield_type - Choose what sort of yield sched_yield will perform."
       plain ""
-      plain "For PDS and MuQSS:"
-      plain "0: No yield."
-      plain "1: Yield only to better priority/deadline tasks."
-      plain "2: Expire timeslice and recalculate deadline."
-      plain ""
-      plain "For BMQ (experimental) - No recommended value yet, so try for yourself x) :"
-      plain "0: No yield."
-      plain "1: Deboost and requeue task. (default)"
-      plain "2: Set rq skip task."
+
+      _default_index="0"
       if [ "${_cpusched}" = "muqss" ]; then
-        read -rp "`echo $'\n      0. Supposedly best option for gaming performance,\n         but might lead to stability issues on some (AMD) platforms when combined with MuQSS\n    > 1. Default and recommended option for MuQSS - could lead to stability issues on some (Intel) platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
-      else
-        read -rp "`echo $'\n    > 0. Recommended option for gaming on PDS - "tkg" default\n      1. Default, but can lead to stability issues on some platforms\n      2. Can be a good option with low rr_interval on MuQSS\n    [0-2?]: '`" CONDITION0;
+        plain "For MuQSS"
+        yield_type_array_text=(
+          "No yield.\n        Supposedly best option for gaming performance but might lead to stability issues on some (AMD) platforms"
+          "Yield only to better priority/deadline tasks.\n        Could lead to stability issues on some (Intel) platforms"
+          "Expire timeslice and recalculate deadline.\n        Can be a good option with low rr_interval"
+        )
+      elif [[ "${_cpusched}" =~ ^(pds|upds)$ ]]; then
+        plain "For (U)PDS"
+        yield_type_array_text=(
+          "No yield.\n        Recommended option for gaming - \"tkg\" default"
+          "Yield only to better priority/deadline tasks.\n        Could lead to stability issues on some (Intel) platforms"
+          "Expire timeslice and recalculate deadline.\n        Can be a good option with low rr_interval"
+        )
+      else #BMQ
+        plain "For BMQ (experimental) - No recommended value yet, so try for yourself x) :"
+        yield_type_array_text=(
+          "No yield."
+          "Deboost and requeue task."
+          "Set rq skip task."
+        )
       fi
+
+      _prompt_from_array "${yield_type_array_text[@]}"
+      _sched_yield_type="${_selected_index}"
     fi
     if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
       _sched="pds"
@@ -806,11 +819,11 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     else
       _sched="alt_core"
     fi
-    if [ "$CONDITION0" = "0" ]; then
+    if [ "$_sched_yield_type" = "0" ]; then
       sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 0;/' ./kernel/sched/${_sched}.c
-    elif [ "$CONDITION0" = "1" ]; then
+    elif [ "$_sched_yield_type" = "1" ]; then
       msg2 "Using default CPU sched yield type (1)"
-    elif [ "$CONDITION0" = "2" ]; then
+    elif [ "$_sched_yield_type" = "2" ]; then
       sed -i -e 's/int sched_yield_type __read_mostly = 1;/int sched_yield_type __read_mostly = 2;/' ./kernel/sched/${_sched}.c
     else
       if [ "${_cpusched}" = "muqss" ]; then
@@ -966,8 +979,6 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       scripts/config --undefine "HZ_${_freq}_nodef"
     fi
   done
-
-  exit 0
 
   # default cpu gov
   if [ "$_default_cpu_gov" = "performance" ]; then
