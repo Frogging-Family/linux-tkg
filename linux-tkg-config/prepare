@@ -27,6 +27,18 @@ _enable() {
   done
 }
 
+_disable() {
+  for _config_name in "$@"; do
+    scripts/config --disable "${_config_name}"
+  done
+}
+
+_module() {
+  for _config_name in "$@"; do
+    scripts/config --module "${_config_name}"
+  done
+}
+
 _prompt_from_array() {
   # Prompts from array, selects default index on empty user input
   # Set the _default_index variable to enable default index selection
@@ -504,26 +516,18 @@ _tkg_srcprep() {
   if [ -z $_debug ]; then
 
   # Set some -tkg defaults
-  echo "# CONFIG_DYNAMIC_FAULT is not set" >> ./.config
-  sed -i -e 's/CONFIG_DEFAULT_FQ_CODEL=y/# CONFIG_DEFAULT_FQ_CODEL is not set/' ./.config
-  echo "CONFIG_DEFAULT_CAKE=y" >> ./.config
+  _undefine "DYNAMIC_FAULT" "DEFAULT_FQ_CODEL"
+  _enable "DEFAULT_CAKE"
   if [ "$_basever" = "54" ]; then
-    echo "CONFIG_TP_SMAPI=m" >> ./.config
-    echo "CONFIG_RAID6_USE_PREFER_GEN=y" >> ./.config
+    scripts/config --module "TP_SMAPI"
+    _enable "RAID6_USE_PREFER_GEN"
   fi
   if [ "$_basever" = "54" ] || [ "$_basever" = "59" ]; then
-    sed -i -e 's/CONFIG_RCU_BOOST_DELAY=500/CONFIG_RCU_BOOST_DELAY=0/' ./.config
+    scripts/config --set-val "RCU_BOOST_DELAY" "0"
   fi
-  echo "# CONFIG_NTP_PPS is not set" >> ./.config
-  echo "# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF is not set" >> ./.config
-  sed -i -e 's/CONFIG_CRYPTO_LZ4=m/CONFIG_CRYPTO_LZ4=y/' ./.config
-  sed -i -e 's/CONFIG_CRYPTO_LZ4HC=m/CONFIG_CRYPTO_LZ4HC=y/' ./.config
-  sed -i -e 's/CONFIG_LZ4_COMPRESS=m/CONFIG_LZ4_COMPRESS=y/' ./.config
-  sed -i -e 's/CONFIG_LZ4HC_COMPRESS=m/CONFIG_LZ4HC_COMPRESS=y/' ./.config
-  sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO is not set/' ./.config
-  sed -i -e 's/# CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4 is not set/CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZ4=y/' ./.config
-  sed -i -e 's/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lzo"/CONFIG_ZSWAP_COMPRESSOR_DEFAULT="lz4"/' ./.config
-  sed -i -e 's/# CONFIG_CMDLINE_BOOL is not set/CONFIG_CMDLINE_BOOL=y/' ./.config
+  _undefine "NTP_PPS" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF" "ZSWAP_COMPRESSOR_DEFAULT_LZO"
+  _enable "CRYPTO_LZ4" "CRYPTO_LZ4HC" "LZ4_COMPRESS" "LZ4HC_COMPRESS" "ZSWAP_COMPRESSOR_DEFAULT_LZ4" "CMDLINE_BOOL"
+  scripts/config --set-str "ZSWAP_COMPRESSOR_DEFAULT" "lz4"
   if [ "$_futex2" = "true" ] && [ "$_basever" != "54" ] && [ "$_basever" != "57" ] && [ "$_basever" != "58" ] && [ "$_basever" != "59" ]; then
     sed -i -e 's/# CONFIG_EXPERT is not set/CONFIG_EXPERT=y/' ./.config
     echo -e "# CONFIG_DEBUG_RSEQ is not set\n
@@ -609,12 +613,9 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
 # CONFIG_UNWINDER_GUESS is not set\n
 # CONFIG_TRIM_UNUSED_KSYMS is not set">> ./.config
   fi
-  echo "CONFIG_CMDLINE=\"${_custom_commandline}\"" >> ./.config
-  echo "# CONFIG_CMDLINE_OVERRIDE is not set" >> ./.config
-  echo "# CONFIG_X86_P6_NOP is not set" >> ./.config
+  scripts/config --set-str "CMDLINE" "${_custom_commandline}"
+  _undefine "CMDLINE_OVERRIDE" "X86_P6_NOP" "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_DEFAULT_GOV_CONSERVATIVE"
   #echo "# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE is not set" >> ./.config
-  echo "# CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND is not set" >> ./.config
-  echo "# CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE is not set" >> ./.config
 
   # openrgb
   echo "CONFIG_I2C_NCT6775=m" >> ./.config
@@ -623,7 +624,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   if [ "$_noccache" != "true" ]; then
     if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }\
 	    || { [ "$_distro" = "Void" ] && xbps-query -s ccache > /dev/null; } ; then
-      sed -i -e 's/CONFIG_GCC_PLUGINS=y/# CONFIG_GCC_PLUGINS is not set/' ./.config
+      _undefine "GCC_PLUGINS"
     fi
   fi
   # Clang LTO
@@ -638,26 +639,21 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
   # Void uses LibreSSL
   if [ "$_distro" = "Void" ]; then
-    sed -i -e 's/CONFIG_MODULE_SIG_SHA512=y/# CONFIG_MODULE_SIG_SHA512 is not set/' ./.config
-    sed -i -e 's/# CONFIG_MODULE_SIG_SHA1 is not set/CONFIG_MODULE_SIG_SHA1=y/' ./.config
-    sed -i -e 's/CONFIG_MODULE_SIG_HASH="sha512"/CONFIG_MODULE_SIG_HASH="sha1"/' ./.config
+    _unset "MODULE_SIG_SHA512"
+    _enable "MODULE_SIG_SHA1"
+    scripts/config --set-str "MODULE_SIG_HASH" "sha1"
   fi
-  # Prevent Debian to sign certs (Bios/UEFI)
-  if [ "$_distro" = "Debian" ]; then
+
+  # Prevent Debian and Ubuntu to sign stuff because it breaks stuff
+  if [[ "$_distro" = "Debian" || "$_distro" = "Ubuntu" ]; then
     #Help Debian cert compile problem.
-    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/test-signing-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
-    #Help Debian UEFI cert compile problem
-    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/certs/debian-uefi-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
-  fi
-  # Latest versions of Ubuntu require Canonical certifications.
-  if [ "$_distro" = "Ubuntu" ]; then
-    #Help Ubuntu cert compile problem.
-    sed -i -e 's#CONFIG_SYSTEM_TRUSTED_KEYS="debian/canonical-certs.pem"#CONFIG_SYSTEM_TRUSTED_KEYS=""#g' .config
+    scripts/config --set-str "SYSTEM_TRUSTED_KEYS" ""
   fi
   # Skip dbg package creation on non-Arch
   if [ "$_distro" != "Arch" ]; then
-    sed -i -e 's/CONFIG_DEBUG_INFO.*/CONFIG_DEBUG_INFO=n/' ./.config
+    _disable "DEBUG_INFO"
   fi
+
   if [ "$_compiler_name" = "-llvm" ]; then
     echo 'CONFIG_KCSAN=n' >> ./.config
     if [ "$_basever" != "54" ] && [ "$_basever" != "57" ] && [ "$_basever" != "58" ]; then
@@ -665,47 +661,30 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     else
       echo 'CONFIG_INIT_STACK_ALL=n' >> ./.config
     fi
-    sed -i -e 's/# CONFIG_INIT_ON_FREE_DEFAULT_ON is not set/CONFIG_INIT_ON_FREE_DEFAULT_ON=y/' ./.config
-    sed -i -e 's/CONFIG_INIT_STACK_NONE=y/CONFIG_INIT_STACK_NONE=n/' ./.config
-    echo "CONFIG_INIT_STACK_ALL_ZERO=y" >> ./.config
+    _enable "INIT_ON_FREE_DEFAULT_ON" "INIT_STACK_ALL_ZERO"
+    _disable "INIT_STACK_NONE"
   fi
 
   if [ "$_font_autoselect" != "false" ]; then
-    sed -i -e 's/CONFIG_FONT_TER16x32=y/# CONFIG_FONT_TER16x32 is not set\nCONFIG_FONT_AUTOSELECT=y/' ./.config
+    _unset "FONT_TER16x32"
+    _enable "FONT_AUTOSELECT"
   fi
 
   # cpu opt
 
-  if [ -n "$_processor_opt" ] && [[ "$_processor_opt" != native* ]]; then
-    echo "# CONFIG_MNATIVE is not set" >> ./.config
-    echo "# CONFIG_MNATIVE_AMD is not set" >> ./.config
-    echo "# CONFIG_MNATIVE_INTEL is not set" >> ./.config
+  if [[ -n "$_processor_opt" && "$_processor_opt" != native* ]]; then
+    _unset "MNATIVE" "MNATIVE_AMD" "MNATIVE_INTEL"
   fi
 
-  if [ -n "$_processor_opt" ] && [[ "$_processor_opt" != generic* ]]; then
-    sed -i -e 's/CONFIG_GENERIC_CPU=y/# CONFIG_GENERIC_CPU is not set/' ./.config
-    echo "# CONFIG_GENERIC_CPU2 is not set" >> ./.config
-    echo "# CONFIG_GENERIC_CPU3 is not set" >> ./.config
-    echo "# CONFIG_GENERIC_CPU4 is not set" >> ./.config
-  elif [ -n "$_processor_opt" ] && [ "$_processor_opt" = "genericv2" ]; then
-    sed -i -e 's/CONFIG_GENERIC_CPU=y/# CONFIG_GENERIC_CPU is not set/' ./.config
-    echo "CONFIG_GENERIC_CPU2=y" >> ./.config
-    echo "# CONFIG_GENERIC_CPU3 is not set" >> ./.config
-    echo "# CONFIG_GENERIC_CPU4 is not set" >> ./.config
-  elif [ -n "$_processor_opt" ] && [ "$_processor_opt" = "genericv3" ]; then
-    sed -i -e 's/CONFIG_GENERIC_CPU=y/# CONFIG_GENERIC_CPU is not set/' ./.config
-    echo "# CONFIG_GENERIC_CPU2 is not set" >> ./.config
-    echo "CONFIG_GENERIC_CPU3=y" >> ./.config
-    echo "# CONFIG_GENERIC_CPU4 is not set" >> ./.config
-  elif [ -n "$_processor_opt" ] && [ "$_processor_opt" = "genericv4" ]; then
-    sed -i -e 's/CONFIG_GENERIC_CPU=y/# CONFIG_GENERIC_CPU is not set/' ./.config
-    echo "# CONFIG_GENERIC_CPU2 is not set" >> ./.config
-    echo "# CONFIG_GENERIC_CPU3 is not set" >> ./.config
-    echo "CONFIG_GENERIC_CPU4=y" >> ./.config
-  else
-    echo "# CONFIG_GENERIC_CPU2 is not set" >> ./.config
-    echo "# CONFIG_GENERIC_CPU3 is not set" >> ./.config
-    echo "# CONFIG_GENERIC_CPU4 is not set" >> ./.config
+  _undefine "GENERIC_CPU" "GENERIC_CPU2" "GENERIC_CPU3" "GENERIC_CPU4"
+  if [[ -z "$_processor_opt" || "$_processor_opt" = "generic" ]]; then
+    _enable "GENERIC_CPU"
+  elif [ "$_processor_opt" = "genericv2" ]
+    _enable "GENERIC_CPU2"
+  elif [ "$_processor_opt" = "genericv3" ]
+    _enable "GENERIC_CPU3"
+  elif [ "$_processor_opt" = "genericv4" ]
+    _enable "GENERIC_CPU4"
   fi
 
   _cpu_marchs=("k8" "k8sse3" "k10" "barcelona" "bobcat" "jaguar" "bulldozer" "piledriver")
@@ -718,25 +697,17 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   if [ ! -z "$_processor_opt" ]; then # Don't populate when the config variable is empty
     for _march in "${_cpu_marchs[@]}"
     do
-      _march_upper=`echo ${_march} | tr '[:lower:]' '[:upper:]'`
       if [ "$_processor_opt" = "$_march" ]; then
-        echo "CONFIG_M${_march_upper}=y/" >> ./.config
+        _enable "M${_march}"
       else
-        echo "# CONFIG_M${_march_upper} is not set" >> ./.config
+        _unset "M${_march}"
       fi
     done
   fi
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then
-    sed -i -e 's/CONFIG_SLUB_DEBUG=y/# CONFIG_SLUB_DEBUG is not set/' ./.config
-    sed -i -e 's/CONFIG_PM_DEBUG=y/# CONFIG_PM_DEBUG is not set/' ./.config
-    sed -i -e 's/CONFIG_PM_ADVANCED_DEBUG=y/# CONFIG_PM_ADVANCED_DEBUG is not set/' ./.config
-    sed -i -e 's/CONFIG_PM_SLEEP_DEBUG=y/# CONFIG_PM_SLEEP_DEBUG is not set/' ./.config
-    sed -i -e 's/CONFIG_ACPI_DEBUG=y/# CONFIG_ACPI_DEBUG is not set/' ./.config
-    sed -i -e 's/CONFIG_SCHED_DEBUG=y/# CONFIG_SCHED_DEBUG is not set/' ./.config
-    sed -i -e 's/CONFIG_LATENCYTOP=y/# CONFIG_LATENCYTOP is not set/' ./.config
-    sed -i -e 's/CONFIG_DEBUG_PREEMPT=y/# CONFIG_DEBUG_PREEMPT is not set/' ./.config
+    _undefine "SLUB_DEBUG" "PM_DEBUG" "PM_ADVANCED_DEBUG" "PM_SLEEP_DEBUG" "ACPI_DEBUG" "SCHED_DEBUG" "LATENCYTOP" "DEBUG_PREEMPT"
   fi
 
   # TCP algorithms
@@ -904,68 +875,71 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
 
   # zenify
-  if [ "$_zenify" = "true" ]; then
-    echo "CONFIG_ZENIFY=y" >> ./.config
-  elif [ "$_zenify" = "false" ]; then
-    echo "# CONFIG_ZENIFY is not set" >> ./.config
+  if [ "$_zenify" = "false" ]; then
+    _unset "ZENIFY"
+  else
+    _enable "ZENIFY"
   fi
 
   # compiler optimization level
   if [ "$_compileroptlevel" = "1" ]; then
     if [ "$_basever" != "54" ]; then
-      echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+      _unset "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
     else
-      echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ./.config
+      _unset "CC_OPTIMIZE_HARDER"
     fi
   elif [ "$_compileroptlevel" = "2" ]; then
-    sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ./.config
+    _unset "CC_OPTIMIZE_FOR_PERFORMANCE"
     if [ "$_basever" != "54" ]; then
-      echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y" >> ./.config
+      _enable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
     else
-      echo "CONFIG_CC_OPTIMIZE_HARDER=y" >> ./.config
+      _enable _unset "CC_OPTIMIZE_HARDER"
     fi
   elif [ "$_compileroptlevel" = "3" ]; then
-    sed -i -e 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set/' ./.config
-    sed -i -e 's/# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set/CONFIG_CC_OPTIMIZE_FOR_SIZE=y/' ./.config
+    _unset "CC_OPTIMIZE_FOR_PERFORMANCE"
+    _enable "CC_OPTIMIZE_FOR_SIZE"
     if [ "$_basever" != "54" ]; then
-      echo "# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 is not set" >> ./.config
+      _unset "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
     else
-      echo "# CONFIG_CC_OPTIMIZE_HARDER is not set" >> ./.config
+      _unset "CC_OPTIMIZE_HARDER"
     fi
   fi
 
   # irq threading
   if [ "$_irq_threading" = "true" ]; then
-    echo "CONFIG_FORCE_IRQ_THREADING=y" >> ./.config
+    _enable "FORCE_IRQ_THREADING"
   elif [ "$_irq_threading" = "false" ]; then
-    echo "# CONFIG_FORCE_IRQ_THREADING is not set" >> ./.config
+    _unset "FORCE_IRQ_THREADING"
   fi
 
   # smt nice
   if [ "$_smt_nice" = "true" ]; then
-    echo "CONFIG_SMT_NICE=y" >> ./.config
+    _enable "SMT_NICE"
   elif [ "$_smt_nice" = "false" ]; then
-    echo "# CONFIG_SMT_NICE is not set" >> ./.config
+    _undefine "SMT_NICE"
   fi
 
   # random trust cpu
   if [ "$_random_trust_cpu" = "true" ]; then
-    sed -i -e 's/# CONFIG_RANDOM_TRUST_CPU is not set/CONFIG_RANDOM_TRUST_CPU=y/' ./.config
+    _enable "RANDOM_TRUST_CPU"
   fi
 
   # rq sharing
-  if [ "$_runqueue_sharing" = "none" ]; then
-    echo -e "CONFIG_RQ_NONE=y\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
-  elif [ -z "$_runqueue_sharing" ] || [ "$_runqueue_sharing" = "smt" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\nCONFIG_RQ_SMT=y\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
-  elif [ "$_runqueue_sharing" = "mc" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\nCONFIG_RQ_MC=y\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
-  elif [ "$_runqueue_sharing" = "smp" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\nCONFIG_RQ_SMP=y\n# CONFIG_RQ_ALL is not set" >> ./.config
-  elif [ "$_runqueue_sharing" = "all" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\n# CONFIG_RQ_MC_LLC is not set\n# CONFIG_RQ_SMP is not set\nCONFIG_RQ_ALL=y" >> ./.config
-  elif [ "$_runqueue_sharing" = "mc-llc" ]; then
-    echo -e "# CONFIG_RQ_NONE is not set\n# CONFIG_RQ_SMT is not set\n# CONFIG_RQ_MC is not set\nCONFIG_RQ_MC_LLC=y\n# CONFIG_RQ_SMP is not set\n# CONFIG_RQ_ALL is not set" >> ./.config
+  if [ "${_cpusched}" = "muqss" ]; then
+    _undefine "RQ_NONE" "RQ_SMT" "RQ_MC" "RQ_MC_LLC" "RQ_SMP" "RQ_ALL"
+    if [ "$_runqueue_sharing" = "none" ]; then
+      _enable "RQ_NONE"
+    elif [ -z "$_runqueue_sharing" ] || [ "$_runqueue_sharing" = "smt" ]; then
+      _enable "RQ_SMT"
+    elif [ "$_runqueue_sharing" = "mc" ]; then
+      _enable "RQ_MC"
+    elif [ "$_runqueue_sharing" = "smp" ]; then
+      _enable "RQ_SMP"
+    elif [ "$_runqueue_sharing" = "all" ]; then
+      _enable "RQ_ALL"
+    elif [ "$_runqueue_sharing" = "mc-llc" ]; then
+      _enable "RQ_MC_LLC"
+    fi
   fi
 
   # timer freq
@@ -994,18 +968,16 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
 
   # default cpu gov
   if [ "$_default_cpu_gov" = "performance" ]; then
-    sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
-    sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y/' ./.config
-    sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF=y/' ./.config
+    _undefine "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
+    _enable "CPU_FREQ_DEFAULT_GOV_PERFORMANCE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF"
   elif [ "$_default_cpu_gov" = "ondemand" ]; then
-    sed -i -e 's/CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y/# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set/' ./.config
-    sed -i -e 's/# CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND is not set/CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y/' ./.config
-    sed -i -e 's/CONFIG_CPU_FREQ_GOV_ONDEMAND=m/CONFIG_CPU_FREQ_GOV_ONDEMAND=y/' ./.config
+    _undefine "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
+    _enable "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_GOV_ONDEMAND=y"
   fi
 
   # ACPI_CPUFREQ disablement
   if [ "$_disable_acpi_cpufreq" = "true" ]; then
-    sed -i -e 's/CONFIG_X86_ACPI_CPUFREQ=m/# CONFIG_X86_ACPI_CPUFREQ is not set/' ./.config
+    _undefine "X86_ACPI_CPUFREQ"
   fi
 
   # ftrace
@@ -1016,8 +988,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     read -rp "`echo $'    > N/y : '`" CONDITION2;
   fi
   if [[ "$CONDITION2" =~ [yY] ]] || [ "$_ftracedisable" = "true" ]; then
-    sed -i -e 's/CONFIG_FUNCTION_TRACER=y/# CONFIG_FUNCTION_TRACER is not set/' ./.config
-    sed -i -e 's/CONFIG_FUNCTION_GRAPH_TRACER=y/# CONFIG_FUNCTION_GRAPH_TRACER is not set/' ./.config
+    _undefine "FUNCTION_TRACER" "FUNCTION_GRAPH_TRACER"
   fi
 
   # disable numa
@@ -1029,15 +1000,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
   if [[ "$CONDITION3" =~ [yY] ]] || [ "$_numadisable" = "true" ]; then
     # disable NUMA since 99.9% of users do not have multiple CPUs but do have multiple cores in one CPU
-    sed -i -e 's/CONFIG_NUMA=y/# CONFIG_NUMA is not set/' \
-        -i -e '/CONFIG_AMD_NUMA=y/d' \
-        -i -e '/CONFIG_X86_64_ACPI_NUMA=y/d' \
-        -i -e '/CONFIG_NODES_SPAN_OTHER_NODES=y/d' \
-        -i -e '/# CONFIG_NUMA_EMU is not set/d' \
-        -i -e '/CONFIG_NODES_SHIFT=6/d' \
-        -i -e '/CONFIG_NEED_MULTIPLE_NODES=y/d' \
-        -i -e '/CONFIG_USE_PERCPU_NUMA_NODE_ID=y/d' \
-        -i -e '/CONFIG_ACPI_NUMA=y/d' ./.config
+    _undefine "NUMA" "AMD_NUMA" "ACPI_NUMA" "X86_64_ACPI_NUMA" "NODES_SPAN_OTHER_NODES" "NUMA_EMU" "NODES_SHIFT" "NEED_MULTIPLE_NODES" "USE_PERCPU_NUMA_NODE_ID"
   fi
 
   # tickless
@@ -1077,7 +1040,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     read -rp "`echo $'    > N/y : '`" CONDITION6;
   fi
   if [[ "$CONDITION6" =~ [yY] ]] || [ "$_OFenable" = "true" ]; then
-    sed -i -e 's/# CONFIG_OF is not set/CONFIG_OF=y/' ./.config
+    _enable "OF"
   fi
 
   # acs override
@@ -1107,12 +1070,10 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
        _msg="Patching Bcache filesystem support override"
        _tkg_patcher
-       echo "CONFIG_BCACHEFS_FS=m" >> ./.config
-       echo "CONFIG_BCACHEFS_QUOTA=y" >> ./.config
-       echo "CONFIG_BCACHEFS_POSIX_ACL=y" >> ./.config
-       echo "# CONFIG_BCACHEFS_DEBUG is not set" >> ./.config
-       echo "# CONFIG_BCACHEFS_TESTS is not set" >> ./.config
-       echo "# CONFIG_DEBUG_CLOSURES is not set" >> ./.config
+
+       _module "BCACHEFS_FS"
+       _enable "BCACHEFS_QUOTA" "BCACHEFS_POSIX_ACL"
+       _unset "BCACHEFS_DEBUG" "BCACHEFS_TESTS" "DEBUG_CLOSURES"
     fi
   fi
 
@@ -1145,7 +1106,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     if [[ "$CONDITION10" =~ [yY] ]] || [ "$_futex2" = "true" ]; then
       _msg="Patching futex2 support"
       _tkg_patcher
-      echo "CONFIG_FUTEX2=y" >> ./.config
+      _enable "FUTEX2"
     fi
   fi
 
@@ -1162,7 +1123,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     if [[ "$CONDITION_winesync" =~ [yY] ]] || [ "$_winesync" = "true" ]; then
       _msg="Patching winesync/fastsync support"
       _tkg_patcher
-      echo "CONFIG_WINESYNC=m" >> ./.config
+      _module "WINESYNC"
       echo "KERNEL==\"winesync\", MODE=\"0644\"" > ../winesync.rules
       echo "winesync" > ../winesync.conf
     fi
@@ -1181,15 +1142,9 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
       read -rp "`echo $'    > N/y : '`" CONDITION12;
     fi
     if [[ "$CONDITION12" =~ [yY] ]] || [ "$_anbox" = "true" ]; then
-      echo "CONFIG_ASHMEM=y" >> ./.config
-      echo "CONFIG_ION=y" >> ./.config
-      echo "CONFIG_ION_CMA_HEAP=y" >> ./.config
-      echo "# CONFIG_ION_SYSTEM_HEAP is not set" >> ./.config
-      echo "CONFIG_ANDROID=y" >> ./.config
-      echo "CONFIG_ANDROID_BINDER_IPC=y" >> ./.config
-      echo "CONFIG_ANDROID_BINDERFS=y" >>./.config
-      echo 'CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"' >>./.config
-      echo "# CONFIG_ANDROID_BINDER_IPC_SELFTEST is not set" >> ./.config
+      _enable "ASHMEM" "ION" "ION_CMA_HEAP" "ANDROID" "ANDROID_BINDER_IPC" "ANDROID_BINDERFS"
+      _unset "ION_SYSTEM_HEAP" "ANDROID_BINDER_IPC_SELFTEST"
+      scripts/config --set-str "ANDROID_BINDER_DEVICES" "binder,hwbinder,vndbinder"
       warning "Please make sure to read up on how to use this; https://github.com/Frogging-Family/linux-tkg#anbox-usage"
       if [[ "$CONDITION12" =~ [yY] ]]; then
         read -rp "Press enter to continue..."
