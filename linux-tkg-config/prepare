@@ -63,7 +63,7 @@ _prompt_from_array() {
     if [[ -z "$REPLY" && -n "$_default_index" ]]; then
       _selected_index="$_default_index"
       break
-    elif [[ 0 -le "$REPLY" && "$REPLY" -le $_N ]]; then
+    elif [[ -n "$REPLY" && 0 -le "$REPLY" && "$REPLY" -le $_N ]]; then
       _selected_index="$REPLY"
       break
     else
@@ -671,39 +671,50 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
   fi
 
   # cpu opt
-
-  if [[ -n "$_processor_opt" && "$_processor_opt" != native* ]]; then
-    _undefine "MNATIVE" "MNATIVE_AMD" "MNATIVE_INTEL"
-  fi
-
-  _undefine "GENERIC_CPU" "GENERIC_CPU2" "GENERIC_CPU3" "GENERIC_CPU4"
-  if [[ -z "$_processor_opt" || "$_processor_opt" = "generic" ]]; then
-    _enable "GENERIC_CPU"
-  elif [ "$_processor_opt" = "genericv2" ]; then
-    _enable "GENERIC_CPU2"
-  elif [ "$_processor_opt" = "genericv3" ]; then
-    _enable "GENERIC_CPU3"
-  elif [ "$_processor_opt" = "genericv4" ]; then
-    _enable "GENERIC_CPU4"
-  fi
-
-  _cpu_marchs=("k8" "k8sse3" "k10" "barcelona" "bobcat" "jaguar" "bulldozer" "piledriver")
+  _cpu_marchs=("native_amd" "native_intel" "generic_cpu" "generic_cpu2" "generic_cpu3" "generic_cpu4")
+  _cpu_marchs+=("k8" "k8sse3" "k10" "barcelona" "bobcat" "jaguar" "bulldozer" "piledriver")
   _cpu_marchs+=("steamroller" "excavator" "zen" "zen2" "zen3" "mpsc" "atom" "core2" "nehalem" "westmere")
   _cpu_marchs+=("bonnell" "silvermont" "sandybridge" "ivybridge" "haswell" "broadwell" "skylake")
   _cpu_marchs+=("skylakex" "cannonlake" "icelake" "goldmont" "goldmontplus" "cascadelake")
   _cpu_marchs+=("cooperlake" "tigerlake" "sapphirerapids" "rocketlake" "alderlake")
-  _cpu_marchs+=("native" "native_amd" "native_intel")
 
-  if [ ! -z "$_processor_opt" ]; then # Don't populate when the config variable is empty
-    for _march in "${_cpu_marchs[@]}"
-    do
-      if [ "$_processor_opt" = "$_march" ]; then
-        _enable "M${_march}"
-      else
-        _undefine "M${_march}"
-      fi
-    done
+  typeset -A _generic_march_map
+  _generic_march_map=(
+    ["generic"]="generic_cpu"
+    ["generic_v2"]="generic_cpu2"
+    ["generic_v3"]="generic_cpu3"
+    ["generic_v4"]="generic_cpu4"
+  )
+  if [ -n "$_processor_opt" ]; then
+    # Replace customization.cfg convention with .config convention for generic
+    if [[ "${!_generic_march_map[@]}" =~ "$_processor_opt" ]]; then
+      _processor_opt="${_generic_march_map[$_processor_opt]}"
+    fi
+    if ! [[ "${_cpu_marchs[@]}" =~ "$_processor_opt" ]]; then
+      warning "the setup _processor_opt=\"${_processor_opt}\" not recognized. Prompting..."
+      _processor_opt=""
+    fi
   fi
+
+  if [ -z "$_processor_opt" ]; then
+    msg2 "Please select the desired CPU micro-architecture"
+    _default_index="2"
+    _prompt_from_array "${_cpu_marchs[@]}"
+    _processor_opt="${_selected_value}"
+  fi
+
+  for _march in "${_cpu_marchs[@]}"
+  do
+    if [ "$_processor_opt" = "$_march" ]; then
+      if [[ "$_march" == "generic"* ]]; then
+        _enable "${_march}"
+      else
+        _enable "M${_march}"
+      fi
+    else
+      _undefine "M${_march}"
+    fi
+  done
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then
@@ -972,7 +983,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     _enable "CPU_FREQ_DEFAULT_GOV_PERFORMANCE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF"
   elif [ "$_default_cpu_gov" = "ondemand" ]; then
     _undefine "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
-    _enable "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_GOV_ONDEMAND=y"
+    _enable "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_GOV_ONDEMAND"
   fi
 
   # ACPI_CPUFREQ disablement
