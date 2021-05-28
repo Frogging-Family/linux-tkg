@@ -4,7 +4,9 @@
 
 
 Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
-- 5.11.y (Project C / PDS & BMQ, MuQSS)
+- 5.13 RCs (Project C / PDS & BMQ)
+- 5.12.y (Project C / PDS & BMQ, MuQSS)
+- 5.11.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.10.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.9.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.8.y (Undead PDS, Project C / PDS & BMQ)
