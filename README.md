@@ -4,14 +4,16 @@
 
 
 Custom Linux kernels with specific CPU schedulers related patchsets selector (CFS is an option for every kernel) with added tweaks for a nice interactivity/performance balance, aiming for the best gaming experience.
-- 5.13 RCs (Project C / PDS & BMQ)
-- 5.12.y (Project C / PDS & BMQ, MuQSS)
+- 5.13 RCs (Project C / PDS & BMQ, CacULE)
+- 5.12.y (Project C / PDS & BMQ, MuQSS, CacULE)
 - 5.11.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.10.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.9.y (Undead PDS, Project C / PDS & BMQ, MuQSS)
 - 5.8.y (Undead PDS, Project C / PDS & BMQ)
 - 5.7.y (MuQSS, PDS, Project C / BMQ)
 - 5.4.y (MuQSS, PDS, BMQ)
+
+CacULE : https://github.com/hamadmarri/cacule-cpu-scheduler
 
 MuQSS : http://ck-hack.blogspot.com/
 
