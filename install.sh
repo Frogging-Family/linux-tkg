@@ -106,7 +106,13 @@ _linux_git_branch_checkout() {
     msg2 "Reseting files to their original state"
 
     git reset --hard HEAD
-    git clean -f -d -x
+
+    if [ "${_distro}" = "Generic" ]; then
+      msg2 "Please enter your sudo password so the script can clean root owned files from the kernel sources"
+      sudo git clean -fdx
+    else
+      git clean -f -d -x
+    fi
   fi
 
   if [[ "$_sub" = rc* ]]; then
