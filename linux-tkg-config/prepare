@@ -110,6 +110,7 @@ _set_cpu_scheduler() {
     ["cfs"]="CFS (Completely Fair Scheduler) Linux kernel's default"
     ["muqss"]="MuQSS (Multiple Queue Skiplist Scheduler)"
     ["upds"]="Undead PDS (TkG)"
+    ["cacule"]="CacULE"
   )
 
   # CPU SCHED selector
@@ -120,9 +121,9 @@ _set_cpu_scheduler() {
   elif [[ "$_basever" =~ ^(59|510|511)$ ]]; then
     _avail_cpu_scheds=("upds" "pds" "bmq" "muqss" "cfs")
   elif [ "$_basever" = "512" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "muqss" "cfs")
+    _avail_cpu_scheds=("pds" "bmq" "muqss" "cacule" "cfs")
   elif [ "$_basever" = "513" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "cfs")
+    _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
   else
     _avail_cpu_scheds=("cfs")
   fi
@@ -480,6 +481,12 @@ _tkg_srcprep() {
     _msg="Applying Glitched BMQ patch"
     tkgpatch="$srcdir/0009-glitched-bmq.patch" && _tkg_patcher
 
+  elif [ "${_cpusched}" = "cacule" ]; then
+    _msg="Applying cacule patch"
+    tkgpatch="$srcdir/0003-cacule-${_basekernel}.patch" && _tkg_patcher
+    _msg="Applying Glitched CFS patch"
+    tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
+
   elif [ "${_cpusched}" = "cfs" ]; then
     _msg="Applying Glitched CFS patch"
     tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
@@ -754,6 +761,9 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
     scripts/config --enable "SCHED_ALT"
     scripts/config --enable "SCHED_PDS"
     scripts/config --undefine "SCHED_BMQ"
+  elif [ "${_cpusched}" = "cacule" ]; then
+    _enable "SCHED_AUTOGROUP" "CACULE_SCHED"
+    _undefine "BSD_PROCESS_ACCT" "TASK_XACCT" "CGROUP_CPUACCT" "CGROUP_DEBUG"
   elif [ "${_cpusched}" = "upds" ]; then
     # PDS default config
     scripts/config --enable "SCHED_PDS"
@@ -951,16 +961,35 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\n
 
   # timer freq
   _avail_timer_frequencies=("100" "250" "300" "500" "750" "1000")
+  _avail_timer_frequencies_text=("100 Hz" "250 Hz" "300 Hz" "500 Hz" "750 Hz" "1000 Hz")
+  if [ "$_cpusched" = "cacule" ]; then
+    _avail_timer_frequencies+=("2000")
+    _avail_timer_frequencies_text+=("2000 Hz")
+  fi
+
+  typeset -A _default_timer_frequencies_index
+  _default_timer_frequencies_index=(
+    ["pds"]="3"
+    ["muqss"]="1"
+    ["cacule"]="5"
+    ["upds"]="3"
+    ["cfs"]="3"
+    ["bmq"]="3"
+  )
 
   if [[ -n "$_timer_freq" && ! "${_avail_timer_frequencies[*]}" =~ "$_timer_freq" ]]; then
-    warning "The setup timer frequency is not available, defaulting to 500Hz"
-    _timer_freq="500"
+    warning "The entered timer frequency, ${_timer_freq}Hz, is not available, prompting..."
+    _timer_freq=""
   fi
 
   # Default to 500Hz if _timer_freq is not set
   if [ -z "$_timer_freq" ]; then
-    msg2 "Defaulting to 500Hz timer frequency"
-    _timer_freq="500"
+    _default_index="${_default_timer_frequencies_index[$_cpusched]}"
+    msg2 "Which kernel interrupt timer frequency would you like to use ?"
+    msg2 "Higher Hz means lower latency (but higher overhead / less throughput). So it's a double edged sword"
+    msg2 "Pick default (aka press enter with empty input) if unsure"
+    _prompt_from_array "${_avail_timer_frequencies_text[@]}"
+    _timer_freq="${_avail_timer_frequencies[$_selected_index]}"
   fi
 
   for _freq in "${_avail_timer_frequencies[@]}"; do
