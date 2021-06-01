@@ -54,7 +54,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=161
+pkgrel=163
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -419,6 +419,7 @@ case $_basever in
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
+        0003-cacule-5.12.patch
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
         0004-5.12-ck1.patch
@@ -449,7 +450,8 @@ case $_basever in
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
-            '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
+            '0699e807309cfccf8aa03aec4b6cfcd2311fe50fdd4ebcbec44966d041ce0ed4'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
             '742d12d2e2ab5b59245a897af6e7726b8d14ed39d5fd402faba23fa56382b87a'
@@ -480,10 +482,11 @@ case $_basever in
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
+        0003-cacule-5.13.patch
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         #0007-v5.13-fsync.patch
-        #0007-v5.13-futex2_interface.patch
+        0007-v5.13-futex2_interface.patch
         0007-v5.13-winesync.patch
         #0008-5.13-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
@@ -495,17 +498,19 @@ case $_basever in
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
-    sha256sums=('d64c6762d94cfde894a507f8862cb5bcdfe2dbe9b17236e83c27126e7a7aeb56'
+    sha256sums=('1a86e9c518d50741ad3922fca5896863de8214ec07f73efc41c7ab2405f7fc13'
             'SKIP'
-            'dd66125708efc63d3d1f72a66d401ae9a04e147352b3280ffc774ca2682146d7'
+            'c8b4f52577c59595251c62efb63452988f96d854a8420a1196d471fd041ac490'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             'ef80c354d08f63363d36485b1b77b15f3d36cad1e00edbe13ba89538fbb38146'
-            '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
+            'd62cbe267fcf1fc4e282a1b50323d64eee0d988ef34a66b0fff53108401f1b54'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            '732dd9c6b7cf6d15034eeb125787d1400f5d212f84ac45ba4774441939f564d6'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'

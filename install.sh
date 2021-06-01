@@ -238,6 +238,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     "512")
     opt_ver="5.8+"
     ;;
+    "513")
+    opt_ver="5.8+"
+    ;;
   esac
 
   if [ "$opt_alternative_url" != "true" ]; then
