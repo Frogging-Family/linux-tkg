@@ -72,35 +72,35 @@ optdepends=('schedtool')
 options=('!strip' 'docs')
 
 case $_basever in
-	54)
-	opt_ver="4.19-5.4"
-	source=("$kernel_site"
-        	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-4.19-5.4.patch"
-        	'config.x86_64' # stock Arch config
-        	'config_hardened.x86_64' # hardened Arch config
-        	90-cleanup.hook
-        	cleanup
-        	# ARCH Patches
-        	0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-        	# TkG
-        	0002-clear-patches.patch
-        	0003-glitched-base.patch
-        	0003-glitched-cfs.patch
-        	0004-glitched-ondemand-muqss.patch
-        	0004-glitched-muqss.patch
-        	0004-5.4-ck1.patch
-        	0005-glitched-ondemand-pds.patch
-        	0005-glitched-pds.patch
-        	0005-v5.4_undead-pds099o.patch
-        	0006-add-acs-overrides_iommu.patch
-        	0007-v5.4-fsync.patch
-        	#0008-5.4-bcachefs.patch
-        	0009-glitched-bmq.patch
-        	0009-bmq_v5.4-r2.patch
-        	0012-linux-hardened.patch
-	)
-	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
+        54)
+        opt_ver="4.19-5.4"
+        source=("$kernel_site"
+                "$patch_site"
+                "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-4.19-5.4.patch"
+                'config.x86_64' # stock Arch config
+                'config_hardened.x86_64' # hardened Arch config
+                90-cleanup.hook
+                cleanup
+                # ARCH Patches
+                0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+                # TkG
+                0002-clear-patches.patch
+                0003-glitched-base.patch
+                0003-glitched-cfs.patch
+                0004-glitched-ondemand-muqss.patch
+                0004-glitched-muqss.patch
+                0004-5.4-ck1.patch
+                0005-glitched-ondemand-pds.patch
+                0005-glitched-pds.patch
+                0005-v5.4_undead-pds099o.patch
+                0006-add-acs-overrides_iommu.patch
+                0007-v5.4-fsync.patch
+                #0008-5.4-bcachefs.patch
+                0009-glitched-bmq.patch
+                0009-bmq_v5.4-r2.patch
+                0012-linux-hardened.patch
+        )
+        sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
             '1f0285e744e2a8fc9a2c8be7f0d882c5db95111487b1e538c36fa99c9878988e'
             'SKIP'
             '83d7d518dc9592ffcd79511163c49e50b767f539bc552b636810a8ca67ddca7d'
@@ -122,37 +122,37 @@ case $_basever in
             '3832f828a9f402b153fc9a6829c5a4eaf6091804bcda3a0423c8e1b57e26420d'
             '6a6a736cf1b3513d108bfd36f60baf50bb36b33aec21ab0d0ffad13602b7ff75'
             'aeb31404c26ee898d007b1f66cb9572c9884ad8eca14edc4587d68f6cba6de46')
-	;;
-	57)
-	opt_ver="5.7"
-	source=("$kernel_site"
-        	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7.patch"
-        	'config.x86_64' # stock Arch config
-        	'config_hardened.x86_64' # hardened Arch config
-        	90-cleanup.hook
-        	cleanup
-        	# ARCH Patches
-        	0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-        	# TkG
-        	0002-clear-patches.patch
-        	0003-glitched-base.patch
-        	0003-glitched-cfs.patch
-        	0004-glitched-ondemand-muqss.patch
-        	0004-glitched-muqss.patch
-        	0004-5.7-ck1.patch
-        	0005-glitched-ondemand-pds.patch
-        	0005-glitched-pds.patch
-        	0005-v5.7_undead-pds099o.patch
-        	0006-add-acs-overrides_iommu.patch
-        	0007-v5.7-fsync.patch
-        	0008-5.7-bcachefs.patch
-        	0009-glitched-ondemand-bmq.patch
-        	0009-glitched-bmq.patch
-        	0009-prjc_v5.7-r3.patch
-        	0012-linux-hardened.patch
-	)
-	sha256sums=('de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
+        ;;
+        57)
+        opt_ver="5.7"
+        source=("$kernel_site"
+                "$patch_site"
+                "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7.patch"
+                'config.x86_64' # stock Arch config
+                'config_hardened.x86_64' # hardened Arch config
+                90-cleanup.hook
+                cleanup
+                # ARCH Patches
+                0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+                # TkG
+                0002-clear-patches.patch
+                0003-glitched-base.patch
+                0003-glitched-cfs.patch
+                0004-glitched-ondemand-muqss.patch
+                0004-glitched-muqss.patch
+                0004-5.7-ck1.patch
+                0005-glitched-ondemand-pds.patch
+                0005-glitched-pds.patch
+                0005-v5.7_undead-pds099o.patch
+                0006-add-acs-overrides_iommu.patch
+                0007-v5.7-fsync.patch
+                0008-5.7-bcachefs.patch
+                0009-glitched-ondemand-bmq.patch
+                0009-glitched-bmq.patch
+                0009-prjc_v5.7-r3.patch
+                0012-linux-hardened.patch
+        )
+        sha256sums=('de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
             '66a0173a13cd58015f5bf1b14f67bfa15dc1db5d8e7225fcd95ac2e9a5341653'
             'SKIP'
             '357a0db541f7de924ed89c21f5a6f3de4889b134c5d05d5e32ccd234bd81eedf'
@@ -176,38 +176,38 @@ case $_basever in
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
             'b2a2ae866fc3f1093f67e69ba59738827e336b8f800fb0487599127f7f3ef881'
             '6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d')
-	;;
-	58)
-	opt_ver="5.8%2B"
-	source=("$kernel_site"
-        	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
-        	'config.x86_64' # stock Arch config
-        	#'config_hardened.x86_64' # hardened Arch config
-        	90-cleanup.hook
-        	cleanup
-        	# ARCH Patches
-        	0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-        	# TkG
-        	0002-clear-patches.patch
-        	0003-glitched-base.patch
-        	0003-glitched-cfs.patch
-        	#0004-glitched-ondemand-muqss.patch
-        	#0004-glitched-muqss.patch
-        	#0004-5.8-ck1.patch
-        	0005-undead-glitched-ondemand-pds.patch
-        	0005-undead-glitched-pds.patch
-        	0005-v5.8_undead-pds099o.patch
-        	0005-glitched-pds.patch
-        	0006-add-acs-overrides_iommu.patch
-        	0007-v5.8-fsync.patch
-        	0008-5.8-bcachefs.patch
-        	0009-glitched-ondemand-bmq.patch
-        	0009-glitched-bmq.patch
-        	0009-prjc_v5.8-r3.patch
-        	#0012-linux-hardened.patch
-	)
-	sha256sums=('e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
+        ;;
+        58)
+        opt_ver="5.8%2B"
+        source=("$kernel_site"
+                "$patch_site"
+                "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+                'config.x86_64' # stock Arch config
+                #'config_hardened.x86_64' # hardened Arch config
+                90-cleanup.hook
+                cleanup
+                # ARCH Patches
+                0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+                # TkG
+                0002-clear-patches.patch
+                0003-glitched-base.patch
+                0003-glitched-cfs.patch
+                #0004-glitched-ondemand-muqss.patch
+                #0004-glitched-muqss.patch
+                #0004-5.8-ck1.patch
+                0005-undead-glitched-ondemand-pds.patch
+                0005-undead-glitched-pds.patch
+                0005-v5.8_undead-pds099o.patch
+                0005-glitched-pds.patch
+                0006-add-acs-overrides_iommu.patch
+                0007-v5.8-fsync.patch
+                0008-5.8-bcachefs.patch
+                0009-glitched-ondemand-bmq.patch
+                0009-glitched-bmq.patch
+                0009-prjc_v5.8-r3.patch
+                #0012-linux-hardened.patch
+        )
+        sha256sums=('e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
             '5b558a40c2fdad2c497fe0b1a64679313fd5a7ccbaecef8803d49b3baaccbacd'
             'SKIP'
             'f4754fbe2619ef321e49a7b560fad058b2459d17cff0b90e839cb475f46e8b63'
@@ -227,38 +227,38 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
             'f5dbff4833a2e3ca94c202e5197894d5f1006c689ff149355353e77d2e17c943')
-	;;
-	59)
-	opt_ver="5.8%2B"
-	source=("$kernel_site"
-        	$patch_site
-		"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
-        	"config.x86_64" # stock Arch config
-        	#$hardened_config_file # hardened Arch config
-        	90-cleanup.hook
-        	cleanup
-        	# ARCH Patches
-		0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-        	# TkG
-        	0002-clear-patches.patch
-		0003-glitched-base.patch
-        	0003-glitched-cfs.patch
-	        0004-glitched-ondemand-muqss.patch
-        	0004-glitched-muqss.patch
-	        0004-5.9-ck1.patch
-		0005-undead-glitched-ondemand-pds.patch
-		0005-undead-glitched-pds.patch
-		0005-v5.9_undead-pds099o.patch
-		0005-glitched-pds.patch
-        	0006-add-acs-overrides_iommu.patch
-		0007-v5.9-fsync.patch
-        	0008-5.9-bcachefs.patch
-		0009-glitched-ondemand-bmq.patch
-		0009-glitched-bmq.patch
-		0009-prjc_v5.9-r3.patch
-	        #0012-linux-hardened.patch
-	)
-	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
+        ;;
+        59)
+        opt_ver="5.8%2B"
+        source=("$kernel_site"
+                $patch_site
+                "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+                "config.x86_64" # stock Arch config
+                #$hardened_config_file # hardened Arch config
+                90-cleanup.hook
+                cleanup
+                # ARCH Patches
+                0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+                # TkG
+                0002-clear-patches.patch
+                0003-glitched-base.patch
+                0003-glitched-cfs.patch
+                0004-glitched-ondemand-muqss.patch
+                0004-glitched-muqss.patch
+                0004-5.9-ck1.patch
+                0005-undead-glitched-ondemand-pds.patch
+                0005-undead-glitched-pds.patch
+                0005-v5.9_undead-pds099o.patch
+                0005-glitched-pds.patch
+                0006-add-acs-overrides_iommu.patch
+                0007-v5.9-fsync.patch
+                0008-5.9-bcachefs.patch
+                0009-glitched-ondemand-bmq.patch
+                0009-glitched-bmq.patch
+                0009-prjc_v5.9-r3.patch
+                #0012-linux-hardened.patch
+        )
+        sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
             '46c520da2db82d8f9a15c2117d3a50e0faaaf98f05bd4ea1f3105e2724f207d6'
             'SKIP'
             'ce2711b9d628e71af62706b830c2f259a43ad1e614871dd90bcb99d8709e1dab'
@@ -281,9 +281,9 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '0d5fe3a9050536fe431564b221badb85af7ff57b330e3978ae90d21989fcad2d')
-	;;
-	510)
-	opt_ver="5.8%2B"
+        ;;
+        510)
+        opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
@@ -341,9 +341,9 @@ case $_basever in
             'e308292fc42840a2366280ea7cf26314e92b931bb11f04ad4830276fc0326ee1'
             '105f51e904d80f63c1421203e093b612fc724edefd3e388b64f8d371c0b3a842'
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
-	;;
-	511)
-	opt_ver="5.8%2B"
+        ;;
+        511)
+        opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
@@ -408,9 +408,9 @@ case $_basever in
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
             'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
-	;;
-	512)
-	opt_ver="5.8%2B"
+        ;;
+        512)
+        opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
@@ -471,9 +471,9 @@ case $_basever in
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
             'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
-	;;
-	513)
-	opt_ver="5.8%2B"
+        ;;
+        513)
+        opt_ver="5.8%2B"
     source=("$kernel_site"
         #"$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
@@ -515,7 +515,7 @@ case $_basever in
             '858ffe05c9f89ad216edacf36c90512f141667a6e13a91b1b6f85ba5b481e129'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
-            '732dd9c6b7cf6d15034eeb125787d1400f5d212f84ac45ba4774441939f564d6'
+            '0e8e5df2f701dc0159da09732738455cdc880eeebc392962ed6671882d2d9ae5'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -523,7 +523,7 @@ case $_basever in
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
             'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
-	;;
+        ;;
 esac
 
 export KBUILD_BUILD_HOST=archlinux
