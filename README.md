@@ -5,26 +5,19 @@ This repository provides scripts to automatically download, patch and compile th
 ### Important information
 
 - Due to `intel_pstate`'s poor performance as of late, it is set it to passive mode to make use of the `acpi_cpufreq` governor passthrough, keeping full support for turbo frequencies.
-
 - Nvidia's proprietary drivers might need to be patched if they don't support your chosen kernel OOTB: [Frogging-Family nvidia-all](https://github.com/Frogging-Family/nvidia-all) can do that automatically for you.
+- Note regarding kernels older than 5.9 on `Archlinux`: since the switch to `zstd` compressed `initramfs` by default, you will face an `invalid magic at start of compress` error by default. You can workaround the issue by editing `/etc/mkinitcpio.conf` to uncomment the `COMPRESSION="lz4"` (for example, since that's the best option after zstd) line and regenerating `initramfs` for all kernels with `sudo mkinitpcio -P`
 
----------------------
 ### Customization options
 #### Alternative CPU schedulers
 
-CFS is the only scheduler available in the "vanilla" kernel sources. Additional schedulers are provided: they can offer a better interactivity/throughput ratio that can be beneficial for gaming. The kernel can be compiled with one of the following alternative schedulers:
-- 5.11rc: CFS
-- 5.10.y: Undead PDS, Project C / PDS or BMQ, MuQSS, CFS
-- 5.9.y: Undead PDS, Project C / PDS or BMQ, MuQSS, CFS
-- 5.8.y: Undead PDS, Project C / PDS or BMQ, CFS
-- 5.7.y: MuQSS, PDS, Project C / BMQ, CFS
-- 5.4.y: MuQSS, PDS, BMQ, CFS
-
-**More informaiton about the alternative schedulers:**
-- MuQSS by ck : http://ck-hack.blogspot.com/
-- Project C / PDS & BMQ by Alfred Chen, http://cchalpha.blogspot.com/
+CFS is the only scheduler available in the "vanilla" kernel sources. Additional schedulers are offered:
+- Project C / PDS & BMQ by Alfred Chen: [blog](http://cchalpha.blogspot.com/ ), [code repository](https://gitlab.com/alfredchen/projectc)
+- MuQSS by ck : [blog](http://ck-hack.blogspot.com/), [code repository](https://github.com/ckolivas/linux)
+- CacULE by Hamad Marri: [code repository](https://github.com/hamadmarri/cacule-cpu-scheduler)
 - Undead PDS: derived from PDS-mq by TKG, the ancestor of Project C PDS. While it got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par PDS-mq in gaming, PDS will be kept afloat for as long as it remains possible and makes sense.
 
+These alternative schedulers can offer a better interactivity/throughput ratio for gaming and desktop use. The availability of each scheduler depends on the chosen Kernel version: the script will display the available schedulers in a per-version basis.
 #### User patches
 
 To apply your own patch files using the provided scripts, you will need to put them in a `linux5y-tkg-userpatches` folder -- `y` needs to be changed with the kernel version the patch works on, _e.g_ `linux510-tkg-userpatches` -- at the same level as the `PKGBUILD` file, with the `.mypatch` extension. The script will by default ask if you want to apply them, one by one. The option `_user_patches` should be set to `true` in the `customization.cfg` file for this to work.
@@ -33,21 +26,54 @@ To apply your own patch files using the provided scripts, you will need to put t
 If you want to streamline your kernel config for lower footprint and faster compilations : https://wiki.archlinux.org/index.php/Modprobed-db
 You can optionally enable support for it in the `customization.cfg` file. **Make sure to read everything you need to know about it as there are big caveats making it NOT recommended for most users**.
 
-#### Misc additions:
-- Graysky's per-CPU-arch native optimizations - https://github.com/graysky2/kernel_gcc_patch
+#### Anbox usage
+
+When enabling the anbox support option, the modules are built-in. You don't have to load them. However you'll need to mount binderfs :
+```
+sudo mkdir /dev/binderfs
+sudo mount -t binder binder /dev/binderfs
+```
+
+To make this persistent, you can create `/etc/tmpfiles.d/anbox.conf` with the following content :
+```
+d! /dev/binderfs 0755 root root
+```
+After which you can add the following to your `/etc/fstab` :
+```
+binder                         /dev/binderfs binder   nofail  0      0
+```
+
+Then, if needed, start the anbox service :
+```
+systemctl start anbox-container-manager.service
+```
+
+You can also enable the service for it to be auto-started on boot :
+```
+systemctl enable anbox-container-manager.service
+```
+
+You're set to run Anbox.
+
+
+#### Other stuff included:
+- [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_gcc_patch): tunes the compiled code to to a specified CPU
 - memory management and swapping tweaks
 - scheduling tweaks
 - optional "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
 - CFS tweaks
-- using yeah TCP congestion algo by default
 - using cake network queue management system
-- using vm.max_map_count=524288 by default
+- using `vm.max_map_count=524288` by default
 - cherry-picked clear linux patches
-- **optional** overrides for missing ACS capabilities
-- **optional** Fsync support (proton)
-- **optional** ZFS fpu symbols (<5.9)
 
--------------
+Optional tweaks, can be edited in `customization.cfg`
+- Provide own kernel `.config` file
+- Overrides for missing ACS capabilities
+- Fsync / Futex2 / Fastsync+winesync support: needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
+- Anbox support (binder, ashmem)
+- ZFS fpu symbols (<5.9)
+- Use other TCPv4 congestion algorithms
+
 ### Install procedure
 
 #### Arch & derivatives
@@ -68,7 +94,7 @@ cd linux-tkg
 # Optional: edit customization.cfg file
 ./install.sh install
 ```
-Uninstalling custom kernels installed through the script has to be done 
+Uninstalling custom kernels installed through the script has to be done
 manually. The script can can help out with some useful information:
 ```
 cd path/to/linux-tkg
@@ -88,9 +114,20 @@ cd void-packages
 If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
 
 #### Other linux distributions
-If your distro is not DEB or RPM based, `install.sh` script can clone the kernel tree, patch and edit a `.config` file from the one that your current distro uses. It is expected either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise it won't work as-is).
+If your distro is not DEB or RPM based, `install.sh` script can clone the kernel tree in the `linux-src-git` folder, patch and edit a `.config` file from the one that your current distro uses. It is expected either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise it won't work as-is).
 
 The command to do for that is:
 ```
 ./install.sh config
 ```
+
+If one chooses `Generic` as distro. `./install.sh install` will compile the kernel then prompt before doing the following:
+```shell
+sudo make modules_install
+sudo make headers_install INSTALL_HDR_PATH=/usr # CAUTION: this will replace files in /usr/include
+sudo make install
+sudo dracut --force --hostonly --kver $_kernelname
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+```
+**Note:** these changes will not be tracked by your package manager and uninstalling requires manual intervention.
+

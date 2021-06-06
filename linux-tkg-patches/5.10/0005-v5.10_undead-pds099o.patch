@@ -1051,7 +1051,7 @@ new file mode 100644
 index 000000000000..6e3920b03756
 --- /dev/null
 +++ b/kernel/sched/pds.c
-@@ -0,0 +1,6803 @@
+@@ -0,0 +1,6815 @@
 +/*
 + *  kernel/sched/pds.c, was kernel/sched.c
 + *
@@ -2895,6 +2895,15 @@ index 000000000000..6e3920b03756
 +		rq->nr_uninterruptible--;
 +#endif
 +
++	if (
++#ifdef CONFIG_SMP
++	    !(wake_flags & WF_MIGRATED) &&
++#endif
++	    p->in_iowait) {
++		delayacct_blkio_end(p);
++		atomic_dec(&task_rq(p)->nr_iowait);
++	}
++
 +	activate_task(p, rq);
 +	ttwu_do_wakeup(rq, p, 0);
 +}
@@ -3152,11 +3161,6 @@ index 000000000000..6e3920b03756
 +	p->sched_contributes_to_load = !!task_contributes_to_load(p);
 +	p->state = TASK_WAKING;
 +
-+	if (p->in_iowait) {
-+		delayacct_blkio_end(p);
-+		atomic_dec(&task_rq(p)->nr_iowait);
-+	}
-+
 +	if (SCHED_ISO == p->policy && ISO_PRIO != p->prio) {
 +		p->prio = ISO_PRIO;
 +		p->deadline = 0UL;
@@ -3166,6 +3170,11 @@ index 000000000000..6e3920b03756
 +	cpu = select_task_rq(p);
 +
 +	if (cpu != task_cpu(p)) {
++		if (p->in_iowait) {
++			delayacct_blkio_end(p);
++			atomic_dec(&task_rq(p)->nr_iowait);
++		}
++
 +		wake_flags |= WF_MIGRATED;
 +		psi_ttwu_dequeue(p);
 +		set_task_cpu(p, cpu);
@@ -4756,10 +4765,13 @@ index 000000000000..6e3920b03756
 +
 +static inline void sched_submit_work(struct task_struct *tsk)
 +{
++	unsigned int task_flags;
++
 +	if (!tsk->state || tsk_is_pi_blocked(tsk) ||
 +	    signal_pending_state(tsk->state, tsk))
 +		return;
 +
++	task_flags = tsk->flags;
 +	/*
 +	 * If a worker went to sleep, notify and ask workqueue whether
 +	 * it wants to wake up a task to maintain concurrency.
@@ -4767,9 +4779,9 @@ index 000000000000..6e3920b03756
 +	 * we disable preemption to avoid it calling schedule() again
 +	 * in the possible wakeup of a kworker.
 +	 */
-+	if (tsk->flags & (PF_WQ_WORKER | PF_IO_WORKER)) {
++	if (task_flags & (PF_WQ_WORKER | PF_IO_WORKER)) {
 +		preempt_disable();
-+		if (tsk->flags & PF_WQ_WORKER)
++		if (task_flags & PF_WQ_WORKER)
 +			wq_worker_sleeping(tsk);
 +		else
 +			io_wq_worker_sleeping(tsk);

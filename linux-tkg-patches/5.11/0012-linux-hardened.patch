@@ -1,0 +1,3377 @@
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index a10b545c2070..b3c97490d872 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -518,17 +518,6 @@
+ 			nosocket -- Disable socket memory accounting.
+ 			nokmem -- Disable kernel memory accounting.
+ 
+-	checkreqprot	[SELINUX] Set initial checkreqprot flag value.
+-			Format: { "0" | "1" }
+-			See security/selinux/Kconfig help text.
+-			0 -- check protection applied by kernel (includes
+-				any implied execute protection).
+-			1 -- check protection requested by application.
+-			Default value is set via a kernel config option.
+-			Value can be changed at runtime via
+-				/sys/fs/selinux/checkreqprot.
+-			Setting checkreqprot to 1 is deprecated.
+-
+ 	cio_ignore=	[S390]
+ 			See Documentation/s390/common_io.rst for details.
+ 	clk_ignore_unused
+@@ -3573,6 +3562,11 @@
+ 			the specified number of seconds.  This is to be used if
+ 			your oopses keep scrolling off the screen.
+ 
++	extra_latent_entropy
++			Enable a very simple form of latent entropy extraction
++			from the first 4GB of memory as the bootmem allocator
++			passes the memory pages to the buddy allocator.
++
+ 	pcbit=		[HW,ISDN]
+ 
+ 	pcd.		[PARIDE]
+diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
+index 1d56a6b73a4e..59b1ee24aed4 100644
+--- a/Documentation/admin-guide/sysctl/kernel.rst
++++ b/Documentation/admin-guide/sysctl/kernel.rst
+@@ -860,6 +860,8 @@ with respect to CAP_PERFMON use cases.
+ >=1  Disallow CPU event access by users without ``CAP_PERFMON``.
+ 
+ >=2  Disallow kernel profiling by users without ``CAP_PERFMON``.
++
++>=3  Disallow use of any event by users without ``CAP_PERFMON``.
+ ===  ==================================================================
+ 
+ 
+@@ -1383,6 +1385,26 @@ If a value outside of this range is written to ``threads-max`` an
+ ``EINVAL`` error occurs.
+ 
+ 
++tiocsti_restrict
++================
++
++This toggle indicates whether unprivileged users are prevented from using the
++``TIOCSTI`` ioctl to inject commands into other processes which share a tty
++session.
++
++= ============================================================================
++0 No restriction, except the default one of only being able to inject commands
++  into one's own tty.
++1 Users must have ``CAP_SYS_ADMIN`` to use the ``TIOCSTI`` ioctl.
++= ============================================================================
++
++When user namespaces are in use, the check for ``CAP_SYS_ADMIN`` is done
++against the user namespace that originally opened the tty.
++
++The kernel config option ``CONFIG_SECURITY_TIOCSTI_RESTRICT`` sets the default
++value of ``tiocsti_restrict``.
++
++
+ traceoff_on_warning
+ ===================
+ 
+diff --git a/Documentation/networking/ip-sysctl.rst b/Documentation/networking/ip-sysctl.rst
+index 1b7f8debada6..05f722d7d065 100644
+--- a/Documentation/networking/ip-sysctl.rst
++++ b/Documentation/networking/ip-sysctl.rst
+@@ -664,6 +664,24 @@ tcp_comp_sack_nr - INTEGER
+ 
+ 	Default : 44
+ 
++tcp_simult_connect - BOOLEAN
++	Enable TCP simultaneous connect that adds a weakness in Linux's strict
++	implementation of TCP that allows two clients to connect to each other
++	without either entering a listening state. The weakness allows an attacker
++	to easily prevent a client from connecting to a known server provided the
++	source port for the connection is guessed correctly.
++
++	As the weakness could be used to prevent an antivirus or IPS from fetching
++	updates, or prevent an SSL gateway from fetching a CRL, it should be
++	eliminated by disabling this option. Though Linux is one of few operating
++	systems supporting simultaneous connect, it has no legitimate use in
++	practice and is rarely supported by firewalls.
++
++	Disabling this may break TCP STUNT which is used by some applications for
++	NAT traversal.
++
++	Default: Value of CONFIG_TCP_SIMULT_CONNECT_DEFAULT_ON
++
+ tcp_slow_start_after_idle - BOOLEAN
+ 	If set, provide RFC2861 behavior and time out the congestion
+ 	window after an idle period.  An idle period is defined at
+diff --git a/Makefile b/Makefile
+index 1be83283e032..5822bf4e5a19 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,7 +2,7 @@
+ VERSION = 5
+ PATCHLEVEL = 11
+ SUBLEVEL = 13
+-EXTRAVERSION =
++EXTRAVERSION = -hardened1
+ NAME = 💕 Valentine's Day Edition 💕
+ 
+ # *DOCUMENTATION*
+diff --git a/arch/Kconfig b/arch/Kconfig
+index 24862d15f3a3..ea5030c6dc46 100644
+--- a/arch/Kconfig
++++ b/arch/Kconfig
+@@ -798,7 +798,7 @@ config ARCH_MMAP_RND_BITS
+ 	int "Number of bits to use for ASLR of mmap base address" if EXPERT
+ 	range ARCH_MMAP_RND_BITS_MIN ARCH_MMAP_RND_BITS_MAX
+ 	default ARCH_MMAP_RND_BITS_DEFAULT if ARCH_MMAP_RND_BITS_DEFAULT
+-	default ARCH_MMAP_RND_BITS_MIN
++	default ARCH_MMAP_RND_BITS_MAX
+ 	depends on HAVE_ARCH_MMAP_RND_BITS
+ 	help
+ 	  This value can be used to select the number of bits to use to
+@@ -832,7 +832,7 @@ config ARCH_MMAP_RND_COMPAT_BITS
+ 	int "Number of bits to use for ASLR of mmap base address for compatible applications" if EXPERT
+ 	range ARCH_MMAP_RND_COMPAT_BITS_MIN ARCH_MMAP_RND_COMPAT_BITS_MAX
+ 	default ARCH_MMAP_RND_COMPAT_BITS_DEFAULT if ARCH_MMAP_RND_COMPAT_BITS_DEFAULT
+-	default ARCH_MMAP_RND_COMPAT_BITS_MIN
++	default ARCH_MMAP_RND_COMPAT_BITS_MAX
+ 	depends on HAVE_ARCH_MMAP_RND_COMPAT_BITS
+ 	help
+ 	  This value can be used to select the number of bits to use to
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index 2517dd8c5a4d..7cf0faf3e48e 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -1206,6 +1206,7 @@ config RODATA_FULL_DEFAULT_ENABLED
+ 
+ config ARM64_SW_TTBR0_PAN
+ 	bool "Emulate Privileged Access Never using TTBR0_EL1 switching"
++	default y
+ 	help
+ 	  Enabling this option prevents the kernel from accessing
+ 	  user-space memory directly by pointing TTBR0_EL1 to a reserved
+@@ -1784,6 +1785,7 @@ config RANDOMIZE_BASE
+ 	bool "Randomize the address of the kernel image"
+ 	select ARM64_MODULE_PLTS if MODULES
+ 	select RELOCATABLE
++	default y
+ 	help
+ 	  Randomizes the virtual address at which the kernel image is
+ 	  loaded, as a security feature that deters exploit attempts
+diff --git a/arch/arm64/configs/defconfig b/arch/arm64/configs/defconfig
+index 01aa3eee90e8..0a0dd9aa3bdb 100644
+--- a/arch/arm64/configs/defconfig
++++ b/arch/arm64/configs/defconfig
+@@ -1,4 +1,3 @@
+-CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+ CONFIG_AUDIT=y
+ CONFIG_NO_HZ_IDLE=y
+diff --git a/arch/arm64/include/asm/elf.h b/arch/arm64/include/asm/elf.h
+index 8d1c8dcb87fd..32c1609a1158 100644
+--- a/arch/arm64/include/asm/elf.h
++++ b/arch/arm64/include/asm/elf.h
+@@ -124,14 +124,10 @@
+ 
+ /*
+  * This is the base location for PIE (ET_DYN with INTERP) loads. On
+- * 64-bit, this is above 4GB to leave the entire 32-bit address
++ * 64-bit, this is raised to 4GB to leave the entire 32-bit address
+  * space open for things that want to use the area for 32-bit pointers.
+  */
+-#ifdef CONFIG_ARM64_FORCE_52BIT
+-#define ELF_ET_DYN_BASE		(2 * TASK_SIZE_64 / 3)
+-#else
+-#define ELF_ET_DYN_BASE		(2 * DEFAULT_MAP_WINDOW_64 / 3)
+-#endif /* CONFIG_ARM64_FORCE_52BIT */
++#define ELF_ET_DYN_BASE		0x100000000UL
+ 
+ #ifndef __ASSEMBLY__
+ 
+@@ -189,10 +185,10 @@ extern int arch_setup_additional_pages(struct linux_binprm *bprm,
+ /* 1GB of VA */
+ #ifdef CONFIG_COMPAT
+ #define STACK_RND_MASK			(test_thread_flag(TIF_32BIT) ? \
+-						0x7ff >> (PAGE_SHIFT - 12) : \
+-						0x3ffff >> (PAGE_SHIFT - 12))
++						((1UL << mmap_rnd_compat_bits) - 1) >> (PAGE_SHIFT - 12) : \
++						((1UL << mmap_rnd_bits) - 1) >> (PAGE_SHIFT - 12))
+ #else
+-#define STACK_RND_MASK			(0x3ffff >> (PAGE_SHIFT - 12))
++#define STACK_RND_MASK			(((1UL << mmap_rnd_bits) - 1) >> (PAGE_SHIFT - 12))
+ #endif
+ 
+ #ifdef __AARCH64EB__
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index 21f851179ff0..258df85d5085 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -1196,8 +1196,7 @@ config VM86
+ 	default X86_LEGACY_VM86
+ 
+ config X86_16BIT
+-	bool "Enable support for 16-bit segments" if EXPERT
+-	default y
++	bool "Enable support for 16-bit segments"
+ 	depends on MODIFY_LDT_SYSCALL
+ 	help
+ 	  This option is required by programs like Wine to run 16-bit
+@@ -2316,7 +2315,7 @@ config COMPAT_VDSO
+ choice
+ 	prompt "vsyscall table for legacy applications"
+ 	depends on X86_64
+-	default LEGACY_VSYSCALL_XONLY
++	default LEGACY_VSYSCALL_NONE
+ 	help
+ 	  Legacy user code that does not know how to find the vDSO expects
+ 	  to be able to issue three syscalls by calling fixed addresses in
+@@ -2412,8 +2411,7 @@ config CMDLINE_OVERRIDE
+ 	  be set to 'N' under normal conditions.
+ 
+ config MODIFY_LDT_SYSCALL
+-	bool "Enable the LDT (local descriptor table)" if EXPERT
+-	default y
++	bool "Enable the LDT (local descriptor table)"
+ 	help
+ 	  Linux can allow user programs to install a per-process x86
+ 	  Local Descriptor Table (LDT) using the modify_ldt(2) system
+diff --git a/arch/x86/configs/x86_64_defconfig b/arch/x86/configs/x86_64_defconfig
+index 9936528e1939..981ee8c0e330 100644
+--- a/arch/x86/configs/x86_64_defconfig
++++ b/arch/x86/configs/x86_64_defconfig
+@@ -1,5 +1,4 @@
+ # CONFIG_LOCALVERSION_AUTO is not set
+-CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+ CONFIG_AUDIT=y
+ CONFIG_NO_HZ=y
+diff --git a/arch/x86/entry/vdso/vma.c b/arch/x86/entry/vdso/vma.c
+index 825e829ffff1..e51496cc2a70 100644
+--- a/arch/x86/entry/vdso/vma.c
++++ b/arch/x86/entry/vdso/vma.c
+@@ -298,55 +298,9 @@ static int map_vdso(const struct vdso_image *image, unsigned long addr)
+ }
+ 
+ #ifdef CONFIG_X86_64
+-/*
+- * Put the vdso above the (randomized) stack with another randomized
+- * offset.  This way there is no hole in the middle of address space.
+- * To save memory make sure it is still in the same PTE as the stack
+- * top.  This doesn't give that many random bits.
+- *
+- * Note that this algorithm is imperfect: the distribution of the vdso
+- * start address within a PMD is biased toward the end.
+- *
+- * Only used for the 64-bit and x32 vdsos.
+- */
+-static unsigned long vdso_addr(unsigned long start, unsigned len)
+-{
+-	unsigned long addr, end;
+-	unsigned offset;
+-
+-	/*
+-	 * Round up the start address.  It can start out unaligned as a result
+-	 * of stack start randomization.
+-	 */
+-	start = PAGE_ALIGN(start);
+-
+-	/* Round the lowest possible end address up to a PMD boundary. */
+-	end = (start + len + PMD_SIZE - 1) & PMD_MASK;
+-	if (end >= TASK_SIZE_MAX)
+-		end = TASK_SIZE_MAX;
+-	end -= len;
+-
+-	if (end > start) {
+-		offset = get_random_int() % (((end - start) >> PAGE_SHIFT) + 1);
+-		addr = start + (offset << PAGE_SHIFT);
+-	} else {
+-		addr = start;
+-	}
+-
+-	/*
+-	 * Forcibly align the final address in case we have a hardware
+-	 * issue that requires alignment for performance reasons.
+-	 */
+-	addr = align_vdso_addr(addr);
+-
+-	return addr;
+-}
+-
+ static int map_vdso_randomized(const struct vdso_image *image)
+ {
+-	unsigned long addr = vdso_addr(current->mm->start_stack, image->size-image->sym_vvar_start);
+-
+-	return map_vdso(image, addr);
++	return map_vdso(image, 0);
+ }
+ #endif
+ 
+diff --git a/arch/x86/include/asm/elf.h b/arch/x86/include/asm/elf.h
+index 66bdfe838d61..d7a51942f782 100644
+--- a/arch/x86/include/asm/elf.h
++++ b/arch/x86/include/asm/elf.h
+@@ -247,11 +247,11 @@ extern int force_personality32;
+ 
+ /*
+  * This is the base location for PIE (ET_DYN with INTERP) loads. On
+- * 64-bit, this is above 4GB to leave the entire 32-bit address
++ * 64-bit, this is raised to 4GB to leave the entire 32-bit address
+  * space open for things that want to use the area for 32-bit pointers.
+  */
+ #define ELF_ET_DYN_BASE		(mmap_is_ia32() ? 0x000400000UL : \
+-						  (DEFAULT_MAP_WINDOW / 3 * 2))
++						  0x100000000UL)
+ 
+ /* This yields a mask that user programs can use to figure out what
+    instruction set this CPU supports.  This could be done in user space,
+@@ -331,8 +331,8 @@ extern bool mmap_address_hint_valid(unsigned long addr, unsigned long len);
+ 
+ #ifdef CONFIG_X86_32
+ 
+-#define __STACK_RND_MASK(is32bit) (0x7ff)
+-#define STACK_RND_MASK (0x7ff)
++#define __STACK_RND_MASK(is32bit) ((1UL << mmap_rnd_bits) - 1)
++#define STACK_RND_MASK ((1UL << mmap_rnd_bits) - 1)
+ 
+ #define ARCH_DLINFO		ARCH_DLINFO_IA32
+ 
+@@ -341,7 +341,11 @@ extern bool mmap_address_hint_valid(unsigned long addr, unsigned long len);
+ #else /* CONFIG_X86_32 */
+ 
+ /* 1GB for 64bit, 8MB for 32bit */
+-#define __STACK_RND_MASK(is32bit) ((is32bit) ? 0x7ff : 0x3fffff)
++#ifdef CONFIG_COMPAT
++#define __STACK_RND_MASK(is32bit) ((is32bit) ? (1UL << mmap_rnd_compat_bits) - 1 : (1UL << mmap_rnd_bits) - 1)
++#else
++#define __STACK_RND_MASK(is32bit) ((1UL << mmap_rnd_bits) - 1)
++#endif
+ #define STACK_RND_MASK __STACK_RND_MASK(mmap_is_ia32())
+ 
+ #define ARCH_DLINFO							\
+@@ -403,5 +407,4 @@ struct va_alignment {
+ } ____cacheline_aligned;
+ 
+ extern struct va_alignment va_align;
+-extern unsigned long align_vdso_addr(unsigned long);
+ #endif /* _ASM_X86_ELF_H */
+diff --git a/arch/x86/kernel/cpu/common.c b/arch/x86/kernel/cpu/common.c
+index 35ad8480c464..edaeeab9df4b 100644
+--- a/arch/x86/kernel/cpu/common.c
++++ b/arch/x86/kernel/cpu/common.c
+@@ -399,6 +399,7 @@ EXPORT_SYMBOL_GPL(native_write_cr4);
+ void cr4_update_irqsoff(unsigned long set, unsigned long clear)
+ {
+ 	unsigned long newval, cr4 = this_cpu_read(cpu_tlbstate.cr4);
++	BUG_ON(cr4 != __read_cr4());
+ 
+ 	lockdep_assert_irqs_disabled();
+ 
+diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+index 145a7ac0c19a..161e25d02fd5 100644
+--- a/arch/x86/kernel/process.c
++++ b/arch/x86/kernel/process.c
+@@ -43,6 +43,8 @@
+ #include <asm/io_bitmap.h>
+ #include <asm/proto.h>
+ #include <asm/frame.h>
++#include <asm/elf.h>
++#include <linux/sizes.h>
+ 
+ #include "process.h"
+ 
+@@ -596,6 +598,7 @@ void speculation_ctrl_update_current(void)
+ static inline void cr4_toggle_bits_irqsoff(unsigned long mask)
+ {
+ 	unsigned long newval, cr4 = this_cpu_read(cpu_tlbstate.cr4);
++	BUG_ON(cr4 != __read_cr4());
+ 
+ 	newval = cr4 ^ mask;
+ 	if (newval != cr4) {
+@@ -905,7 +908,10 @@ unsigned long arch_align_stack(unsigned long sp)
+ 
+ unsigned long arch_randomize_brk(struct mm_struct *mm)
+ {
+-	return randomize_page(mm->brk, 0x02000000);
++	if (mmap_is_ia32())
++		return mm->brk + get_random_long() % SZ_32M + PAGE_SIZE;
++	else
++		return mm->brk + get_random_long() % SZ_1G + PAGE_SIZE;
+ }
+ 
+ /*
+diff --git a/arch/x86/kernel/sys_x86_64.c b/arch/x86/kernel/sys_x86_64.c
+index 504fa5425bce..e30ec4c750d1 100644
+--- a/arch/x86/kernel/sys_x86_64.c
++++ b/arch/x86/kernel/sys_x86_64.c
+@@ -52,13 +52,6 @@ static unsigned long get_align_bits(void)
+ 	return va_align.bits & get_align_mask();
+ }
+ 
+-unsigned long align_vdso_addr(unsigned long addr)
+-{
+-	unsigned long align_mask = get_align_mask();
+-	addr = (addr + align_mask) & ~align_mask;
+-	return addr | get_align_bits();
+-}
+-
+ static int __init control_va_addr_alignment(char *str)
+ {
+ 	/* guard against enabling this on other CPU families */
+@@ -120,10 +113,7 @@ static void find_start_end(unsigned long addr, unsigned long flags,
+ 	}
+ 
+ 	*begin	= get_mmap_base(1);
+-	if (in_32bit_syscall())
+-		*end = task_size_32bit();
+-	else
+-		*end = task_size_64bit(addr > DEFAULT_MAP_WINDOW);
++	*end	= get_mmap_base(0);
+ }
+ 
+ unsigned long
+@@ -200,7 +190,7 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
+ 
+ 	info.flags = VM_UNMAPPED_AREA_TOPDOWN;
+ 	info.length = len;
+-	info.low_limit = PAGE_SIZE;
++	info.low_limit = get_mmap_base(1);
+ 	info.high_limit = get_mmap_base(0);
+ 
+ 	/*
+diff --git a/arch/x86/mm/init_32.c b/arch/x86/mm/init_32.c
+index da31c2635ee4..ae05197fd7c6 100644
+--- a/arch/x86/mm/init_32.c
++++ b/arch/x86/mm/init_32.c
+@@ -533,9 +533,9 @@ static void __init pagetable_init(void)
+ 
+ #define DEFAULT_PTE_MASK ~(_PAGE_NX | _PAGE_GLOBAL)
+ /* Bits supported by the hardware: */
+-pteval_t __supported_pte_mask __read_mostly = DEFAULT_PTE_MASK;
++pteval_t __supported_pte_mask __ro_after_init = DEFAULT_PTE_MASK;
+ /* Bits allowed in normal kernel mappings: */
+-pteval_t __default_kernel_pte_mask __read_mostly = DEFAULT_PTE_MASK;
++pteval_t __default_kernel_pte_mask __ro_after_init = DEFAULT_PTE_MASK;
+ EXPORT_SYMBOL_GPL(__supported_pte_mask);
+ /* Used in PAGE_KERNEL_* macros which are reasonably used out-of-tree: */
+ EXPORT_SYMBOL(__default_kernel_pte_mask);
+diff --git a/arch/x86/mm/init_64.c b/arch/x86/mm/init_64.c
+index b5a3fa4033d3..c3d771ffc178 100644
+--- a/arch/x86/mm/init_64.c
++++ b/arch/x86/mm/init_64.c
+@@ -97,9 +97,9 @@ DEFINE_ENTRY(pte, pte, init)
+  */
+ 
+ /* Bits supported by the hardware: */
+-pteval_t __supported_pte_mask __read_mostly = ~0;
++pteval_t __supported_pte_mask __ro_after_init = ~0;
+ /* Bits allowed in normal kernel mappings: */
+-pteval_t __default_kernel_pte_mask __read_mostly = ~0;
++pteval_t __default_kernel_pte_mask __ro_after_init = ~0;
+ EXPORT_SYMBOL_GPL(__supported_pte_mask);
+ /* Used in PAGE_KERNEL_* macros which are reasonably used out-of-tree: */
+ EXPORT_SYMBOL(__default_kernel_pte_mask);
+diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
+index 569ac1d57f55..044d88da4aee 100644
+--- a/arch/x86/mm/tlb.c
++++ b/arch/x86/mm/tlb.c
+@@ -1066,6 +1066,7 @@ STATIC_NOPV void native_flush_tlb_global(void)
+ 	raw_local_irq_save(flags);
+ 
+ 	cr4 = this_cpu_read(cpu_tlbstate.cr4);
++	BUG_ON(cr4 != __read_cr4());
+ 	/* toggle PGE */
+ 	native_write_cr4(cr4 ^ X86_CR4_PGE);
+ 	/* write old PGE again and flush TLBs */
+diff --git a/block/blk-mq.c b/block/blk-mq.c
+index f285a9123a8b..93d6bfe33166 100644
+--- a/block/blk-mq.c
++++ b/block/blk-mq.c
+@@ -571,7 +571,7 @@ EXPORT_SYMBOL(blk_mq_end_request);
+  * Softirq action handler - move entries to local list and loop over them
+  * while passing them to the queue registered handler.
+  */
+-static __latent_entropy void blk_done_softirq(struct softirq_action *h)
++static __latent_entropy void blk_done_softirq(void)
+ {
+ 	struct list_head *cpu_list, local_list;
+ 
+diff --git a/drivers/ata/libata-core.c b/drivers/ata/libata-core.c
+index 61c762961ca8..02a83039c25b 100644
+--- a/drivers/ata/libata-core.c
++++ b/drivers/ata/libata-core.c
+@@ -4540,7 +4540,7 @@ void ata_qc_free(struct ata_queued_cmd *qc)
+ 	struct ata_port *ap;
+ 	unsigned int tag;
+ 
+-	WARN_ON_ONCE(qc == NULL); /* ata_qc_from_tag _might_ return NULL */
++	BUG_ON(qc == NULL); /* ata_qc_from_tag _might_ return NULL */
+ 	ap = qc->ap;
+ 
+ 	qc->flags = 0;
+@@ -4557,7 +4557,7 @@ void __ata_qc_complete(struct ata_queued_cmd *qc)
+ 	struct ata_port *ap;
+ 	struct ata_link *link;
+ 
+-	WARN_ON_ONCE(qc == NULL); /* ata_qc_from_tag _might_ return NULL */
++	BUG_ON(qc == NULL); /* ata_qc_from_tag _might_ return NULL */
+ 	WARN_ON_ONCE(!(qc->flags & ATA_QCFLAG_ACTIVE));
+ 	ap = qc->ap;
+ 	link = qc->dev->link;
+diff --git a/drivers/char/Kconfig b/drivers/char/Kconfig
+index d229a2d0c017..2fd45f01e7a2 100644
+--- a/drivers/char/Kconfig
++++ b/drivers/char/Kconfig
+@@ -327,7 +327,6 @@ config NSC_GPIO
+ 
+ config DEVMEM
+ 	bool "/dev/mem virtual device support"
+-	default y
+ 	help
+ 	  Say Y here if you want to support the /dev/mem device.
+ 	  The /dev/mem device is used to access areas of physical
+@@ -391,7 +390,6 @@ config MAX_RAW_DEVS
+ config DEVPORT
+ 	bool "/dev/port character device"
+ 	depends on ISA || PCI
+-	default y
+ 	help
+ 	  Say Y here if you want to support the /dev/port device. The /dev/port
+ 	  device is similar to /dev/mem, but for I/O ports.
+diff --git a/drivers/tty/Kconfig b/drivers/tty/Kconfig
+index e15cd6b5bb99..930be8d5d81d 100644
+--- a/drivers/tty/Kconfig
++++ b/drivers/tty/Kconfig
+@@ -122,7 +122,6 @@ config UNIX98_PTYS
+ 
+ config LEGACY_PTYS
+ 	bool "Legacy (BSD) PTY support"
+-	default y
+ 	help
+ 	  A pseudo terminal (PTY) is a software device consisting of two
+ 	  halves: a master and a slave. The slave device behaves identical to
+diff --git a/drivers/tty/tty_io.c b/drivers/tty/tty_io.c
+index 5fd87941ac71..ca442c544a7b 100644
+--- a/drivers/tty/tty_io.c
++++ b/drivers/tty/tty_io.c
+@@ -171,6 +171,7 @@ static void free_tty_struct(struct tty_struct *tty)
+ 	put_device(tty->dev);
+ 	kfree(tty->write_buf);
+ 	tty->magic = 0xDEADDEAD;
++	put_user_ns(tty->owner_user_ns);
+ 	kfree(tty);
+ }
+ 
+@@ -2263,11 +2264,19 @@ static int tty_fasync(int fd, struct file *filp, int on)
+  *	FIXME: may race normal receive processing
+  */
+ 
++int tiocsti_restrict = IS_ENABLED(CONFIG_SECURITY_TIOCSTI_RESTRICT);
++
+ static int tiocsti(struct tty_struct *tty, char __user *p)
+ {
+ 	char ch, mbz = 0;
+ 	struct tty_ldisc *ld;
+ 
++	if (tiocsti_restrict &&
++		!ns_capable(tty->owner_user_ns, CAP_SYS_ADMIN)) {
++		dev_warn_ratelimited(tty->dev,
++			"Denied TIOCSTI ioctl for non-privileged process\n");
++		return -EPERM;
++	}
+ 	if ((current->signal->tty != tty) && !capable(CAP_SYS_ADMIN))
+ 		return -EPERM;
+ 	if (get_user(ch, p))
+@@ -3102,6 +3111,7 @@ struct tty_struct *alloc_tty_struct(struct tty_driver *driver, int idx)
+ 	tty->index = idx;
+ 	tty_line_name(driver, idx, tty->name);
+ 	tty->dev = tty_get_device(tty);
++	tty->owner_user_ns = get_user_ns(current_user_ns());
+ 
+ 	return tty;
+ }
+diff --git a/drivers/usb/core/Makefile b/drivers/usb/core/Makefile
+index 18e874b0441e..fc7a3a9aa72a 100644
+--- a/drivers/usb/core/Makefile
++++ b/drivers/usb/core/Makefile
+@@ -11,6 +11,7 @@ usbcore-y += phy.o port.o
+ usbcore-$(CONFIG_OF)		+= of.o
+ usbcore-$(CONFIG_USB_PCI)		+= hcd-pci.o
+ usbcore-$(CONFIG_ACPI)		+= usb-acpi.o
++usbcore-$(CONFIG_SYSCTL)		+= sysctl.o
+ 
+ obj-$(CONFIG_USB)		+= usbcore.o
+ 
+diff --git a/drivers/usb/core/hub.c b/drivers/usb/core/hub.c
+index 7f71218cc1e5..b5992466936e 100644
+--- a/drivers/usb/core/hub.c
++++ b/drivers/usb/core/hub.c
+@@ -5115,6 +5115,12 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
+ 			goto done;
+ 		return;
+ 	}
++
++	if (deny_new_usb) {
++		dev_err(&port_dev->dev, "denied insert of USB device on port %d\n", port1);
++		goto done;
++	}
++
+ 	if (hub_is_superspeed(hub->hdev))
+ 		unit_load = 150;
+ 	else
+diff --git a/drivers/usb/core/sysctl.c b/drivers/usb/core/sysctl.c
+new file mode 100644
+index 000000000000..3fa188ac8f67
+--- /dev/null
++++ b/drivers/usb/core/sysctl.c
+@@ -0,0 +1,44 @@
++#include <linux/errno.h>
++#include <linux/init.h>
++#include <linux/kmemleak.h>
++#include <linux/sysctl.h>
++#include <linux/usb.h>
++
++static struct ctl_table usb_table[] = {
++	{
++		.procname	= "deny_new_usb",
++		.data		= &deny_new_usb,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax_sysadmin,
++		.extra1		= SYSCTL_ZERO,
++		.extra2		= SYSCTL_ONE,
++	},
++	{ }
++};
++
++static struct ctl_table usb_root_table[] = {
++	{ .procname	= "kernel",
++	  .mode		= 0555,
++	  .child	= usb_table },
++	{ }
++};
++
++static struct ctl_table_header *usb_table_header;
++
++int __init usb_init_sysctl(void)
++{
++	usb_table_header = register_sysctl_table(usb_root_table);
++	if (!usb_table_header) {
++		pr_warn("usb: sysctl registration failed\n");
++		return -ENOMEM;
++	}
++
++	kmemleak_not_leak(usb_table_header);
++	return 0;
++}
++
++void usb_exit_sysctl(void)
++{
++	unregister_sysctl_table(usb_table_header);
++}
+diff --git a/drivers/usb/core/usb.c b/drivers/usb/core/usb.c
+index a566bb494e24..b305e25d94f8 100644
+--- a/drivers/usb/core/usb.c
++++ b/drivers/usb/core/usb.c
+@@ -71,6 +71,9 @@ MODULE_PARM_DESC(autosuspend, "default autosuspend delay");
+ #define usb_autosuspend_delay		0
+ #endif
+ 
++int deny_new_usb __read_mostly = 0;
++EXPORT_SYMBOL(deny_new_usb);
++
+ static bool match_endpoint(struct usb_endpoint_descriptor *epd,
+ 		struct usb_endpoint_descriptor **bulk_in,
+ 		struct usb_endpoint_descriptor **bulk_out,
+@@ -1010,6 +1013,9 @@ static int __init usb_init(void)
+ 	usb_debugfs_init();
+ 
+ 	usb_acpi_register();
++	retval = usb_init_sysctl();
++	if (retval)
++		goto sysctl_init_failed;
+ 	retval = bus_register(&usb_bus_type);
+ 	if (retval)
+ 		goto bus_register_failed;
+@@ -1044,6 +1050,8 @@ static int __init usb_init(void)
+ bus_notifier_failed:
+ 	bus_unregister(&usb_bus_type);
+ bus_register_failed:
++	usb_exit_sysctl();
++sysctl_init_failed:
+ 	usb_acpi_unregister();
+ 	usb_debugfs_cleanup();
+ out:
+@@ -1067,6 +1075,7 @@ static void __exit usb_exit(void)
+ 	usb_hub_cleanup();
+ 	bus_unregister_notifier(&usb_bus_type, &usb_bus_nb);
+ 	bus_unregister(&usb_bus_type);
++	usb_exit_sysctl();
+ 	usb_acpi_unregister();
+ 	usb_debugfs_cleanup();
+ 	idr_destroy(&usb_bus_idr);
+diff --git a/fs/exec.c b/fs/exec.c
+index 5d4d52039105..0dbb0d87cd4a 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -34,6 +34,7 @@
+ #include <linux/swap.h>
+ #include <linux/string.h>
+ #include <linux/init.h>
++#include <linux/sched.h>
+ #include <linux/sched/mm.h>
+ #include <linux/sched/coredump.h>
+ #include <linux/sched/signal.h>
+@@ -65,6 +66,7 @@
+ #include <linux/vmalloc.h>
+ #include <linux/io_uring.h>
+ #include <linux/syscall_user_dispatch.h>
++#include <linux/random.h>
+ 
+ #include <linux/uaccess.h>
+ #include <asm/mmu_context.h>
+@@ -281,6 +283,8 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
+ 	mm->stack_vm = mm->total_vm = 1;
+ 	mmap_write_unlock(mm);
+ 	bprm->p = vma->vm_end - sizeof(void *);
++	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
++		bprm->p ^= get_random_int() & ~PAGE_MASK;
+ 	return 0;
+ err:
+ 	mmap_write_unlock(mm);
+diff --git a/fs/inode.c b/fs/inode.c
+index 6442d97d9a4a..1ae285075f9f 100644
+--- a/fs/inode.c
++++ b/fs/inode.c
+@@ -116,6 +116,10 @@ int proc_nr_inodes(struct ctl_table *table, int write,
+ }
+ #endif
+ 
++/* sysctl */
++int device_sidechannel_restrict __read_mostly = 1;
++EXPORT_SYMBOL(device_sidechannel_restrict);
++
+ static int no_open(struct inode *inode, struct file *file)
+ {
+ 	return -ENXIO;
+diff --git a/fs/namei.c b/fs/namei.c
+index dd85e12ac85a..a200b0144970 100644
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -932,10 +932,10 @@ static inline void put_link(struct nameidata *nd)
+ 		path_put(&last->link);
+ }
+ 
+-int sysctl_protected_symlinks __read_mostly = 0;
+-int sysctl_protected_hardlinks __read_mostly = 0;
+-int sysctl_protected_fifos __read_mostly;
+-int sysctl_protected_regular __read_mostly;
++int sysctl_protected_symlinks __read_mostly = 1;
++int sysctl_protected_hardlinks __read_mostly = 1;
++int sysctl_protected_fifos __read_mostly = 2;
++int sysctl_protected_regular __read_mostly = 2;
+ 
+ /**
+  * may_follow_link - Check symlink following for unsafe situations
+diff --git a/fs/nfs/Kconfig b/fs/nfs/Kconfig
+index 14a72224b657..080a8027c6b1 100644
+--- a/fs/nfs/Kconfig
++++ b/fs/nfs/Kconfig
+@@ -195,7 +195,6 @@ config NFS_DEBUG
+ 	bool
+ 	depends on NFS_FS && SUNRPC_DEBUG
+ 	select CRC32
+-	default y
+ 
+ config NFS_DISABLE_UDP_SUPPORT
+        bool "NFS: Disable NFS UDP protocol support"
+diff --git a/fs/overlayfs/Kconfig b/fs/overlayfs/Kconfig
+index dd188c7996b3..f1f14808bc8f 100644
+--- a/fs/overlayfs/Kconfig
++++ b/fs/overlayfs/Kconfig
+@@ -124,3 +124,19 @@ config OVERLAY_FS_METACOPY
+ 	  that doesn't support this feature will have unexpected results.
+ 
+ 	  If unsure, say N.
++
++config OVERLAY_FS_UNPRIVILEGED
++	bool "Overlayfs: turn on unprivileged user namespace mounts"
++	default n
++	depends on OVERLAY_FS
++	help
++	  When disabled, unprivileged users will not be able to create
++	  new overlayfs mounts. This cuts the attack surface if no
++	  unprivileged user namespace mounts are required like for
++	  running rootless containers.
++
++	  Overlayfs has been part of several recent local privilege
++	  escalation exploits, so if you are security-conscious
++	  you want to disable this.
++
++	  If unsure, say N.
+diff --git a/fs/overlayfs/super.c b/fs/overlayfs/super.c
+index d58b8f2bf9d0..6e84b1cd4c4e 100644
+--- a/fs/overlayfs/super.c
++++ b/fs/overlayfs/super.c
+@@ -2120,7 +2120,9 @@ static struct dentry *ovl_mount(struct file_system_type *fs_type, int flags,
+ static struct file_system_type ovl_fs_type = {
+ 	.owner		= THIS_MODULE,
+ 	.name		= "overlay",
++#ifdef CONFIG_OVERLAY_FS_UNPRIVILEGED
+ 	.fs_flags	= FS_USERNS_MOUNT,
++#endif
+ 	.mount		= ovl_mount,
+ 	.kill_sb	= kill_anon_super,
+ };
+diff --git a/fs/proc/Kconfig b/fs/proc/Kconfig
+index c930001056f9..6a0a51b3f593 100644
+--- a/fs/proc/Kconfig
++++ b/fs/proc/Kconfig
+@@ -41,7 +41,6 @@ config PROC_KCORE
+ config PROC_VMCORE
+ 	bool "/proc/vmcore support"
+ 	depends on PROC_FS && CRASH_DUMP
+-	default y
+ 	help
+ 	  Exports the dump image of crashed kernel in ELF format.
+ 
+diff --git a/fs/stat.c b/fs/stat.c
+index dacecdda2e79..14173d0f777d 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -43,8 +43,13 @@ void generic_fillattr(struct inode *inode, struct kstat *stat)
+ 	stat->gid = inode->i_gid;
+ 	stat->rdev = inode->i_rdev;
+ 	stat->size = i_size_read(inode);
+-	stat->atime = inode->i_atime;
+-	stat->mtime = inode->i_mtime;
++	if (is_sidechannel_device(inode) && !capable_noaudit(CAP_MKNOD)) {
++		stat->atime = inode->i_ctime;
++		stat->mtime = inode->i_ctime;
++	} else {
++		stat->atime = inode->i_atime;
++		stat->mtime = inode->i_mtime;
++	}
+ 	stat->ctime = inode->i_ctime;
+ 	stat->blksize = i_blocksize(inode);
+ 	stat->blocks = inode->i_blocks;
+@@ -83,9 +88,14 @@ int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
+ 	if (IS_DAX(inode))
+ 		stat->attributes |= STATX_ATTR_DAX;
+ 
+-	if (inode->i_op->getattr)
+-		return inode->i_op->getattr(path, stat, request_mask,
+-					    query_flags);
++	if (inode->i_op->getattr) {
++		int retval = inode->i_op->getattr(path, stat, request_mask, query_flags);
++		if (!retval && is_sidechannel_device(inode) && !capable_noaudit(CAP_MKNOD)) {
++			stat->atime = stat->ctime;
++			stat->mtime = stat->ctime;
++		}
++		return retval;
++	}
+ 
+ 	generic_fillattr(inode, stat);
+ 	return 0;
+diff --git a/include/linux/cache.h b/include/linux/cache.h
+index d742c57eaee5..f0222c070458 100644
+--- a/include/linux/cache.h
++++ b/include/linux/cache.h
+@@ -37,6 +37,8 @@
+ #define __ro_after_init __section(".data..ro_after_init")
+ #endif
+ 
++#define __read_only __ro_after_init
++
+ #ifndef ____cacheline_aligned
+ #define ____cacheline_aligned __attribute__((__aligned__(SMP_CACHE_BYTES)))
+ #endif
+diff --git a/include/linux/capability.h b/include/linux/capability.h
+index b2f698915c0f..d55d1958035a 100644
+--- a/include/linux/capability.h
++++ b/include/linux/capability.h
+@@ -208,6 +208,7 @@ extern bool has_capability_noaudit(struct task_struct *t, int cap);
+ extern bool has_ns_capability_noaudit(struct task_struct *t,
+ 				      struct user_namespace *ns, int cap);
+ extern bool capable(int cap);
++extern bool capable_noaudit(int cap);
+ extern bool ns_capable(struct user_namespace *ns, int cap);
+ extern bool ns_capable_noaudit(struct user_namespace *ns, int cap);
+ extern bool ns_capable_setid(struct user_namespace *ns, int cap);
+@@ -234,6 +235,10 @@ static inline bool capable(int cap)
+ {
+ 	return true;
+ }
++static inline bool capable_noaudit(int cap)
++{
++	return true;
++}
+ static inline bool ns_capable(struct user_namespace *ns, int cap)
+ {
+ 	return true;
+diff --git a/include/linux/dccp.h b/include/linux/dccp.h
+index 07e547c02fd8..504afa1a4be6 100644
+--- a/include/linux/dccp.h
++++ b/include/linux/dccp.h
+@@ -259,6 +259,7 @@ struct dccp_ackvec;
+  * @dccps_sync_scheduled - flag which signals "send out-of-band message soon"
+  * @dccps_xmitlet - tasklet scheduled by the TX CCID to dequeue data packets
+  * @dccps_xmit_timer - used by the TX CCID to delay sending (rate-based pacing)
++ * @dccps_ccid_timer - used by the CCIDs
+  * @dccps_syn_rtt - RTT sample from Request/Response exchange (in usecs)
+  */
+ struct dccp_sock {
+@@ -303,6 +304,7 @@ struct dccp_sock {
+ 	__u8				dccps_sync_scheduled:1;
+ 	struct tasklet_struct		dccps_xmitlet;
+ 	struct timer_list		dccps_xmit_timer;
++	struct timer_list		dccps_ccid_timer;
+ };
+ 
+ static inline struct dccp_sock *dccp_sk(const struct sock *sk)
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index fd47deea7c17..571b20397424 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -3472,4 +3472,15 @@ static inline int inode_drain_writes(struct inode *inode)
+ 	return filemap_write_and_wait(inode->i_mapping);
+ }
+ 
++extern int device_sidechannel_restrict;
++
++static inline bool is_sidechannel_device(const struct inode *inode)
++{
++	umode_t mode;
++	if (!device_sidechannel_restrict)
++		return false;
++	mode = inode->i_mode;
++	return ((S_ISCHR(mode) || S_ISBLK(mode)) && (mode & (S_IROTH | S_IWOTH)));
++}
++
+ #endif /* _LINUX_FS_H */
+diff --git a/include/linux/fsnotify.h b/include/linux/fsnotify.h
+index f8acddcf54fb..7b109980327f 100644
+--- a/include/linux/fsnotify.h
++++ b/include/linux/fsnotify.h
+@@ -83,10 +83,14 @@ static inline void fsnotify_dentry(struct dentry *dentry, __u32 mask)
+ static inline int fsnotify_file(struct file *file, __u32 mask)
+ {
+ 	const struct path *path = &file->f_path;
++	struct inode *inode = file_inode(file);
+ 
+ 	if (file->f_mode & FMODE_NONOTIFY)
+ 		return 0;
+ 
++	if (mask & (FS_ACCESS | FS_MODIFY) && is_sidechannel_device(inode))
++		return 0;
++
+ 	return fsnotify_parent(path->dentry, mask, path, FSNOTIFY_EVENT_PATH);
+ }
+ 
+diff --git a/include/linux/gfp.h b/include/linux/gfp.h
+index 6e479e9c48ce..9981ea3fec77 100644
+--- a/include/linux/gfp.h
++++ b/include/linux/gfp.h
+@@ -568,9 +568,9 @@ static inline struct page *alloc_pages(gfp_t gfp_mask, unsigned int order)
+ extern unsigned long __get_free_pages(gfp_t gfp_mask, unsigned int order);
+ extern unsigned long get_zeroed_page(gfp_t gfp_mask);
+ 
+-void *alloc_pages_exact(size_t size, gfp_t gfp_mask);
++void *alloc_pages_exact(size_t size, gfp_t gfp_mask) __attribute__((alloc_size(1)));
+ void free_pages_exact(void *virt, size_t size);
+-void * __meminit alloc_pages_exact_nid(int nid, size_t size, gfp_t gfp_mask);
++void * __meminit alloc_pages_exact_nid(int nid, size_t size, gfp_t gfp_mask) __attribute__((alloc_size(2)));
+ 
+ #define __get_free_page(gfp_mask) \
+ 		__get_free_pages((gfp_mask), 0)
+diff --git a/include/linux/highmem.h b/include/linux/highmem.h
+index d2c70d3772a3..d398a3d9417c 100644
+--- a/include/linux/highmem.h
++++ b/include/linux/highmem.h
+@@ -204,6 +204,13 @@ static inline void clear_highpage(struct page *page)
+ 	kunmap_atomic(kaddr);
+ }
+ 
++static inline void verify_zero_highpage(struct page *page)
++{
++	void *kaddr = kmap_atomic(page);
++	BUG_ON(memchr_inv(kaddr, 0, PAGE_SIZE));
++	kunmap_atomic(kaddr);
++}
++
+ /*
+  * If we pass in a base or tail page, we can zero up to PAGE_SIZE.
+  * If we pass in a head page, we can zero up to the size of the compound page.
+diff --git a/include/linux/interrupt.h b/include/linux/interrupt.h
+index bb8ff9083e7d..d0d6e67a5ae0 100644
+--- a/include/linux/interrupt.h
++++ b/include/linux/interrupt.h
+@@ -563,7 +563,7 @@ extern const char * const softirq_to_name[NR_SOFTIRQS];
+ 
+ struct softirq_action
+ {
+-	void	(*action)(struct softirq_action *);
++	void	(*action)(void);
+ };
+ 
+ asmlinkage void do_softirq(void);
+@@ -578,7 +578,7 @@ static inline void do_softirq_own_stack(void)
+ }
+ #endif
+ 
+-extern void open_softirq(int nr, void (*action)(struct softirq_action *));
++extern void __init open_softirq(int nr, void (*action)(void));
+ extern void softirq_init(void);
+ extern void __raise_softirq_irqoff(unsigned int nr);
+ 
+diff --git a/include/linux/kobject_ns.h b/include/linux/kobject_ns.h
+index 2b5b64256cf4..8cdce21dce0f 100644
+--- a/include/linux/kobject_ns.h
++++ b/include/linux/kobject_ns.h
+@@ -45,7 +45,7 @@ struct kobj_ns_type_operations {
+ 	void (*drop_ns)(void *);
+ };
+ 
+-int kobj_ns_type_register(const struct kobj_ns_type_operations *ops);
++int __init kobj_ns_type_register(const struct kobj_ns_type_operations *ops);
+ int kobj_ns_type_registered(enum kobj_ns_type type);
+ const struct kobj_ns_type_operations *kobj_child_ns_ops(struct kobject *parent);
+ const struct kobj_ns_type_operations *kobj_ns_ops(struct kobject *kobj);
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index 992c18d5e85d..19d0c045a94c 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -775,7 +775,7 @@ static inline int is_vmalloc_or_module_addr(const void *x)
+ }
+ #endif
+ 
+-extern void *kvmalloc_node(size_t size, gfp_t flags, int node);
++extern void *kvmalloc_node(size_t size, gfp_t flags, int node) __attribute__((alloc_size(1)));
+ static inline void *kvmalloc(size_t size, gfp_t flags)
+ {
+ 	return kvmalloc_node(size, flags, NUMA_NO_NODE);
+@@ -910,10 +910,15 @@ static inline void set_compound_page_dtor(struct page *page,
+ 	page[1].compound_dtor = compound_dtor;
+ }
+ 
+-static inline void destroy_compound_page(struct page *page)
++static inline compound_page_dtor *get_compound_page_dtor(struct page *page)
+ {
+ 	VM_BUG_ON_PAGE(page[1].compound_dtor >= NR_COMPOUND_DTORS, page);
+-	compound_page_dtors[page[1].compound_dtor](page);
++	return compound_page_dtors[page[1].compound_dtor];
++}
++
++static inline void destroy_compound_page(struct page *page)
++{
++	(*get_compound_page_dtor(page))(page);
+ }
+ 
+ static inline unsigned int compound_order(struct page *page)
+diff --git a/include/linux/percpu.h b/include/linux/percpu.h
+index 5e76af742c80..9a6c682ec127 100644
+--- a/include/linux/percpu.h
++++ b/include/linux/percpu.h
+@@ -123,7 +123,7 @@ extern int __init pcpu_page_first_chunk(size_t reserved_size,
+ 				pcpu_fc_populate_pte_fn_t populate_pte_fn);
+ #endif
+ 
+-extern void __percpu *__alloc_reserved_percpu(size_t size, size_t align);
++extern void __percpu *__alloc_reserved_percpu(size_t size, size_t align) __attribute__((alloc_size(1)));
+ extern bool __is_kernel_percpu_address(unsigned long addr, unsigned long *can_addr);
+ extern bool is_kernel_percpu_address(unsigned long addr);
+ 
+@@ -131,8 +131,8 @@ extern bool is_kernel_percpu_address(unsigned long addr);
+ extern void __init setup_per_cpu_areas(void);
+ #endif
+ 
+-extern void __percpu *__alloc_percpu_gfp(size_t size, size_t align, gfp_t gfp);
+-extern void __percpu *__alloc_percpu(size_t size, size_t align);
++extern void __percpu *__alloc_percpu_gfp(size_t size, size_t align, gfp_t gfp) __attribute__((alloc_size(1)));
++extern void __percpu *__alloc_percpu(size_t size, size_t align) __attribute__((alloc_size(1)));
+ extern void free_percpu(void __percpu *__pdata);
+ extern phys_addr_t per_cpu_ptr_to_phys(void *addr);
+ 
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 419a4d77de00..886b8a9b554e 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -1316,6 +1316,14 @@ static inline int perf_is_paranoid(void)
+ 	return sysctl_perf_event_paranoid > -1;
+ }
+ 
++static inline int perf_allow_open(struct perf_event_attr *attr)
++{
++	if (sysctl_perf_event_paranoid > 2 && !perfmon_capable())
++		return -EACCES;
++
++	return security_perf_event_open(attr, PERF_SECURITY_OPEN);
++}
++
+ static inline int perf_allow_kernel(struct perf_event_attr *attr)
+ {
+ 	if (sysctl_perf_event_paranoid > 1 && !perfmon_capable())
+diff --git a/include/linux/slab.h b/include/linux/slab.h
+index be4ba5867ac5..8b732a2012ab 100644
+--- a/include/linux/slab.h
++++ b/include/linux/slab.h
+@@ -181,7 +181,7 @@ int kmem_cache_shrink(struct kmem_cache *);
+ /*
+  * Common kmalloc functions provided by all allocators
+  */
+-void * __must_check krealloc(const void *, size_t, gfp_t);
++void * __must_check krealloc(const void *, size_t, gfp_t) __attribute((alloc_size(2)));
+ void kfree(const void *);
+ void kfree_sensitive(const void *);
+ size_t __ksize(const void *);
+@@ -386,7 +386,7 @@ static __always_inline unsigned int kmalloc_index(size_t size)
+ }
+ #endif /* !CONFIG_SLOB */
+ 
+-void *__kmalloc(size_t size, gfp_t flags) __assume_kmalloc_alignment __malloc;
++void *__kmalloc(size_t size, gfp_t flags) __assume_kmalloc_alignment __malloc __attribute__((alloc_size(1)));
+ void *kmem_cache_alloc(struct kmem_cache *, gfp_t flags) __assume_slab_alignment __malloc;
+ void kmem_cache_free(struct kmem_cache *, void *);
+ 
+@@ -410,7 +410,7 @@ static __always_inline void kfree_bulk(size_t size, void **p)
+ }
+ 
+ #ifdef CONFIG_NUMA
+-void *__kmalloc_node(size_t size, gfp_t flags, int node) __assume_kmalloc_alignment __malloc;
++void *__kmalloc_node(size_t size, gfp_t flags, int node) __assume_kmalloc_alignment __malloc __attribute__((alloc_size(1)));
+ void *kmem_cache_alloc_node(struct kmem_cache *, gfp_t flags, int node) __assume_slab_alignment __malloc;
+ #else
+ static __always_inline void *__kmalloc_node(size_t size, gfp_t flags, int node)
+@@ -535,7 +535,7 @@ static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
+  *	Try really hard to succeed the allocation but fail
+  *	eventually.
+  */
+-static __always_inline void *kmalloc(size_t size, gfp_t flags)
++static __always_inline __attribute__((alloc_size(1))) void *kmalloc(size_t size, gfp_t flags)
+ {
+ 	if (__builtin_constant_p(size)) {
+ #ifndef CONFIG_SLOB
+@@ -557,7 +557,7 @@ static __always_inline void *kmalloc(size_t size, gfp_t flags)
+ 	return __kmalloc(size, flags);
+ }
+ 
+-static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
++static __always_inline __attribute__((alloc_size(1))) void *kmalloc_node(size_t size, gfp_t flags, int node)
+ {
+ #ifndef CONFIG_SLOB
+ 	if (__builtin_constant_p(size) &&
+diff --git a/include/linux/slub_def.h b/include/linux/slub_def.h
+index 1be0ed5befa1..c71cf30b5987 100644
+--- a/include/linux/slub_def.h
++++ b/include/linux/slub_def.h
+@@ -113,6 +113,11 @@ struct kmem_cache {
+ 	unsigned long random;
+ #endif
+ 
++#ifdef CONFIG_SLAB_CANARY
++	unsigned long random_active;
++	unsigned long random_inactive;
++#endif
++
+ #ifdef CONFIG_NUMA
+ 	/*
+ 	 * Defragmentation by allocating from a remote node.
+diff --git a/include/linux/sysctl.h b/include/linux/sysctl.h
+index 51298a4f4623..b835c57330f2 100644
+--- a/include/linux/sysctl.h
++++ b/include/linux/sysctl.h
+@@ -53,6 +53,8 @@ int proc_douintvec(struct ctl_table *, int, void *, size_t *, loff_t *);
+ int proc_dointvec_minmax(struct ctl_table *, int, void *, size_t *, loff_t *);
+ int proc_douintvec_minmax(struct ctl_table *table, int write, void *buffer,
+ 		size_t *lenp, loff_t *ppos);
++int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
++				  void *buffer, size_t *lenp, loff_t *ppos);
+ int proc_dointvec_jiffies(struct ctl_table *, int, void *, size_t *, loff_t *);
+ int proc_dointvec_userhz_jiffies(struct ctl_table *, int, void *, size_t *,
+ 		loff_t *);
+diff --git a/include/linux/tty.h b/include/linux/tty.h
+index 37803f3e6d49..35cf6f806b3f 100644
+--- a/include/linux/tty.h
++++ b/include/linux/tty.h
+@@ -14,6 +14,7 @@
+ #include <uapi/linux/tty.h>
+ #include <linux/rwsem.h>
+ #include <linux/llist.h>
++#include <linux/user_namespace.h>
+ 
+ 
+ /*
+@@ -341,6 +342,7 @@ struct tty_struct {
+ 	/* If the tty has a pending do_SAK, queue it here - akpm */
+ 	struct work_struct SAK_work;
+ 	struct tty_port *port;
++	struct user_namespace *owner_user_ns;
+ } __randomize_layout;
+ 
+ /* Each of a tty's open files has private_data pointing to tty_file_private */
+@@ -350,6 +352,8 @@ struct tty_file_private {
+ 	struct list_head list;
+ };
+ 
++extern int tiocsti_restrict;
++
+ /* tty magic number */
+ #define TTY_MAGIC		0x5401
+ 
+diff --git a/include/linux/usb.h b/include/linux/usb.h
+index d6a41841b93e..f7f3d138b4e6 100644
+--- a/include/linux/usb.h
++++ b/include/linux/usb.h
+@@ -2037,6 +2037,17 @@ extern void usb_led_activity(enum usb_led_event ev);
+ static inline void usb_led_activity(enum usb_led_event ev) {}
+ #endif
+ 
++/* sysctl.c */
++extern int deny_new_usb;
++#ifdef CONFIG_SYSCTL
++extern int usb_init_sysctl(void);
++extern void usb_exit_sysctl(void);
++#else
++static inline int usb_init_sysctl(void) { return 0; }
++static inline void usb_exit_sysctl(void) { }
++#endif /* CONFIG_SYSCTL */
++
++
+ #endif  /* __KERNEL__ */
+ 
+ #endif
+diff --git a/include/linux/user_namespace.h b/include/linux/user_namespace.h
+index 64cf8ebdc4ec..bd29529ac188 100644
+--- a/include/linux/user_namespace.h
++++ b/include/linux/user_namespace.h
+@@ -105,6 +105,8 @@ void dec_ucount(struct ucounts *ucounts, enum ucount_type type);
+ 
+ #ifdef CONFIG_USER_NS
+ 
++extern int unprivileged_userns_clone;
++
+ static inline struct user_namespace *get_user_ns(struct user_namespace *ns)
+ {
+ 	if (ns)
+@@ -138,6 +140,8 @@ extern bool current_in_userns(const struct user_namespace *target_ns);
+ struct ns_common *ns_get_owner(struct ns_common *ns);
+ #else
+ 
++#define unprivileged_userns_clone 0
++
+ static inline struct user_namespace *get_user_ns(struct user_namespace *ns)
+ {
+ 	return &init_user_ns;
+diff --git a/include/linux/vmalloc.h b/include/linux/vmalloc.h
+index cedcda6593f6..6ccdd4926aa8 100644
+--- a/include/linux/vmalloc.h
++++ b/include/linux/vmalloc.h
+@@ -95,18 +95,18 @@ static inline void vmalloc_init(void)
+ static inline unsigned long vmalloc_nr_pages(void) { return 0; }
+ #endif
+ 
+-extern void *vmalloc(unsigned long size);
+-extern void *vzalloc(unsigned long size);
+-extern void *vmalloc_user(unsigned long size);
+-extern void *vmalloc_node(unsigned long size, int node);
+-extern void *vzalloc_node(unsigned long size, int node);
+-extern void *vmalloc_32(unsigned long size);
+-extern void *vmalloc_32_user(unsigned long size);
+-extern void *__vmalloc(unsigned long size, gfp_t gfp_mask);
++extern void *vmalloc(unsigned long size) __attribute__((alloc_size(1)));
++extern void *vzalloc(unsigned long size) __attribute__((alloc_size(1)));
++extern void *vmalloc_user(unsigned long size) __attribute__((alloc_size(1)));
++extern void *vmalloc_node(unsigned long size, int node) __attribute__((alloc_size(1)));
++extern void *vzalloc_node(unsigned long size, int node) __attribute__((alloc_size(1)));
++extern void *vmalloc_32(unsigned long size) __attribute__((alloc_size(1)));
++extern void *vmalloc_32_user(unsigned long size) __attribute__((alloc_size(1)));
++extern void *__vmalloc(unsigned long size, gfp_t gfp_mask) __attribute__((alloc_size(1)));
+ extern void *__vmalloc_node_range(unsigned long size, unsigned long align,
+ 			unsigned long start, unsigned long end, gfp_t gfp_mask,
+ 			pgprot_t prot, unsigned long vm_flags, int node,
+-			const void *caller);
++			const void *caller) __attribute__((alloc_size(1)));
+ void *__vmalloc_node(unsigned long size, unsigned long align, gfp_t gfp_mask,
+ 		int node, const void *caller);
+ 
+diff --git a/include/net/tcp.h b/include/net/tcp.h
+index 244208f6f6c2..764da159ccab 100644
+--- a/include/net/tcp.h
++++ b/include/net/tcp.h
+@@ -245,6 +245,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
+ /* sysctl variables for tcp */
+ extern int sysctl_tcp_max_orphans;
+ extern long sysctl_tcp_mem[3];
++extern int sysctl_tcp_simult_connect;
+ 
+ #define TCP_RACK_LOSS_DETECTION  0x1 /* Use RACK to detect losses */
+ #define TCP_RACK_STATIC_REO_WND  0x2 /* Use static RACK reo wnd */
+diff --git a/init/Kconfig b/init/Kconfig
+index a3d27421de8f..208a3c8951d0 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -417,6 +417,7 @@ config USELIB
+ config AUDIT
+ 	bool "Auditing support"
+ 	depends on NET
++	default y
+ 	help
+ 	  Enable auditing infrastructure that can be used with another
+ 	  kernel subsystem, such as SELinux (which requires this for
+@@ -1171,6 +1172,22 @@ config USER_NS
+ 
+ 	  If unsure, say N.
+ 
++config USER_NS_UNPRIVILEGED
++	bool "Allow unprivileged users to create namespaces"
++	depends on USER_NS
++	default n
++	help
++	  When disabled, unprivileged users will not be able to create
++	  new namespaces. Allowing users to create their own namespaces
++	  has been part of several recent local privilege escalation
++	  exploits, so if you need user namespaces but are
++	  paranoid^Wsecurity-conscious you want to disable this.
++
++	  This setting can be overridden at runtime via the
++	  kernel.unprivileged_userns_clone sysctl.
++
++	  If unsure, say N.
++
+ config PID_NS
+ 	bool "PID Namespaces"
+ 	default y
+@@ -1401,9 +1418,8 @@ menuconfig EXPERT
+ 	  Only use this if you really know what you are doing.
+ 
+ config UID16
+-	bool "Enable 16-bit UID system calls" if EXPERT
++	bool "Enable 16-bit UID system calls"
+ 	depends on HAVE_UID16 && MULTIUSER
+-	default y
+ 	help
+ 	  This enables the legacy 16-bit UID syscall wrappers.
+ 
+@@ -1432,14 +1448,13 @@ config SGETMASK_SYSCALL
+ 	  If unsure, leave the default option here.
+ 
+ config SYSFS_SYSCALL
+-	bool "Sysfs syscall support" if EXPERT
+-	default y
++	bool "Sysfs syscall support"
+ 	help
+ 	  sys_sysfs is an obsolete system call no longer supported in libc.
+ 	  Note that disabling this option is more secure but might break
+ 	  compatibility with some systems.
+ 
+-	  If unsure say Y here.
++	  If unsure say N here.
+ 
+ config FHANDLE
+ 	bool "open by fhandle syscalls" if EXPERT
+@@ -1590,8 +1605,7 @@ config SHMEM
+ 	  which may be appropriate on small systems without swap.
+ 
+ config AIO
+-	bool "Enable AIO support" if EXPERT
+-	default y
++	bool "Enable AIO support"
+ 	help
+ 	  This option enables POSIX asynchronous I/O which may by used
+ 	  by some high performance threaded applications. Disabling
+@@ -1852,7 +1866,7 @@ config VM_EVENT_COUNTERS
+ 
+ config SLUB_DEBUG
+ 	default y
+-	bool "Enable SLUB debugging support" if EXPERT
++	bool "Enable SLUB debugging support"
+ 	depends on SLUB && SYSFS
+ 	help
+ 	  SLUB has extensive debug support features. Disabling these can
+@@ -1876,7 +1890,6 @@ config SLUB_MEMCG_SYSFS_ON
+ 
+ config COMPAT_BRK
+ 	bool "Disable heap randomization"
+-	default y
+ 	help
+ 	  Randomizing heap placement makes heap exploits harder, but it
+ 	  also breaks ancient binaries (including anything libc5 based).
+@@ -1923,7 +1936,6 @@ endchoice
+ 
+ config SLAB_MERGE_DEFAULT
+ 	bool "Allow slab caches to be merged"
+-	default y
+ 	help
+ 	  For reduced kernel memory fragmentation, slab caches can be
+ 	  merged when they share the same size and other characteristics.
+@@ -1938,6 +1950,7 @@ config SLAB_MERGE_DEFAULT
+ config SLAB_FREELIST_RANDOM
+ 	bool "Randomize slab freelist"
+ 	depends on SLAB || SLUB
++	default y
+ 	help
+ 	  Randomizes the freelist order used on creating new pages. This
+ 	  security feature reduces the predictability of the kernel slab
+@@ -1946,6 +1959,7 @@ config SLAB_FREELIST_RANDOM
+ config SLAB_FREELIST_HARDENED
+ 	bool "Harden slab freelist metadata"
+ 	depends on SLAB || SLUB
++	default y
+ 	help
+ 	  Many kernel heap attacks try to target slab cache metadata and
+ 	  other infrastructure. This options makes minor performance
+@@ -1954,6 +1968,23 @@ config SLAB_FREELIST_HARDENED
+ 	  sanity-checking than others. This option is most effective with
+ 	  CONFIG_SLUB.
+ 
++config SLAB_CANARY
++	depends on SLUB
++	depends on !SLAB_MERGE_DEFAULT
++	bool "SLAB canaries"
++	default y
++	help
++	  Place canaries at the end of kernel slab allocations, sacrificing
++	  some performance and memory usage for security.
++
++	  Canaries can detect some forms of heap corruption when allocations
++	  are freed and as part of the HARDENED_USERCOPY feature. It provides
++	  basic use-after-free detection for HARDENED_USERCOPY.
++
++	  Canaries absorb small overflows (rendering them harmless), mitigate
++	  non-NUL terminated C string overflows on 64-bit via a guaranteed zero
++	  byte and provide basic double-free detection.
++
+ config SHUFFLE_PAGE_ALLOCATOR
+ 	bool "Page allocator randomization"
+ 	default SLAB_FREELIST_RANDOM && ACPI_NUMA
+diff --git a/kernel/audit.c b/kernel/audit.c
+index 1ffc2e059027..0eb5de8d177e 100644
+--- a/kernel/audit.c
++++ b/kernel/audit.c
+@@ -1693,6 +1693,9 @@ static int __init audit_enable(char *str)
+ 
+ 	if (audit_default == AUDIT_OFF)
+ 		audit_initialized = AUDIT_DISABLED;
++	else if (!audit_ever_enabled)
++		audit_initialized = AUDIT_UNINITIALIZED;
++
+ 	if (audit_set_enabled(audit_default))
+ 		pr_err("audit: error setting audit state (%d)\n",
+ 		       audit_default);
+diff --git a/kernel/bpf/core.c b/kernel/bpf/core.c
+index 1de87fcaeabd..8d844eef1d69 100644
+--- a/kernel/bpf/core.c
++++ b/kernel/bpf/core.c
+@@ -516,7 +516,7 @@ void bpf_prog_kallsyms_del_all(struct bpf_prog *fp)
+ /* All BPF JIT sysctl knobs here. */
+ int bpf_jit_enable   __read_mostly = IS_BUILTIN(CONFIG_BPF_JIT_DEFAULT_ON);
+ int bpf_jit_kallsyms __read_mostly = IS_BUILTIN(CONFIG_BPF_JIT_DEFAULT_ON);
+-int bpf_jit_harden   __read_mostly;
++int bpf_jit_harden   __read_mostly = 2;
+ long bpf_jit_limit   __read_mostly;
+ 
+ static void
+diff --git a/kernel/bpf/syscall.c b/kernel/bpf/syscall.c
+index 32ca33539052..07c18d1d6f20 100644
+--- a/kernel/bpf/syscall.c
++++ b/kernel/bpf/syscall.c
+@@ -50,7 +50,7 @@ static DEFINE_SPINLOCK(map_idr_lock);
+ static DEFINE_IDR(link_idr);
+ static DEFINE_SPINLOCK(link_idr_lock);
+ 
+-int sysctl_unprivileged_bpf_disabled __read_mostly;
++int sysctl_unprivileged_bpf_disabled __read_mostly = 1;
+ 
+ static const struct bpf_map_ops * const bpf_map_types[] = {
+ #define BPF_PROG_TYPE(_id, _name, prog_ctx_type, kern_ctx_type)
+diff --git a/kernel/capability.c b/kernel/capability.c
+index de7eac903a2a..5602178f3d21 100644
+--- a/kernel/capability.c
++++ b/kernel/capability.c
+@@ -449,6 +449,12 @@ bool capable(int cap)
+ 	return ns_capable(&init_user_ns, cap);
+ }
+ EXPORT_SYMBOL(capable);
++
++bool capable_noaudit(int cap)
++{
++	return ns_capable_noaudit(&init_user_ns, cap);
++}
++EXPORT_SYMBOL(capable_noaudit);
+ #endif /* CONFIG_MULTIUSER */
+ 
+ /**
+diff --git a/kernel/events/core.c b/kernel/events/core.c
+index 8425dbc1d239..7ce0ad5cead5 100644
+--- a/kernel/events/core.c
++++ b/kernel/events/core.c
+@@ -410,8 +410,13 @@ static cpumask_var_t perf_online_mask;
+  *   0 - disallow raw tracepoint access for unpriv
+  *   1 - disallow cpu events for unpriv
+  *   2 - disallow kernel profiling for unpriv
++ *   3 - disallow all unpriv perf event use
+  */
++#ifdef CONFIG_SECURITY_PERF_EVENTS_RESTRICT
++int sysctl_perf_event_paranoid __read_mostly = 3;
++#else
+ int sysctl_perf_event_paranoid __read_mostly = 2;
++#endif
+ 
+ /* Minimum for 512 kiB + 1 user control page */
+ int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024); /* 'free' kiB per user */
+@@ -11783,7 +11788,7 @@ SYSCALL_DEFINE5(perf_event_open,
+ 		return -EINVAL;
+ 
+ 	/* Do we allow access to perf_event_open(2) ? */
+-	err = security_perf_event_open(&attr, PERF_SECURITY_OPEN);
++	err = perf_allow_open(&attr);
+ 	if (err)
+ 		return err;
+ 
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 808af2cc8ab6..0948177da180 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -82,6 +82,7 @@
+ #include <linux/perf_event.h>
+ #include <linux/posix-timers.h>
+ #include <linux/user-return-notifier.h>
++#include <linux/user_namespace.h>
+ #include <linux/oom.h>
+ #include <linux/khugepaged.h>
+ #include <linux/signalfd.h>
+@@ -1872,6 +1873,10 @@ static __latent_entropy struct task_struct *copy_process(
+ 	if ((clone_flags & (CLONE_NEWUSER|CLONE_FS)) == (CLONE_NEWUSER|CLONE_FS))
+ 		return ERR_PTR(-EINVAL);
+ 
++	if ((clone_flags & CLONE_NEWUSER) && !unprivileged_userns_clone)
++		if (!capable(CAP_SYS_ADMIN))
++			return ERR_PTR(-EPERM);
++
+ 	/*
+ 	 * Thread groups must share signals as well, and detached threads
+ 	 * can only be started up within the thread group.
+@@ -2941,6 +2946,12 @@ int ksys_unshare(unsigned long unshare_flags)
+ 	if (unshare_flags & CLONE_NEWNS)
+ 		unshare_flags |= CLONE_FS;
+ 
++	if ((unshare_flags & CLONE_NEWUSER) && !unprivileged_userns_clone) {
++		err = -EPERM;
++		if (!capable(CAP_SYS_ADMIN))
++			goto bad_unshare_out;
++	}
++
+ 	err = check_unshare_flags(unshare_flags);
+ 	if (err)
+ 		goto bad_unshare_out;
+diff --git a/kernel/rcu/tiny.c b/kernel/rcu/tiny.c
+index aa897c3f2e92..d8976886fd68 100644
+--- a/kernel/rcu/tiny.c
++++ b/kernel/rcu/tiny.c
+@@ -101,7 +101,7 @@ static inline bool rcu_reclaim_tiny(struct rcu_head *head)
+ }
+ 
+ /* Invoke the RCU callbacks whose grace period has elapsed.  */
+-static __latent_entropy void rcu_process_callbacks(struct softirq_action *unused)
++static __latent_entropy void rcu_process_callbacks(void)
+ {
+ 	struct rcu_head *next, *list;
+ 	unsigned long flags;
+diff --git a/kernel/rcu/tree.c b/kernel/rcu/tree.c
+index ce17b8477442..f586f36c2627 100644
+--- a/kernel/rcu/tree.c
++++ b/kernel/rcu/tree.c
+@@ -2782,7 +2782,7 @@ static __latent_entropy void rcu_core(void)
+ 		queue_work_on(rdp->cpu, rcu_gp_wq, &rdp->strict_work);
+ }
+ 
+-static void rcu_core_si(struct softirq_action *h)
++static void rcu_core_si(void)
+ {
+ 	rcu_core();
+ }
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index bbc78794224a..bbe4843a2a30 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -10686,7 +10686,7 @@ static int newidle_balance(struct rq *this_rq, struct rq_flags *rf)
+  * run_rebalance_domains is triggered when needed from the scheduler tick.
+  * Also triggered for nohz idle balancing (with nohz_balancing_kick set).
+  */
+-static __latent_entropy void run_rebalance_domains(struct softirq_action *h)
++static __latent_entropy void run_rebalance_domains(void)
+ {
+ 	struct rq *this_rq = this_rq();
+ 	enum cpu_idle_type idle = this_rq->idle_balance ?
+diff --git a/kernel/softirq.c b/kernel/softirq.c
+index 9d71046ea247..dac925e8ea9a 100644
+--- a/kernel/softirq.c
++++ b/kernel/softirq.c
+@@ -52,7 +52,7 @@ DEFINE_PER_CPU_ALIGNED(irq_cpustat_t, irq_stat);
+ EXPORT_PER_CPU_SYMBOL(irq_stat);
+ #endif
+ 
+-static struct softirq_action softirq_vec[NR_SOFTIRQS] __cacheline_aligned_in_smp;
++static struct softirq_action softirq_vec[NR_SOFTIRQS] __ro_after_init __aligned(PAGE_SIZE);
+ 
+ DEFINE_PER_CPU(struct task_struct *, ksoftirqd);
+ 
+@@ -340,7 +340,7 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
+ 		kstat_incr_softirqs_this_cpu(vec_nr);
+ 
+ 		trace_softirq_entry(vec_nr);
+-		h->action(h);
++		h->action();
+ 		trace_softirq_exit(vec_nr);
+ 		if (unlikely(prev_count != preempt_count())) {
+ 			pr_err("huh, entered softirq %u %s %p with preempt_count %08x, exited with %08x?\n",
+@@ -483,7 +483,7 @@ void __raise_softirq_irqoff(unsigned int nr)
+ 	or_softirq_pending(1UL << nr);
+ }
+ 
+-void open_softirq(int nr, void (*action)(struct softirq_action *))
++void __init open_softirq(int nr, void (*action)(void))
+ {
+ 	softirq_vec[nr].action = action;
+ }
+@@ -529,8 +529,7 @@ void __tasklet_hi_schedule(struct tasklet_struct *t)
+ }
+ EXPORT_SYMBOL(__tasklet_hi_schedule);
+ 
+-static void tasklet_action_common(struct softirq_action *a,
+-				  struct tasklet_head *tl_head,
++static void tasklet_action_common(struct tasklet_head *tl_head,
+ 				  unsigned int softirq_nr)
+ {
+ 	struct tasklet_struct *list;
+@@ -570,14 +569,14 @@ static void tasklet_action_common(struct softirq_action *a,
+ 	}
+ }
+ 
+-static __latent_entropy void tasklet_action(struct softirq_action *a)
++static __latent_entropy void tasklet_action(void)
+ {
+-	tasklet_action_common(a, this_cpu_ptr(&tasklet_vec), TASKLET_SOFTIRQ);
++	tasklet_action_common(this_cpu_ptr(&tasklet_vec), TASKLET_SOFTIRQ);
+ }
+ 
+-static __latent_entropy void tasklet_hi_action(struct softirq_action *a)
++static __latent_entropy void tasklet_hi_action(void)
+ {
+-	tasklet_action_common(a, this_cpu_ptr(&tasklet_hi_vec), HI_SOFTIRQ);
++	tasklet_action_common(this_cpu_ptr(&tasklet_hi_vec), HI_SOFTIRQ);
+ }
+ 
+ void tasklet_setup(struct tasklet_struct *t,
+diff --git a/kernel/sysctl.c b/kernel/sysctl.c
+index 62fbd09b5dc1..36470990b2e6 100644
+--- a/kernel/sysctl.c
++++ b/kernel/sysctl.c
+@@ -103,38 +103,44 @@
+ #ifdef CONFIG_LOCKUP_DETECTOR
+ #include <linux/nmi.h>
+ #endif
++#ifdef CONFIG_USER_NS
++#include <linux/user_namespace.h>
++#endif
++#if defined CONFIG_TTY
++#include <linux/tty.h>
++#endif
+ 
+ #if defined(CONFIG_SYSCTL)
+ 
+ /* Constants used for minimum and  maximum */
+ #ifdef CONFIG_LOCKUP_DETECTOR
+-static int sixty = 60;
+-#endif
+-
+-static int __maybe_unused neg_one = -1;
+-static int __maybe_unused two = 2;
+-static int __maybe_unused four = 4;
+-static unsigned long zero_ul;
+-static unsigned long one_ul = 1;
+-static unsigned long long_max = LONG_MAX;
+-static int one_hundred = 100;
+-static int two_hundred = 200;
+-static int one_thousand = 1000;
++static int sixty __read_only = 60;
++#endif
++
++static int __maybe_unused neg_one __read_only = -1;
++static int __maybe_unused two __read_only = 2;
++static int __maybe_unused four __read_only = 4;
++static unsigned long zero_ul __read_only;
++static unsigned long one_ul __read_only = 1;
++static unsigned long long_max __read_only = LONG_MAX;
++static int one_hundred __read_only = 100;
++static int two_hundred __read_only = 200;
++static int one_thousand __read_only = 1000;
+ #ifdef CONFIG_PRINTK
+-static int ten_thousand = 10000;
++static int ten_thousand __read_only = 10000;
+ #endif
+ #ifdef CONFIG_PERF_EVENTS
+-static int six_hundred_forty_kb = 640 * 1024;
++static int six_hundred_forty_kb __read_only = 640 * 1024;
+ #endif
+ 
+ /* this is needed for the proc_doulongvec_minmax of vm_dirty_bytes */
+-static unsigned long dirty_bytes_min = 2 * PAGE_SIZE;
++static unsigned long dirty_bytes_min __read_only = 2 * PAGE_SIZE;
+ 
+ /* this is needed for the proc_dointvec_minmax for [fs_]overflow UID and GID */
+-static int maxolduid = 65535;
+-static int minolduid;
++static int maxolduid __read_only = 65535;
++static int minolduid __read_only;
+ 
+-static int ngroups_max = NGROUPS_MAX;
++static int ngroups_max __read_only = NGROUPS_MAX;
+ static const int cap_last_cap = CAP_LAST_CAP;
+ 
+ /*
+@@ -142,7 +148,7 @@ static const int cap_last_cap = CAP_LAST_CAP;
+  * and hung_task_check_interval_secs
+  */
+ #ifdef CONFIG_DETECT_HUNG_TASK
+-static unsigned long hung_task_timeout_max = (LONG_MAX/HZ);
++static unsigned long hung_task_timeout_max __read_only = (LONG_MAX/HZ);
+ #endif
+ 
+ #ifdef CONFIG_INOTIFY_USER
+@@ -185,19 +191,19 @@ int sysctl_legacy_va_layout;
+ #endif
+ 
+ #ifdef CONFIG_SCHED_DEBUG
+-static int min_sched_granularity_ns = 100000;		/* 100 usecs */
+-static int max_sched_granularity_ns = NSEC_PER_SEC;	/* 1 second */
+-static int min_wakeup_granularity_ns;			/* 0 usecs */
+-static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
++static int min_sched_granularity_ns __read_only = 100000;		/* 100 usecs */
++static int max_sched_granularity_ns __read_only = NSEC_PER_SEC;	/* 1 second */
++static int min_wakeup_granularity_ns __read_only;			/* 0 usecs */
++static int max_wakeup_granularity_ns __read_only = NSEC_PER_SEC;	/* 1 second */
+ #ifdef CONFIG_SMP
+-static int min_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
+-static int max_sched_tunable_scaling = SCHED_TUNABLESCALING_END-1;
++static int min_sched_tunable_scaling __read_only = SCHED_TUNABLESCALING_NONE;
++static int max_sched_tunable_scaling __read_only = SCHED_TUNABLESCALING_END-1;
+ #endif /* CONFIG_SMP */
+ #endif /* CONFIG_SCHED_DEBUG */
+ 
+ #ifdef CONFIG_COMPACTION
+-static int min_extfrag_threshold;
+-static int max_extfrag_threshold = 1000;
++static int min_extfrag_threshold __read_only;
++static int max_extfrag_threshold __read_only = 1000;
+ #endif
+ 
+ #endif /* CONFIG_SYSCTL */
+@@ -887,8 +893,27 @@ static int proc_taint(struct ctl_table *table, int write,
+ 	return err;
+ }
+ 
+-#ifdef CONFIG_PRINTK
+-static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
++/**
++ * proc_dointvec_minmax_sysadmin - read a vector of integers with min/max values
++ * checking CAP_SYS_ADMIN on write
++ * @table: the sysctl table
++ * @write: %TRUE if this is a write to the sysctl file
++ * @buffer: the user buffer
++ * @lenp: the size of the user buffer
++ * @ppos: file position
++ *
++ * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
++ * values from/to the user buffer, treated as an ASCII string.
++ *
++ * This routine will ensure the values are within the range specified by
++ * table->extra1 (min) and table->extra2 (max).
++ *
++ * Writing is only allowed when root has CAP_SYS_ADMIN.
++ *
++ * Returns 0 on success, -EPERM on permission failure or -EINVAL on write
++ * when the range check fails.
++ */
++int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
+ 				void *buffer, size_t *lenp, loff_t *ppos)
+ {
+ 	if (write && !capable(CAP_SYS_ADMIN))
+@@ -896,7 +921,6 @@ static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
+ 
+ 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+ }
+-#endif
+ 
+ /**
+  * struct do_proc_dointvec_minmax_conv_param - proc_dointvec_minmax() range checking structure
+@@ -1582,6 +1606,12 @@ int proc_douintvec_minmax(struct ctl_table *table, int write,
+ 	return -ENOSYS;
+ }
+ 
++int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
++				  void *buffer, size_t *lenp, loff_t *ppos)
++{
++	return -ENOSYS;
++}
++
+ int proc_dointvec_jiffies(struct ctl_table *table, int write,
+ 		    void *buffer, size_t *lenp, loff_t *ppos)
+ {
+@@ -1902,6 +1932,15 @@ static struct ctl_table kern_table[] = {
+ 		.proc_handler	= proc_dointvec,
+ 	},
+ #endif
++#ifdef CONFIG_USER_NS
++	{
++		.procname	= "unprivileged_userns_clone",
++		.data		= &unprivileged_userns_clone,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec,
++	},
++#endif
+ #ifdef CONFIG_PROC_SYSCTL
+ 	{
+ 		.procname	= "tainted",
+@@ -2260,6 +2299,26 @@ static struct ctl_table kern_table[] = {
+ 		.extra2		= &two,
+ 	},
+ #endif
++#if defined CONFIG_TTY
++	{
++		.procname	= "tiocsti_restrict",
++		.data		= &tiocsti_restrict,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax_sysadmin,
++		.extra1		= SYSCTL_ZERO,
++		.extra2		= SYSCTL_ONE,
++	},
++#endif
++	{
++		.procname	= "device_sidechannel_restrict",
++		.data		= &device_sidechannel_restrict,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax_sysadmin,
++		.extra1		= SYSCTL_ZERO,
++		.extra2		= SYSCTL_ONE,
++	},
+ 	{
+ 		.procname	= "ngroups_max",
+ 		.data		= &ngroups_max,
+@@ -3426,6 +3485,7 @@ EXPORT_SYMBOL(proc_douintvec);
+ EXPORT_SYMBOL(proc_dointvec_jiffies);
+ EXPORT_SYMBOL(proc_dointvec_minmax);
+ EXPORT_SYMBOL_GPL(proc_douintvec_minmax);
++EXPORT_SYMBOL(proc_dointvec_minmax_sysadmin);
+ EXPORT_SYMBOL(proc_dointvec_userhz_jiffies);
+ EXPORT_SYMBOL(proc_dointvec_ms_jiffies);
+ EXPORT_SYMBOL(proc_dostring);
+diff --git a/kernel/time/hrtimer.c b/kernel/time/hrtimer.c
+index 5c9d968187ae..80156280360f 100644
+--- a/kernel/time/hrtimer.c
++++ b/kernel/time/hrtimer.c
+@@ -1605,7 +1605,7 @@ static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now,
+ 	}
+ }
+ 
+-static __latent_entropy void hrtimer_run_softirq(struct softirq_action *h)
++static __latent_entropy void hrtimer_run_softirq(void)
+ {
+ 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
+ 	unsigned long flags;
+diff --git a/kernel/time/timer.c b/kernel/time/timer.c
+index 8dbc008f8942..4fc9b8ece448 100644
+--- a/kernel/time/timer.c
++++ b/kernel/time/timer.c
+@@ -1737,7 +1737,7 @@ static inline void __run_timers(struct timer_base *base)
+ /*
+  * This function runs timers and the timer-tq in bottom half context.
+  */
+-static __latent_entropy void run_timer_softirq(struct softirq_action *h)
++static __latent_entropy void run_timer_softirq(void)
+ {
+ 	struct timer_base *base = this_cpu_ptr(&timer_bases[BASE_STD]);
+ 
+diff --git a/kernel/user_namespace.c b/kernel/user_namespace.c
+index af612945a4d0..95c54dae4aa1 100644
+--- a/kernel/user_namespace.c
++++ b/kernel/user_namespace.c
+@@ -21,6 +21,13 @@
+ #include <linux/bsearch.h>
+ #include <linux/sort.h>
+ 
++/* sysctl */
++#ifdef CONFIG_USER_NS_UNPRIVILEGED
++int unprivileged_userns_clone = 1;
++#else
++int unprivileged_userns_clone;
++#endif
++
+ static struct kmem_cache *user_ns_cachep __read_mostly;
+ static DEFINE_MUTEX(userns_state_mutex);
+ 
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index 7937265ef879..151000ca0f4c 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -375,6 +375,9 @@ config DEBUG_FORCE_FUNCTION_ALIGN_32B
+ 
+ 	  It is mainly for debug and performance tuning use.
+ 
++config DEBUG_WRITABLE_FUNCTION_POINTERS_VERBOSE
++	bool "Enable verbose reporting of writable function pointers"
++
+ #
+ # Select this config option from the architecture Kconfig, if it
+ # is preferred to always offer frame pointers as a config
+@@ -489,7 +492,7 @@ config DEBUG_FS
+ choice
+ 	prompt "Debugfs default access"
+ 	depends on DEBUG_FS
+-	default DEBUG_FS_ALLOW_ALL
++	default DEBUG_FS_ALLOW_NONE
+ 	help
+ 	  This selects the default access restrictions for debugfs.
+ 	  It can be overridden with kernel command line option
+@@ -917,6 +920,7 @@ menu "Debug Oops, Lockups and Hangs"
+ 
+ config PANIC_ON_OOPS
+ 	bool "Panic on Oops"
++	default y
+ 	help
+ 	  Say Y here to enable the kernel to panic when it oopses. This
+ 	  has the same effect as setting oops=panic on the kernel command
+@@ -926,7 +930,7 @@ config PANIC_ON_OOPS
+ 	  anything erroneous after an oops which could result in data
+ 	  corruption or other issues.
+ 
+-	  Say N if unsure.
++	  Say Y if unsure.
+ 
+ config PANIC_ON_OOPS_VALUE
+ 	int
+@@ -1494,6 +1498,7 @@ menu "Debug kernel data structures"
+ config DEBUG_LIST
+ 	bool "Debug linked list manipulation"
+ 	depends on DEBUG_KERNEL || BUG_ON_DATA_CORRUPTION
++	default y
+ 	help
+ 	  Enable this to turn on extended checks in the linked-list
+ 	  walking routines.
+@@ -1533,6 +1538,7 @@ config DEBUG_NOTIFIERS
+ config BUG_ON_DATA_CORRUPTION
+ 	bool "Trigger a BUG when data corruption is detected"
+ 	select DEBUG_LIST
++	default y
+ 	help
+ 	  Select this option if the kernel should BUG when it encounters
+ 	  data corruption in kernel memory structures when they get checked
+@@ -1688,6 +1694,7 @@ config STRICT_DEVMEM
+ config IO_STRICT_DEVMEM
+ 	bool "Filter I/O access to /dev/mem"
+ 	depends on STRICT_DEVMEM
++	default y
+ 	help
+ 	  If this option is disabled, you allow userspace (root) access to all
+ 	  io-memory regardless of whether a driver is actively using that
+diff --git a/lib/irq_poll.c b/lib/irq_poll.c
+index 2f17b488d58e..b6e7996a0058 100644
+--- a/lib/irq_poll.c
++++ b/lib/irq_poll.c
+@@ -75,7 +75,7 @@ void irq_poll_complete(struct irq_poll *iop)
+ }
+ EXPORT_SYMBOL(irq_poll_complete);
+ 
+-static void __latent_entropy irq_poll_softirq(struct softirq_action *h)
++static void __latent_entropy irq_poll_softirq(void)
+ {
+ 	struct list_head *list = this_cpu_ptr(&blk_cpu_iopoll);
+ 	int rearm = 0, budget = irq_poll_budget;
+diff --git a/lib/kobject.c b/lib/kobject.c
+index ea53b30cf483..5343bbeea5f8 100644
+--- a/lib/kobject.c
++++ b/lib/kobject.c
+@@ -1023,9 +1023,9 @@ EXPORT_SYMBOL_GPL(kset_create_and_add);
+ 
+ 
+ static DEFINE_SPINLOCK(kobj_ns_type_lock);
+-static const struct kobj_ns_type_operations *kobj_ns_ops_tbl[KOBJ_NS_TYPES];
++static const struct kobj_ns_type_operations *kobj_ns_ops_tbl[KOBJ_NS_TYPES] __ro_after_init;
+ 
+-int kobj_ns_type_register(const struct kobj_ns_type_operations *ops)
++int __init kobj_ns_type_register(const struct kobj_ns_type_operations *ops)
+ {
+ 	enum kobj_ns_type type = ops->type;
+ 	int error;
+diff --git a/lib/nlattr.c b/lib/nlattr.c
+index 5b6116e81f9f..b26a8e43cf42 100644
+--- a/lib/nlattr.c
++++ b/lib/nlattr.c
+@@ -790,6 +790,8 @@ int nla_memcpy(void *dest, const struct nlattr *src, int count)
+ {
+ 	int minlen = min_t(int, count, nla_len(src));
+ 
++	BUG_ON(minlen < 0);
++
+ 	memcpy(dest, nla_data(src), minlen);
+ 	if (count > minlen)
+ 		memset(dest + minlen, 0, count - minlen);
+diff --git a/lib/vsprintf.c b/lib/vsprintf.c
+index 3b53c73580c5..3490a316f52d 100644
+--- a/lib/vsprintf.c
++++ b/lib/vsprintf.c
+@@ -821,7 +821,7 @@ static char *ptr_to_id(char *buf, char *end, const void *ptr,
+ 	return pointer_string(buf, end, (const void *)hashval, spec);
+ }
+ 
+-int kptr_restrict __read_mostly;
++int kptr_restrict __read_mostly = 2;
+ 
+ static noinline_for_stack
+ char *restricted_pointer(char *buf, char *end, const void *ptr,
+diff --git a/mm/Kconfig b/mm/Kconfig
+index f730605b8dcf..06ab8783c4c4 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -321,7 +321,8 @@ config KSM
+ config DEFAULT_MMAP_MIN_ADDR
+ 	int "Low address space to protect from user allocation"
+ 	depends on MMU
+-	default 4096
++	default 32768 if ARM || (ARM64 && COMPAT)
++	default 65536
+ 	help
+ 	  This is the portion of low virtual memory which should be protected
+ 	  from userspace allocation.  Keeping a user from writing to low pages
+diff --git a/mm/Kconfig.debug b/mm/Kconfig.debug
+index 1e73717802f8..4a023b575370 100644
+--- a/mm/Kconfig.debug
++++ b/mm/Kconfig.debug
+@@ -106,6 +106,7 @@ config DEBUG_WX
+ 	depends on ARCH_HAS_DEBUG_WX
+ 	depends on MMU
+ 	select PTDUMP_CORE
++	default y
+ 	help
+ 	  Generate a warning if any W+X mappings are found at boot.
+ 
+diff --git a/mm/mmap.c b/mm/mmap.c
+index dc7206032387..62fcbf1515bd 100644
+--- a/mm/mmap.c
++++ b/mm/mmap.c
+@@ -231,6 +231,13 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
+ 
+ 	newbrk = PAGE_ALIGN(brk);
+ 	oldbrk = PAGE_ALIGN(mm->brk);
++	/* properly handle unaligned min_brk as an empty heap */
++	if (min_brk & ~PAGE_MASK) {
++		if (brk == min_brk)
++			newbrk -= PAGE_SIZE;
++		if (mm->brk == min_brk)
++			oldbrk -= PAGE_SIZE;
++	}
+ 	if (oldbrk == newbrk) {
+ 		mm->brk = brk;
+ 		goto success;
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index a723e81a5da2..5a9f4333c597 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -72,6 +72,7 @@
+ #include <linux/padata.h>
+ #include <linux/khugepaged.h>
+ #include <linux/buffer_head.h>
++#include <linux/random.h>
+ 
+ #include <asm/sections.h>
+ #include <asm/tlbflush.h>
+@@ -138,6 +139,15 @@ struct pcpu_drain {
+ static DEFINE_MUTEX(pcpu_drain_mutex);
+ static DEFINE_PER_CPU(struct pcpu_drain, pcpu_drain);
+ 
++bool __meminitdata extra_latent_entropy;
++
++static int __init setup_extra_latent_entropy(char *str)
++{
++	extra_latent_entropy = true;
++	return 0;
++}
++early_param("extra_latent_entropy", setup_extra_latent_entropy);
++
+ #ifdef CONFIG_GCC_PLUGIN_LATENT_ENTROPY
+ volatile unsigned long latent_entropy __latent_entropy;
+ EXPORT_SYMBOL(latent_entropy);
+@@ -1548,6 +1558,25 @@ static void __free_pages_ok(struct page *page, unsigned int order,
+ 	local_irq_restore(flags);
+ }
+ 
++static void __init __gather_extra_latent_entropy(struct page *page,
++						 unsigned int nr_pages)
++{
++	if (extra_latent_entropy && !PageHighMem(page) && page_to_pfn(page) < 0x100000) {
++		unsigned long hash = 0;
++		size_t index, end = PAGE_SIZE * nr_pages / sizeof hash;
++		const unsigned long *data = lowmem_page_address(page);
++
++		for (index = 0; index < end; index++)
++			hash ^= hash + data[index];
++#ifdef CONFIG_GCC_PLUGIN_LATENT_ENTROPY
++		latent_entropy ^= hash;
++		add_device_randomness((const void *)&latent_entropy, sizeof(latent_entropy));
++#else
++		add_device_randomness((const void *)&hash, sizeof(hash));
++#endif
++	}
++}
++
+ void __free_pages_core(struct page *page, unsigned int order)
+ {
+ 	unsigned int nr_pages = 1 << order;
+@@ -1567,7 +1596,6 @@ void __free_pages_core(struct page *page, unsigned int order)
+ 	}
+ 	__ClearPageReserved(p);
+ 	set_page_count(p, 0);
+-
+ 	atomic_long_add(nr_pages, &page_zone(page)->managed_pages);
+ 
+ 	/*
+@@ -1634,6 +1662,7 @@ void __init memblock_free_pages(struct page *page, unsigned long pfn,
+ {
+ 	if (early_page_uninitialised(pfn))
+ 		return;
++	__gather_extra_latent_entropy(page, 1 << order);
+ 	__free_pages_core(page, order);
+ }
+ 
+@@ -1725,6 +1754,7 @@ static void __init deferred_free_range(unsigned long pfn,
+ 	if (nr_pages == pageblock_nr_pages &&
+ 	    (pfn & (pageblock_nr_pages - 1)) == 0) {
+ 		set_pageblock_migratetype(page, MIGRATE_MOVABLE);
++		__gather_extra_latent_entropy(page, 1 << pageblock_order);
+ 		__free_pages_core(page, pageblock_order);
+ 		return;
+ 	}
+@@ -1732,6 +1762,7 @@ static void __init deferred_free_range(unsigned long pfn,
+ 	for (i = 0; i < nr_pages; i++, page++, pfn++) {
+ 		if ((pfn & (pageblock_nr_pages - 1)) == 0)
+ 			set_pageblock_migratetype(page, MIGRATE_MOVABLE);
++		__gather_extra_latent_entropy(page, 1);
+ 		__free_pages_core(page, 0);
+ 	}
+ }
+@@ -2300,6 +2331,12 @@ inline void post_alloc_hook(struct page *page, unsigned int order,
+ 	kernel_unpoison_pages(page, 1 << order);
+ 	set_page_owner(page, order, gfp_flags);
+ 
++	if (IS_ENABLED(CONFIG_PAGE_SANITIZE_VERIFY) && want_init_on_free()) {
++		int i;
++		for (i = 0; i < (1 << order); i++)
++			verify_zero_highpage(page + i);
++	}
++
+ 	if (!want_init_on_free() && want_init_on_alloc(gfp_flags))
+ 		kernel_init_free_pages(page, 1 << order);
+ }
+diff --git a/mm/slab.h b/mm/slab.h
+index 1a756a359fa8..45344c99be88 100644
+--- a/mm/slab.h
++++ b/mm/slab.h
+@@ -415,9 +415,13 @@ static inline struct kmem_cache *virt_to_cache(const void *obj)
+ 	struct page *page;
+ 
+ 	page = virt_to_head_page(obj);
++#ifdef CONFIG_BUG_ON_DATA_CORRUPTION
++	BUG_ON(!PageSlab(page));
++#else
+ 	if (WARN_ONCE(!PageSlab(page), "%s: Object is not a Slab page!\n",
+ 					__func__))
+ 		return NULL;
++#endif
+ 	return page->slab_cache;
+ }
+ 
+@@ -447,10 +451,15 @@ static inline struct kmem_cache *cache_from_obj(struct kmem_cache *s, void *x)
+ 		return s;
+ 
+ 	cachep = virt_to_cache(x);
+-	if (WARN(cachep && cachep != s,
+-		  "%s: Wrong slab cache. %s but object is from %s\n",
+-		  __func__, s->name, cachep->name))
++	if (cachep && cachep != s) {
++#ifdef CONFIG_BUG_ON_DATA_CORRUPTION
++		BUG();
++#else
++		WARN(1, "%s: Wrong slab cache. %s but object is from %s\n",
++			__func__, s->name, cachep->name);
++#endif
+ 		print_tracking(cachep, x);
++	}
+ 	return cachep;
+ }
+ 
+@@ -475,7 +484,7 @@ static inline size_t slab_ksize(const struct kmem_cache *s)
+ 	 * back there or track user information then we can
+ 	 * only use the space before that information.
+ 	 */
+-	if (s->flags & (SLAB_TYPESAFE_BY_RCU | SLAB_STORE_USER))
++	if ((s->flags & (SLAB_TYPESAFE_BY_RCU | SLAB_STORE_USER)) || IS_ENABLED(CONFIG_SLAB_CANARY))
+ 		return s->inuse;
+ 	/*
+ 	 * Else we can use all the padding etc for the allocation
+@@ -598,8 +607,10 @@ static inline void cache_random_seq_destroy(struct kmem_cache *cachep) { }
+ static inline bool slab_want_init_on_alloc(gfp_t flags, struct kmem_cache *c)
+ {
+ 	if (static_branch_unlikely(&init_on_alloc)) {
++#ifndef CONFIG_SLUB
+ 		if (c->ctor)
+ 			return false;
++#endif
+ 		if (c->flags & (SLAB_TYPESAFE_BY_RCU | SLAB_POISON))
+ 			return flags & __GFP_ZERO;
+ 		return true;
+@@ -609,9 +620,15 @@ static inline bool slab_want_init_on_alloc(gfp_t flags, struct kmem_cache *c)
+ 
+ static inline bool slab_want_init_on_free(struct kmem_cache *c)
+ {
+-	if (static_branch_unlikely(&init_on_free))
+-		return !(c->ctor ||
+-			 (c->flags & (SLAB_TYPESAFE_BY_RCU | SLAB_POISON)));
++	if (static_branch_unlikely(&init_on_free)) {
++#ifndef CONFIG_SLUB
++		if (c->ctor)
++			return false;
++#endif
++		if (c->flags & (SLAB_TYPESAFE_BY_RCU | SLAB_POISON))
++			return false;
++		return true;
++	}
+ 	return false;
+ }
+ 
+diff --git a/mm/slab_common.c b/mm/slab_common.c
+index 0b775cb5c108..fa125646c8b4 100644
+--- a/mm/slab_common.c
++++ b/mm/slab_common.c
+@@ -31,10 +31,10 @@
+ 
+ #include "slab.h"
+ 
+-enum slab_state slab_state;
++enum slab_state slab_state __ro_after_init;
+ LIST_HEAD(slab_caches);
+ DEFINE_MUTEX(slab_mutex);
+-struct kmem_cache *kmem_cache;
++struct kmem_cache *kmem_cache __ro_after_init;
+ 
+ #ifdef CONFIG_HARDENED_USERCOPY
+ bool usercopy_fallback __ro_after_init =
+@@ -62,7 +62,7 @@ static DECLARE_WORK(slab_caches_to_rcu_destroy_work,
+ /*
+  * Merge control. If this is set then no merging of slab caches will occur.
+  */
+-static bool slab_nomerge = !IS_ENABLED(CONFIG_SLAB_MERGE_DEFAULT);
++static bool slab_nomerge __ro_after_init = !IS_ENABLED(CONFIG_SLAB_MERGE_DEFAULT);
+ 
+ static int __init setup_slab_nomerge(char *str)
+ {
+diff --git a/mm/slub.c b/mm/slub.c
+index c86037b38253..67c6f3c930e3 100644
+--- a/mm/slub.c
++++ b/mm/slub.c
+@@ -127,6 +127,12 @@ static inline bool kmem_cache_debug(struct kmem_cache *s)
+ 	return kmem_cache_debug_flags(s, SLAB_DEBUG_FLAGS);
+ }
+ 
++static inline bool has_sanitize_verify(struct kmem_cache *s)
++{
++	return IS_ENABLED(CONFIG_SLAB_SANITIZE_VERIFY) &&
++	       slab_want_init_on_free(s);
++}
++
+ void *fixup_red_left(struct kmem_cache *s, void *p)
+ {
+ 	if (kmem_cache_debug_flags(s, SLAB_RED_ZONE))
+@@ -434,6 +440,55 @@ static inline bool cmpxchg_double_slab(struct kmem_cache *s, struct page *page,
+ 	return false;
+ }
+ 
++#if defined(CONFIG_SLUB_DEBUG) || defined(CONFIG_SLAB_CANARY)
++/*
++ * See comment in calculate_sizes().
++ */
++static inline bool freeptr_outside_object(struct kmem_cache *s)
++{
++	return s->offset >= s->inuse;
++}
++
++/*
++ * Return offset of the end of info block which is inuse + free pointer if
++ * not overlapping with object.
++ */
++static inline unsigned int get_info_end(struct kmem_cache *s)
++{
++	if (freeptr_outside_object(s))
++		return s->inuse + sizeof(void *);
++	else
++		return s->inuse;
++}
++#endif
++
++#ifdef CONFIG_SLAB_CANARY
++static inline unsigned long *get_canary(struct kmem_cache *s, void *object)
++{
++	return object + get_info_end(s);
++}
++
++static inline unsigned long get_canary_value(const void *canary, unsigned long value)
++{
++	return (value ^ (unsigned long)canary) & CANARY_MASK;
++}
++
++static inline void set_canary(struct kmem_cache *s, void *object, unsigned long value)
++{
++	unsigned long *canary = get_canary(s, object);
++	*canary = get_canary_value(canary, value);
++}
++
++static inline void check_canary(struct kmem_cache *s, void *object, unsigned long value)
++{
++	unsigned long *canary = get_canary(s, object);
++	BUG_ON(*canary != get_canary_value(canary, value));
++}
++#else
++#define set_canary(s, object, value)
++#define check_canary(s, object, value)
++#endif
++
+ #ifdef CONFIG_SLUB_DEBUG
+ static unsigned long object_map[BITS_TO_LONGS(MAX_OBJS_PER_PAGE)];
+ static DEFINE_SPINLOCK(object_map_lock);
+@@ -488,13 +543,13 @@ static inline void *restore_red_left(struct kmem_cache *s, void *p)
+  * Debug settings:
+  */
+ #if defined(CONFIG_SLUB_DEBUG_ON)
+-static slab_flags_t slub_debug = DEBUG_DEFAULT_FLAGS;
++static slab_flags_t slub_debug __ro_after_init = DEBUG_DEFAULT_FLAGS;
+ #else
+-static slab_flags_t slub_debug;
++static slab_flags_t slub_debug __ro_after_init;
+ #endif
+ 
+-static char *slub_debug_string;
+-static int disable_higher_order_debug;
++static char *slub_debug_string __ro_after_init;
++static int disable_higher_order_debug __ro_after_init;
+ 
+ /*
+  * slub is about to manipulate internal object metadata.  This memory lies
+@@ -545,26 +600,6 @@ static void print_section(char *level, char *text, u8 *addr,
+ 	metadata_access_disable();
+ }
+ 
+-/*
+- * See comment in calculate_sizes().
+- */
+-static inline bool freeptr_outside_object(struct kmem_cache *s)
+-{
+-	return s->offset >= s->inuse;
+-}
+-
+-/*
+- * Return offset of the end of info block which is inuse + free pointer if
+- * not overlapping with object.
+- */
+-static inline unsigned int get_info_end(struct kmem_cache *s)
+-{
+-	if (freeptr_outside_object(s))
+-		return s->inuse + sizeof(void *);
+-	else
+-		return s->inuse;
+-}
+-
+ static struct track *get_track(struct kmem_cache *s, void *object,
+ 	enum track_item alloc)
+ {
+@@ -572,6 +607,9 @@ static struct track *get_track(struct kmem_cache *s, void *object,
+ 
+ 	p = object + get_info_end(s);
+ 
++	if (IS_ENABLED(CONFIG_SLAB_CANARY))
++		p = (void *)p + sizeof(void *);
++
+ 	return kasan_reset_tag(p + alloc);
+ }
+ 
+@@ -714,6 +752,9 @@ static void print_trailer(struct kmem_cache *s, struct page *page, u8 *p)
+ 
+ 	off = get_info_end(s);
+ 
++	if (IS_ENABLED(CONFIG_SLAB_CANARY))
++		off += sizeof(void *);
++
+ 	if (s->flags & SLAB_STORE_USER)
+ 		off += 2 * sizeof(struct track);
+ 
+@@ -822,8 +863,9 @@ static int check_bytes_and_report(struct kmem_cache *s, struct page *page,
+  * 	Meta data starts here.
+  *
+  * 	A. Free pointer (if we cannot overwrite object on free)
+- * 	B. Tracking data for SLAB_STORE_USER
+- * 	C. Padding to reach required alignment boundary or at mininum
++ * 	B. Canary for SLAB_CANARY
++ * 	C. Tracking data for SLAB_STORE_USER
++ * 	D. Padding to reach required alignment boundary or at mininum
+  * 		one word if debugging is on to be able to detect writes
+  * 		before the word boundary.
+  *
+@@ -841,6 +883,9 @@ static int check_pad_bytes(struct kmem_cache *s, struct page *page, u8 *p)
+ {
+ 	unsigned long off = get_info_end(s);	/* The end of info */
+ 
++	if (IS_ENABLED(CONFIG_SLAB_CANARY))
++		off += sizeof(void *);
++
+ 	if (s->flags & SLAB_STORE_USER)
+ 		/* We also have user information there */
+ 		off += 2 * sizeof(struct track);
+@@ -1564,6 +1609,8 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+ 		object = next;
+ 		next = get_freepointer(s, object);
+ 
++		check_canary(s, object, s->random_active);
++
+ 		if (slab_want_init_on_free(s)) {
+ 			/*
+ 			 * Clear the object and the metadata, but don't touch
+@@ -1574,8 +1621,12 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+ 							   : 0;
+ 			memset((char *)kasan_reset_tag(object) + s->inuse, 0,
+ 			       s->size - s->inuse - rsize);
+-
++			if (!IS_ENABLED(CONFIG_SLAB_SANITIZE_VERIFY) && s->ctor)
++				s->ctor(object);
+ 		}
++
++		set_canary(s, object, s->random_inactive);
++
+ 		/* If object's reuse doesn't have to be delayed */
+ 		if (!slab_free_hook(s, object)) {
+ 			/* Move object to the new freelist */
+@@ -1583,6 +1634,18 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+ 			*head = object;
+ 			if (!*tail)
+ 				*tail = object;
++		} else if (slab_want_init_on_free(s) && s->ctor) {
++			/* Objects that are put into quarantine by KASAN will
++			 * still undergo free_consistency_checks() and thus
++			 * need to show a valid freepointer to check_object().
++			 *
++			 * Note that doing this for all caches (not just ctor
++			 * ones, which have s->offset >= object_size)) causes a
++			 * GPF, due to KASAN poisoning and the way
++			 * set_freepointer() eventually dereferences the
++			 * freepointer.
++			 */
++			set_freepointer(s, object, NULL);
+ 		}
+ 	} while (object != old_tail);
+ 
+@@ -1596,8 +1659,9 @@ static void *setup_object(struct kmem_cache *s, struct page *page,
+ 				void *object)
+ {
+ 	setup_object_debug(s, page, object);
++	set_canary(s, object, s->random_inactive);
+ 	object = kasan_init_slab_obj(s, object);
+-	if (unlikely(s->ctor)) {
++	if (unlikely(s->ctor) && !has_sanitize_verify(s)) {
+ 		kasan_unpoison_object_data(s, object);
+ 		s->ctor(object);
+ 		kasan_poison_object_data(s, object);
+@@ -2886,8 +2950,28 @@ static __always_inline void *slab_alloc_node(struct kmem_cache *s,
+ 
+ 	maybe_wipe_obj_freeptr(s, object);
+ 
+-	if (unlikely(slab_want_init_on_alloc(gfpflags, s)) && object)
++	if (has_sanitize_verify(s) && object) {
++		/* KASAN hasn't unpoisoned the object yet (this is done in the
++		 * post-alloc hook), so let's do it temporarily.
++		 */
++		kasan_unpoison_object_data(s, object);
++		BUG_ON(memchr_inv(object, 0, s->object_size));
++		if (s->ctor)
++			s->ctor(object);
++		kasan_poison_object_data(s, object);
++	} else if (unlikely(slab_want_init_on_alloc(gfpflags, s)) && object) {
+ 		memset(kasan_reset_tag(object), 0, s->object_size);
++		if (s->ctor) {
++			kasan_unpoison_object_data(s, object);
++			s->ctor(object);
++			kasan_poison_object_data(s, object);
++		}
++	}
++
++	if (object) {
++		check_canary(s, object, s->random_inactive);
++		set_canary(s, object, s->random_active);
++	}
+ 
+ 	slab_post_alloc_hook(s, objcg, gfpflags, 1, &object);
+ 
+@@ -3276,7 +3360,7 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+ 			  void **p)
+ {
+ 	struct kmem_cache_cpu *c;
+-	int i;
++	int i, k;
+ 	struct obj_cgroup *objcg = NULL;
+ 
+ 	/* memcg and kmem_cache debug support */
+@@ -3326,11 +3410,35 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+ 	local_irq_enable();
+ 
+ 	/* Clear memory outside IRQ disabled fastpath loop */
+-	if (unlikely(slab_want_init_on_alloc(flags, s))) {
++	if (has_sanitize_verify(s)) {
++		int j;
++
++		for (j = 0; j < i; j++) {
++			/* KASAN hasn't unpoisoned the object yet (this is done
++			 * in the post-alloc hook), so let's do it temporarily.
++			 */
++			kasan_unpoison_object_data(s, p[j]);
++			BUG_ON(memchr_inv(p[j], 0, s->object_size));
++			if (s->ctor)
++				s->ctor(p[j]);
++			kasan_poison_object_data(s, p[j]);
++		}
++	} else if (unlikely(slab_want_init_on_alloc(flags, s))) {
+ 		int j;
+ 
+-		for (j = 0; j < i; j++)
++		for (j = 0; j < i; j++) {
+ 			memset(kasan_reset_tag(p[j]), 0, s->object_size);
++			if (s->ctor) {
++				kasan_unpoison_object_data(s, p[j]);
++				s->ctor(p[j]);
++				kasan_poison_object_data(s, p[j]);
++			}
++		}
++	}
++
++	for (k = 0; k < i; k++) {
++		check_canary(s, p[k], s->random_inactive);
++		set_canary(s, p[k], s->random_active);
+ 	}
+ 
+ 	/* memcg and kmem_cache debug support */
+@@ -3364,9 +3472,9 @@ EXPORT_SYMBOL(kmem_cache_alloc_bulk);
+  * and increases the number of allocations possible without having to
+  * take the list_lock.
+  */
+-static unsigned int slub_min_order;
+-static unsigned int slub_max_order = PAGE_ALLOC_COSTLY_ORDER;
+-static unsigned int slub_min_objects;
++static unsigned int slub_min_order __ro_after_init;
++static unsigned int slub_max_order __ro_after_init = PAGE_ALLOC_COSTLY_ORDER;
++static unsigned int slub_min_objects __ro_after_init;
+ 
+ /*
+  * Calculate the order of allocation given an slab object size.
+@@ -3548,6 +3656,7 @@ static void early_kmem_cache_node_alloc(int node)
+ 	init_object(kmem_cache_node, n, SLUB_RED_ACTIVE);
+ 	init_tracking(kmem_cache_node, n);
+ #endif
++	set_canary(kmem_cache_node, n, kmem_cache_node->random_active);
+ 	n = kasan_kmalloc(kmem_cache_node, n, sizeof(struct kmem_cache_node),
+ 		      GFP_KERNEL);
+ 	page->freelist = get_freepointer(kmem_cache_node, n);
+@@ -3728,6 +3837,9 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
+ 		s->offset = ALIGN(freepointer_area / 2, sizeof(void *));
+ 	}
+ 
++	if (IS_ENABLED(CONFIG_SLAB_CANARY))
++		size += sizeof(void *);
++
+ #ifdef CONFIG_SLUB_DEBUG
+ 	if (flags & SLAB_STORE_USER)
+ 		/*
+@@ -3801,6 +3913,10 @@ static int kmem_cache_open(struct kmem_cache *s, slab_flags_t flags)
+ #ifdef CONFIG_SLAB_FREELIST_HARDENED
+ 	s->random = get_random_long();
+ #endif
++#ifdef CONFIG_SLAB_CANARY
++	s->random_active = get_random_long();
++	s->random_inactive = get_random_long();
++#endif
+ 
+ 	if (!calculate_sizes(s, -1))
+ 		goto error;
+@@ -4074,6 +4190,8 @@ void __check_heap_object(const void *ptr, unsigned long n, struct page *page,
+ 		offset -= s->red_left_pad;
+ 	}
+ 
++	check_canary(s, (void *)ptr - offset, s->random_active);
++
+ 	/* Allow address range falling entirely within usercopy region. */
+ 	if (offset >= s->useroffset &&
+ 	    offset - s->useroffset <= s->usersize &&
+@@ -4107,7 +4225,11 @@ size_t __ksize(const void *object)
+ 	page = virt_to_head_page(object);
+ 
+ 	if (unlikely(!PageSlab(page))) {
++#ifdef CONFIG_BUG_ON_DATA_CORRUPTION
++		BUG_ON(!PageCompound(page));
++#else
+ 		WARN_ON(!PageCompound(page));
++#endif
+ 		return page_size(page);
+ 	}
+ 
+@@ -4893,7 +5015,7 @@ enum slab_stat_type {
+ #define SO_TOTAL	(1 << SL_TOTAL)
+ 
+ #ifdef CONFIG_MEMCG
+-static bool memcg_sysfs_enabled = IS_ENABLED(CONFIG_SLUB_MEMCG_SYSFS_ON);
++static bool memcg_sysfs_enabled __ro_after_init = IS_ENABLED(CONFIG_SLUB_MEMCG_SYSFS_ON);
+ 
+ static int __init setup_slub_memcg_sysfs(char *str)
+ {
+diff --git a/mm/swap.c b/mm/swap.c
+index 2cca7141470c..4d1b73e4f79a 100644
+--- a/mm/swap.c
++++ b/mm/swap.c
+@@ -100,6 +100,8 @@ static void __put_single_page(struct page *page)
+ 
+ static void __put_compound_page(struct page *page)
+ {
++	compound_page_dtor *dtor;
++
+ 	/*
+ 	 * __page_cache_release() is supposed to be called for thp, not for
+ 	 * hugetlb. This is because hugetlb page does never have PageLRU set
+@@ -108,7 +110,15 @@ static void __put_compound_page(struct page *page)
+ 	 */
+ 	if (!PageHuge(page))
+ 		__page_cache_release(page);
+-	destroy_compound_page(page);
++	dtor = get_compound_page_dtor(page);
++	if (!PageHuge(page))
++		BUG_ON(dtor != free_compound_page
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++			&& dtor != free_transhuge_page
++#endif
++		);
++
++	(*dtor)(page);
+ }
+ 
+ void __put_page(struct page *page)
+diff --git a/mm/util.c b/mm/util.c
+index 8c9b7d1e7c49..b74af3a4435e 100644
+--- a/mm/util.c
++++ b/mm/util.c
+@@ -348,9 +348,9 @@ unsigned long arch_randomize_brk(struct mm_struct *mm)
+ {
+ 	/* Is the current task 32bit ? */
+ 	if (!IS_ENABLED(CONFIG_64BIT) || is_compat_task())
+-		return randomize_page(mm->brk, SZ_32M);
++		return mm->brk + get_random_long() % SZ_32M + PAGE_SIZE;
+ 
+-	return randomize_page(mm->brk, SZ_1G);
++	return mm->brk + get_random_long() % SZ_1G + PAGE_SIZE;
+ }
+ 
+ unsigned long arch_mmap_rnd(void)
+diff --git a/net/core/dev.c b/net/core/dev.c
+index 9e3be2ae8653..26bb7bf81fb7 100644
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -4879,7 +4879,7 @@ int netif_rx_any_context(struct sk_buff *skb)
+ }
+ EXPORT_SYMBOL(netif_rx_any_context);
+ 
+-static __latent_entropy void net_tx_action(struct softirq_action *h)
++static __latent_entropy void net_tx_action(void)
+ {
+ 	struct softnet_data *sd = this_cpu_ptr(&softnet_data);
+ 
+@@ -6875,7 +6875,7 @@ static int napi_poll(struct napi_struct *n, struct list_head *repoll)
+ 	return work;
+ }
+ 
+-static __latent_entropy void net_rx_action(struct softirq_action *h)
++static __latent_entropy void net_rx_action(void)
+ {
+ 	struct softnet_data *sd = this_cpu_ptr(&softnet_data);
+ 	unsigned long time_limit = jiffies +
+diff --git a/net/dccp/ccids/ccid2.c b/net/dccp/ccids/ccid2.c
+index 4d9823d6dced..f773a3d563a9 100644
+--- a/net/dccp/ccids/ccid2.c
++++ b/net/dccp/ccids/ccid2.c
+@@ -126,21 +126,26 @@ static void dccp_tasklet_schedule(struct sock *sk)
+ 
+ static void ccid2_hc_tx_rto_expire(struct timer_list *t)
+ {
+-	struct ccid2_hc_tx_sock *hc = from_timer(hc, t, tx_rtotimer);
+-	struct sock *sk = hc->sk;
+-	const bool sender_was_blocked = ccid2_cwnd_network_limited(hc);
++	struct dccp_sock *dp = from_timer(dp, t, dccps_ccid_timer);
++	struct sock *sk = (struct sock *)dp;
++	struct ccid2_hc_tx_sock *hc;
++	bool sender_was_blocked;
+ 
+ 	bh_lock_sock(sk);
++
++	if (inet_sk_state_load(sk) == DCCP_CLOSED)
++		goto out;
++
++	hc = ccid_priv(dp->dccps_hc_tx_ccid);
++	sender_was_blocked = ccid2_cwnd_network_limited(hc);
++
+ 	if (sock_owned_by_user(sk)) {
+-		sk_reset_timer(sk, &hc->tx_rtotimer, jiffies + HZ / 5);
++		sk_reset_timer(sk, &dp->dccps_ccid_timer, jiffies + HZ / 5);
+ 		goto out;
+ 	}
+ 
+ 	ccid2_pr_debug("RTO_EXPIRE\n");
+ 
+-	if (sk->sk_state == DCCP_CLOSED)
+-		goto out;
+-
+ 	/* back-off timer */
+ 	hc->tx_rto <<= 1;
+ 	if (hc->tx_rto > DCCP_RTO_MAX)
+@@ -166,7 +171,7 @@ static void ccid2_hc_tx_rto_expire(struct timer_list *t)
+ 	if (sender_was_blocked)
+ 		dccp_tasklet_schedule(sk);
+ 	/* restart backed-off timer */
+-	sk_reset_timer(sk, &hc->tx_rtotimer, jiffies + hc->tx_rto);
++	sk_reset_timer(sk, &dp->dccps_ccid_timer, jiffies + hc->tx_rto);
+ out:
+ 	bh_unlock_sock(sk);
+ 	sock_put(sk);
+@@ -333,7 +338,7 @@ static void ccid2_hc_tx_packet_sent(struct sock *sk, unsigned int len)
+ 	}
+ #endif
+ 
+-	sk_reset_timer(sk, &hc->tx_rtotimer, jiffies + hc->tx_rto);
++	sk_reset_timer(sk, &dp->dccps_ccid_timer, jiffies + hc->tx_rto);
+ 
+ #ifdef CONFIG_IP_DCCP_CCID2_DEBUG
+ 	do {
+@@ -705,9 +710,9 @@ static void ccid2_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
+ 
+ 	/* restart RTO timer if not all outstanding data has been acked */
+ 	if (hc->tx_pipe == 0)
+-		sk_stop_timer(sk, &hc->tx_rtotimer);
++		sk_stop_timer(sk, &dp->dccps_ccid_timer);
+ 	else
+-		sk_reset_timer(sk, &hc->tx_rtotimer, jiffies + hc->tx_rto);
++		sk_reset_timer(sk, &dp->dccps_ccid_timer, jiffies + hc->tx_rto);
+ done:
+ 	/* check if incoming Acks allow pending packets to be sent */
+ 	if (sender_was_blocked && !ccid2_cwnd_network_limited(hc))
+@@ -742,17 +747,18 @@ static int ccid2_hc_tx_init(struct ccid *ccid, struct sock *sk)
+ 	hc->tx_last_cong = hc->tx_lsndtime = hc->tx_cwnd_stamp = ccid2_jiffies32;
+ 	hc->tx_cwnd_used = 0;
+ 	hc->sk		 = sk;
+-	timer_setup(&hc->tx_rtotimer, ccid2_hc_tx_rto_expire, 0);
++	timer_setup(&dp->dccps_ccid_timer, ccid2_hc_tx_rto_expire, 0);
+ 	INIT_LIST_HEAD(&hc->tx_av_chunks);
+ 	return 0;
+ }
+ 
+ static void ccid2_hc_tx_exit(struct sock *sk)
+ {
++	struct dccp_sock *dp = dccp_sk(sk);
+ 	struct ccid2_hc_tx_sock *hc = ccid2_hc_tx_sk(sk);
+ 	int i;
+ 
+-	sk_stop_timer(sk, &hc->tx_rtotimer);
++	sk_stop_timer(sk, &dp->dccps_ccid_timer);
+ 
+ 	for (i = 0; i < hc->tx_seqbufc; i++)
+ 		kfree(hc->tx_seqbuf[i]);
+diff --git a/net/dccp/ccids/ccid3.c b/net/dccp/ccids/ccid3.c
+index ca8670f78ac6..566647964200 100644
+--- a/net/dccp/ccids/ccid3.c
++++ b/net/dccp/ccids/ccid3.c
+@@ -188,17 +188,24 @@ static inline void ccid3_hc_tx_update_win_count(struct ccid3_hc_tx_sock *hc,
+ 
+ static void ccid3_hc_tx_no_feedback_timer(struct timer_list *t)
+ {
+-	struct ccid3_hc_tx_sock *hc = from_timer(hc, t, tx_no_feedback_timer);
+-	struct sock *sk = hc->sk;
++	struct dccp_sock *dp = from_timer(dp, t, dccps_ccid_timer);
++	struct ccid3_hc_tx_sock *hc;
++	struct sock *sk = (struct sock *)dp;
+ 	unsigned long t_nfb = USEC_PER_SEC / 5;
+ 
+ 	bh_lock_sock(sk);
++
++	if (inet_sk_state_load(sk) == DCCP_CLOSED)
++		goto out;
++
+ 	if (sock_owned_by_user(sk)) {
+ 		/* Try again later. */
+ 		/* XXX: set some sensible MIB */
+ 		goto restart_timer;
+ 	}
+ 
++	hc = ccid_priv(dp->dccps_hc_tx_ccid);
++
+ 	ccid3_pr_debug("%s(%p, state=%s) - entry\n", dccp_role(sk), sk,
+ 		       ccid3_tx_state_name(hc->tx_state));
+ 
+@@ -254,8 +261,8 @@ static void ccid3_hc_tx_no_feedback_timer(struct timer_list *t)
+ 		t_nfb = max(hc->tx_t_rto, 2 * hc->tx_t_ipi);
+ 
+ restart_timer:
+-	sk_reset_timer(sk, &hc->tx_no_feedback_timer,
+-			   jiffies + usecs_to_jiffies(t_nfb));
++	sk_reset_timer(sk, &dp->dccps_ccid_timer,
++		       jiffies + usecs_to_jiffies(t_nfb));
+ out:
+ 	bh_unlock_sock(sk);
+ 	sock_put(sk);
+@@ -285,7 +292,7 @@ static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
+ 		return -EBADMSG;
+ 
+ 	if (hc->tx_state == TFRC_SSTATE_NO_SENT) {
+-		sk_reset_timer(sk, &hc->tx_no_feedback_timer, (jiffies +
++		sk_reset_timer(sk, &dp->dccps_ccid_timer, (jiffies +
+ 			       usecs_to_jiffies(TFRC_INITIAL_TIMEOUT)));
+ 		hc->tx_last_win_count	= 0;
+ 		hc->tx_t_last_win_count = now;
+@@ -359,6 +366,7 @@ static void ccid3_hc_tx_packet_sent(struct sock *sk, unsigned int len)
+ static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
+ {
+ 	struct ccid3_hc_tx_sock *hc = ccid3_hc_tx_sk(sk);
++	struct dccp_sock *dp = dccp_sk(sk);
+ 	struct tfrc_tx_hist_entry *acked;
+ 	ktime_t now;
+ 	unsigned long t_nfb;
+@@ -425,7 +433,7 @@ static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
+ 			       (unsigned int)(hc->tx_x >> 6));
+ 
+ 	/* unschedule no feedback timer */
+-	sk_stop_timer(sk, &hc->tx_no_feedback_timer);
++	sk_stop_timer(sk, &dp->dccps_ccid_timer);
+ 
+ 	/*
+ 	 * As we have calculated new ipi, delta, t_nom it is possible
+@@ -450,8 +458,8 @@ static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
+ 		       "expire in %lu jiffies (%luus)\n",
+ 		       dccp_role(sk), sk, usecs_to_jiffies(t_nfb), t_nfb);
+ 
+-	sk_reset_timer(sk, &hc->tx_no_feedback_timer,
+-			   jiffies + usecs_to_jiffies(t_nfb));
++	sk_reset_timer(sk, &dp->dccps_ccid_timer,
++		       jiffies + usecs_to_jiffies(t_nfb));
+ }
+ 
+ static int ccid3_hc_tx_parse_options(struct sock *sk, u8 packet_type,
+@@ -493,21 +501,23 @@ static int ccid3_hc_tx_parse_options(struct sock *sk, u8 packet_type,
+ 
+ static int ccid3_hc_tx_init(struct ccid *ccid, struct sock *sk)
+ {
++	struct dccp_sock *dp = dccp_sk(sk);
+ 	struct ccid3_hc_tx_sock *hc = ccid_priv(ccid);
+ 
+ 	hc->tx_state = TFRC_SSTATE_NO_SENT;
+ 	hc->tx_hist  = NULL;
+ 	hc->sk	     = sk;
+-	timer_setup(&hc->tx_no_feedback_timer,
++	timer_setup(&dp->dccps_ccid_timer,
+ 		    ccid3_hc_tx_no_feedback_timer, 0);
+ 	return 0;
+ }
+ 
+ static void ccid3_hc_tx_exit(struct sock *sk)
+ {
++	struct dccp_sock *dp = dccp_sk(sk);
+ 	struct ccid3_hc_tx_sock *hc = ccid3_hc_tx_sk(sk);
+ 
+-	sk_stop_timer(sk, &hc->tx_no_feedback_timer);
++	sk_stop_timer(sk, &dp->dccps_ccid_timer);
+ 	tfrc_tx_hist_purge(&hc->tx_hist);
+ }
+ 
+diff --git a/net/dccp/proto.c b/net/dccp/proto.c
+index 6d705d90c614..359e848dba6c 100644
+--- a/net/dccp/proto.c
++++ b/net/dccp/proto.c
+@@ -279,7 +279,9 @@ int dccp_disconnect(struct sock *sk, int flags)
+ 
+ 	dccp_clear_xmit_timers(sk);
+ 	ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
++	ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
+ 	dp->dccps_hc_rx_ccid = NULL;
++	dp->dccps_hc_tx_ccid = NULL;
+ 
+ 	__skb_queue_purge(&sk->sk_receive_queue);
+ 	__skb_queue_purge(&sk->sk_write_queue);
+diff --git a/net/ipv4/Kconfig b/net/ipv4/Kconfig
+index 87983e70f03f..d1584b4b39f9 100644
+--- a/net/ipv4/Kconfig
++++ b/net/ipv4/Kconfig
+@@ -267,6 +267,7 @@ config IP_PIMSM_V2
+ 
+ config SYN_COOKIES
+ 	bool "IP: TCP syncookie support"
++	default y
+ 	help
+ 	  Normal TCP/IP networking is open to an attack known as "SYN
+ 	  flooding". This denial-of-service attack prevents legitimate remote
+@@ -742,3 +743,26 @@ config TCP_MD5SIG
+ 	  on the Internet.
+ 
+ 	  If unsure, say N.
++
++config TCP_SIMULT_CONNECT_DEFAULT_ON
++	bool "Enable TCP simultaneous connect"
++	help
++	  Enable TCP simultaneous connect that adds a weakness in Linux's strict
++	  implementation of TCP that allows two clients to connect to each other
++	  without either entering a listening state. The weakness allows an
++	  attacker to easily prevent a client from connecting to a known server
++	  provided the source port for the connection is guessed correctly.
++
++	  As the weakness could be used to prevent an antivirus or IPS from
++	  fetching updates, or prevent an SSL gateway from fetching a CRL, it
++	  should be eliminated by disabling this option. Though Linux is one of
++	  few operating systems supporting simultaneous connect, it has no
++	  legitimate use in practice and is rarely supported by firewalls.
++
++	  Disabling this may break TCP STUNT which is used by some applications
++	  for NAT traversal.
++
++	  This setting can be overridden at runtime via the
++	  net.ipv4.tcp_simult_connect sysctl.
++
++	  If unsure, say N.
+diff --git a/net/ipv4/sysctl_net_ipv4.c b/net/ipv4/sysctl_net_ipv4.c
+index 3e5f4f2e705e..791329c77dea 100644
+--- a/net/ipv4/sysctl_net_ipv4.c
++++ b/net/ipv4/sysctl_net_ipv4.c
+@@ -588,6 +588,15 @@ static struct ctl_table ipv4_table[] = {
+ 		.mode		= 0644,
+ 		.proc_handler	= proc_do_static_key,
+ 	},
++	{
++		.procname	= "tcp_simult_connect",
++		.data		= &sysctl_tcp_simult_connect,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax,
++		.extra1		= SYSCTL_ZERO,
++		.extra2		= SYSCTL_ONE,
++	},
+ 	{ }
+ };
+ 
+diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
+index 9b44caa4b956..e3a13782bb53 100644
+--- a/net/ipv4/tcp_input.c
++++ b/net/ipv4/tcp_input.c
+@@ -82,6 +82,7 @@
+ #include <net/mptcp.h>
+ 
+ int sysctl_tcp_max_orphans __read_mostly = NR_FILE;
++int sysctl_tcp_simult_connect __read_mostly = IS_ENABLED(CONFIG_TCP_SIMULT_CONNECT_DEFAULT_ON);
+ 
+ #define FLAG_DATA		0x01 /* Incoming frame contained data.		*/
+ #define FLAG_WIN_UPDATE		0x02 /* Incoming ACK was a window update.	*/
+@@ -6214,7 +6215,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
+ 	    tcp_paws_reject(&tp->rx_opt, 0))
+ 		goto discard_and_undo;
+ 
+-	if (th->syn) {
++	if (th->syn && sysctl_tcp_simult_connect) {
+ 		/* We see SYN without ACK. It is attempt of
+ 		 * simultaneous connect with crossed SYNs.
+ 		 * Particularly, it can be connect to self.
+diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
+index f54b6ac37ac2..e53b3057d4cb 100644
+--- a/scripts/Makefile.modpost
++++ b/scripts/Makefile.modpost
+@@ -47,6 +47,7 @@ MODPOST = scripts/mod/modpost								\
+ 	$(if $(CONFIG_MODVERSIONS),-m)							\
+ 	$(if $(CONFIG_MODULE_SRCVERSION_ALL),-a)					\
+ 	$(if $(CONFIG_SECTION_MISMATCH_WARN_ONLY),,-E)					\
++	$(if $(CONFIG_DEBUG_WRITABLE_FUNCTION_POINTERS_VERBOSE),-f)			\
+ 	$(if $(KBUILD_MODPOST_WARN),-w) \
+ 	-o $@
+ 
+diff --git a/scripts/gcc-plugins/Kconfig b/scripts/gcc-plugins/Kconfig
+index ab9eb4cbe33a..2870588ef733 100644
+--- a/scripts/gcc-plugins/Kconfig
++++ b/scripts/gcc-plugins/Kconfig
+@@ -53,6 +53,11 @@ config GCC_PLUGIN_LATENT_ENTROPY
+ 	  is some slowdown of the boot process (about 0.5%) and fork and
+ 	  irq processing.
+ 
++	  When extra_latent_entropy is passed on the kernel command line,
++	  entropy will be extracted from up to the first 4GB of RAM while the
++	  runtime memory allocator is being initialized.  This costs even more
++	  slowdown of the boot process.
++
+ 	  Note that entropy extracted this way is not cryptographically
+ 	  secure!
+ 
+diff --git a/scripts/mod/modpost.c b/scripts/mod/modpost.c
+index d6c81657d695..cabe8fb75532 100644
+--- a/scripts/mod/modpost.c
++++ b/scripts/mod/modpost.c
+@@ -35,6 +35,8 @@ static int warn_unresolved = 0;
+ /* How a symbol is exported */
+ static int sec_mismatch_count = 0;
+ static int sec_mismatch_warn_only = true;
++static int writable_fptr_count = 0;
++static int writable_fptr_verbose = 0;
+ /* ignore missing files */
+ static int ignore_missing_files;
+ /* If set to 1, only warn (instead of error) about missing ns imports */
+@@ -1011,6 +1013,7 @@ enum mismatch {
+ 	ANY_EXIT_TO_ANY_INIT,
+ 	EXPORT_TO_INIT_EXIT,
+ 	EXTABLE_TO_NON_TEXT,
++	DATA_TO_TEXT
+ };
+ 
+ /**
+@@ -1137,6 +1140,12 @@ static const struct sectioncheck sectioncheck[] = {
+ 	.good_tosec = {ALL_TEXT_SECTIONS , NULL},
+ 	.mismatch = EXTABLE_TO_NON_TEXT,
+ 	.handler = extable_mismatch_handler,
++},
++/* Do not reference code from writable data */
++{
++	.fromsec = { DATA_SECTIONS, NULL },
++	.bad_tosec = { ALL_TEXT_SECTIONS, NULL },
++	.mismatch = DATA_TO_TEXT
+ }
+ };
+ 
+@@ -1324,10 +1333,10 @@ static Elf_Sym *find_elf_symbol(struct elf_info *elf, Elf64_Sword addr,
+ 			continue;
+ 		if (!is_valid_name(elf, sym))
+ 			continue;
+-		if (sym->st_value == addr)
+-			return sym;
+ 		/* Find a symbol nearby - addr are maybe negative */
+ 		d = sym->st_value - addr;
++		if (d == 0)
++			return sym;
+ 		if (d < 0)
+ 			d = addr - sym->st_value;
+ 		if (d < distance) {
+@@ -1462,7 +1471,13 @@ static void report_sec_mismatch(const char *modname,
+ 	char *prl_from;
+ 	char *prl_to;
+ 
+-	sec_mismatch_count++;
++	if (mismatch->mismatch == DATA_TO_TEXT) {
++		writable_fptr_count++;
++		if (!writable_fptr_verbose)
++			return;
++	} else {
++		sec_mismatch_count++;
++	}
+ 
+ 	get_pretty_name(from_is_func, &from, &from_p);
+ 	get_pretty_name(to_is_func, &to, &to_p);
+@@ -1584,6 +1599,12 @@ static void report_sec_mismatch(const char *modname,
+ 		fatal("There's a special handler for this mismatch type, "
+ 		      "we should never get here.");
+ 		break;
++	case DATA_TO_TEXT:
++		fprintf(stderr,
++		"The %s %s:%s references\n"
++		"the %s %s:%s%s\n",
++		from, fromsec, fromsym, to, tosec, tosym, to_p);
++		break;
+ 	}
+ 	fprintf(stderr, "\n");
+ }
+@@ -2546,7 +2567,7 @@ int main(int argc, char **argv)
+ 	struct dump_list *dump_read_start = NULL;
+ 	struct dump_list **dump_read_iter = &dump_read_start;
+ 
+-	while ((opt = getopt(argc, argv, "ei:mnT:o:awENd:")) != -1) {
++	while ((opt = getopt(argc, argv, "ei:fmnT:o:awENd:")) != -1) {
+ 		switch (opt) {
+ 		case 'e':
+ 			external_module = 1;
+@@ -2557,6 +2578,9 @@ int main(int argc, char **argv)
+ 			(*dump_read_iter)->file = optarg;
+ 			dump_read_iter = &(*dump_read_iter)->next;
+ 			break;
++		case 'f':
++			writable_fptr_verbose = 1;
++			break;
+ 		case 'm':
+ 			modversions = 1;
+ 			break;
+@@ -2655,6 +2679,11 @@ int main(int argc, char **argv)
+ 	}
+ 
+ 	free(buf.p);
++	if (writable_fptr_count && !writable_fptr_verbose)
++		warn("modpost: Found %d writable function pointer%s.\n"
++		     "To see full details build your kernel with:\n"
++		     "'make CONFIG_DEBUG_WRITABLE_FUNCTION_POINTERS_VERBOSE=y'\n",
++		     writable_fptr_count, (writable_fptr_count == 1 ? "" : "s"));
+ 
+ 	return error_occurred ? 1 : 0;
+ }
+diff --git a/security/Kconfig b/security/Kconfig
+index 7561f6f99f1d..ccae931a1c6c 100644
+--- a/security/Kconfig
++++ b/security/Kconfig
+@@ -9,7 +9,7 @@ source "security/keys/Kconfig"
+ 
+ config SECURITY_DMESG_RESTRICT
+ 	bool "Restrict unprivileged access to the kernel syslog"
+-	default n
++	default y
+ 	help
+ 	  This enforces restrictions on unprivileged users reading the kernel
+ 	  syslog via dmesg(8).
+@@ -19,10 +19,34 @@ config SECURITY_DMESG_RESTRICT
+ 
+ 	  If you are unsure how to answer this question, answer N.
+ 
++config SECURITY_PERF_EVENTS_RESTRICT
++	bool "Restrict unprivileged use of performance events"
++	depends on PERF_EVENTS
++	default y
++	help
++	  If you say Y here, the kernel.perf_event_paranoid sysctl
++	  will be set to 3 by default, and no unprivileged use of the
++	  perf_event_open syscall will be permitted unless it is
++	  changed.
++
++config SECURITY_TIOCSTI_RESTRICT
++	bool "Restrict unprivileged use of tiocsti command injection"
++	default y
++	help
++	  This enforces restrictions on unprivileged users injecting commands
++	  into other processes which share a tty session using the TIOCSTI
++	  ioctl. This option makes TIOCSTI use require CAP_SYS_ADMIN.
++
++	  If this option is not selected, no restrictions will be enforced
++	  unless the tiocsti_restrict sysctl is explicitly set to (1).
++
++	  If you are unsure how to answer this question, answer N.
++
+ config SECURITY
+ 	bool "Enable different security models"
+ 	depends on SYSFS
+ 	depends on MULTIUSER
++	default y
+ 	help
+ 	  This allows you to choose different security modules to be
+ 	  configured into your kernel.
+@@ -48,6 +72,7 @@ config SECURITYFS
+ config SECURITY_NETWORK
+ 	bool "Socket and Networking Security Hooks"
+ 	depends on SECURITY
++	default y
+ 	help
+ 	  This enables the socket and networking security hooks.
+ 	  If enabled, a security module can use these hooks to
+@@ -154,6 +179,7 @@ config HARDENED_USERCOPY
+ 	bool "Harden memory copies between kernel and userspace"
+ 	depends on HAVE_HARDENED_USERCOPY_ALLOCATOR
+ 	imply STRICT_DEVMEM
++	default y
+ 	help
+ 	  This option checks for obviously wrong memory regions when
+ 	  copying memory to/from the kernel (via copy_to_user() and
+@@ -166,7 +192,6 @@ config HARDENED_USERCOPY
+ config HARDENED_USERCOPY_FALLBACK
+ 	bool "Allow usercopy whitelist violations to fallback to object size"
+ 	depends on HARDENED_USERCOPY
+-	default y
+ 	help
+ 	  This is a temporary option that allows missing usercopy whitelists
+ 	  to be discovered via a WARN() to the kernel log, instead of
+@@ -191,6 +216,7 @@ config HARDENED_USERCOPY_PAGESPAN
+ config FORTIFY_SOURCE
+ 	bool "Harden common str/mem functions against buffer overflows"
+ 	depends on ARCH_HAS_FORTIFY_SOURCE
++	default y
+ 	help
+ 	  Detect overflows of buffers in common string and memory functions
+ 	  where the compiler can determine and validate the buffer sizes.
+diff --git a/security/Kconfig.hardening b/security/Kconfig.hardening
+index 269967c4fc1b..7dede18f1074 100644
+--- a/security/Kconfig.hardening
++++ b/security/Kconfig.hardening
+@@ -190,6 +190,7 @@ config STACKLEAK_RUNTIME_DISABLE
+ 
+ config INIT_ON_ALLOC_DEFAULT_ON
+ 	bool "Enable heap memory zeroing on allocation by default"
++	default yes
+ 	help
+ 	  This has the effect of setting "init_on_alloc=1" on the kernel
+ 	  command line. This can be disabled with "init_on_alloc=0".
+@@ -202,6 +203,7 @@ config INIT_ON_ALLOC_DEFAULT_ON
+ 
+ config INIT_ON_FREE_DEFAULT_ON
+ 	bool "Enable heap memory zeroing on free by default"
++	default yes
+ 	help
+ 	  This has the effect of setting "init_on_free=1" on the kernel
+ 	  command line. This can be disabled with "init_on_free=0".
+@@ -217,6 +219,21 @@ config INIT_ON_FREE_DEFAULT_ON
+ 	  touching "cold" memory areas. Most cases see 3-5% impact. Some
+ 	  synthetic workloads have measured as high as 8%.
+ 
++config PAGE_SANITIZE_VERIFY
++	bool "Verify sanitized pages"
++	default y
++	help
++	  When init_on_free is enabled, verify that newly allocated pages
++	  are zeroed to detect write-after-free bugs.
++
++config SLAB_SANITIZE_VERIFY
++	bool "Verify sanitized SLAB allocations"
++	default y
++	depends on !KASAN
++	help
++	  When init_on_free is enabled, verify that newly allocated slab
++	  objects are zeroed to detect write-after-free bugs.
++
+ endmenu
+ 
+ endmenu
+diff --git a/security/selinux/Kconfig b/security/selinux/Kconfig
+index 9e921fc72538..ae851a826c26 100644
+--- a/security/selinux/Kconfig
++++ b/security/selinux/Kconfig
+@@ -3,7 +3,7 @@ config SECURITY_SELINUX
+ 	bool "NSA SELinux Support"
+ 	depends on SECURITY_NETWORK && AUDIT && NET && INET
+ 	select NETWORK_SECMARK
+-	default n
++	default y
+ 	help
+ 	  This selects NSA Security-Enhanced Linux (SELinux).
+ 	  You will also need a policy configuration and a labeled filesystem.
+@@ -70,29 +70,6 @@ config SECURITY_SELINUX_AVC_STATS
+ 	  /sys/fs/selinux/avc/cache_stats, which may be monitored via
+ 	  tools such as avcstat.
+ 
+-config SECURITY_SELINUX_CHECKREQPROT_VALUE
+-	int "NSA SELinux checkreqprot default value"
+-	depends on SECURITY_SELINUX
+-	range 0 1
+-	default 0
+-	help
+-	  This option sets the default value for the 'checkreqprot' flag
+-	  that determines whether SELinux checks the protection requested
+-	  by the application or the protection that will be applied by the
+-	  kernel (including any implied execute for read-implies-exec) for
+-	  mmap and mprotect calls.  If this option is set to 0 (zero),
+-	  SELinux will default to checking the protection that will be applied
+-	  by the kernel.  If this option is set to 1 (one), SELinux will
+-	  default to checking the protection requested by the application.
+-	  The checkreqprot flag may be changed from the default via the
+-	  'checkreqprot=' boot parameter.  It may also be changed at runtime
+-	  via /sys/fs/selinux/checkreqprot if authorized by policy.
+-
+-	  WARNING: this option is deprecated and will be removed in a future
+-	  kernel release.
+-
+-	  If you are unsure how to answer this question, answer 0.
+-
+ config SECURITY_SELINUX_SIDTAB_HASH_BITS
+ 	int "NSA SELinux sidtab hashtable size"
+ 	depends on SECURITY_SELINUX
+diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
+index 95a3c1eda9e4..75addbf621da 100644
+--- a/security/selinux/hooks.c
++++ b/security/selinux/hooks.c
+@@ -136,21 +136,7 @@ static int __init selinux_enabled_setup(char *str)
+ __setup("selinux=", selinux_enabled_setup);
+ #endif
+ 
+-static unsigned int selinux_checkreqprot_boot =
+-	CONFIG_SECURITY_SELINUX_CHECKREQPROT_VALUE;
+-
+-static int __init checkreqprot_setup(char *str)
+-{
+-	unsigned long checkreqprot;
+-
+-	if (!kstrtoul(str, 0, &checkreqprot)) {
+-		selinux_checkreqprot_boot = checkreqprot ? 1 : 0;
+-		if (checkreqprot)
+-			pr_warn("SELinux: checkreqprot set to 1 via kernel parameter.  This is deprecated and will be rejected in a future kernel release.\n");
+-	}
+-	return 1;
+-}
+-__setup("checkreqprot=", checkreqprot_setup);
++static const unsigned int selinux_checkreqprot_boot;
+ 
+ /**
+  * selinux_secmark_enabled - Check to see if SECMARK is currently enabled
+diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
+index 2b745ae8cb98..de739d432da6 100644
+--- a/security/selinux/selinuxfs.c
++++ b/security/selinux/selinuxfs.c
+@@ -724,7 +724,6 @@ static ssize_t sel_read_checkreqprot(struct file *filp, char __user *buf,
+ static ssize_t sel_write_checkreqprot(struct file *file, const char __user *buf,
+ 				      size_t count, loff_t *ppos)
+ {
+-	struct selinux_fs_info *fsi = file_inode(file)->i_sb->s_fs_info;
+ 	char *page;
+ 	ssize_t length;
+ 	unsigned int new_value;
+@@ -748,18 +747,9 @@ static ssize_t sel_write_checkreqprot(struct file *file, const char __user *buf,
+ 		return PTR_ERR(page);
+ 
+ 	length = -EINVAL;
+-	if (sscanf(page, "%u", &new_value) != 1)
++	if (sscanf(page, "%u", &new_value) != 1 || new_value)
+ 		goto out;
+ 
+-	if (new_value) {
+-		char comm[sizeof(current->comm)];
+-
+-		memcpy(comm, current->comm, sizeof(comm));
+-		pr_warn_once("SELinux: %s (%d) set checkreqprot to 1. This is deprecated and will be rejected in a future kernel release.\n",
+-			     comm, current->pid);
+-	}
+-
+-	checkreqprot_set(fsi->state, (new_value ? 1 : 0));
+ 	length = count;
+ out:
+ 	kfree(page);
+diff --git a/security/yama/Kconfig b/security/yama/Kconfig
+index a810304123ca..b809050b25d2 100644
+--- a/security/yama/Kconfig
++++ b/security/yama/Kconfig
+@@ -2,7 +2,7 @@
+ config SECURITY_YAMA
+ 	bool "Yama support"
+ 	depends on SECURITY
+-	default n
++	default y
+ 	help
+ 	  This selects Yama, which extends DAC support with additional
+ 	  system-wide security settings beyond regular Linux discretionary
+diff --git a/tools/perf/Documentation/security.txt b/tools/perf/Documentation/security.txt
+index 4fe3b8b1958f..a7d88cc23a70 100644
+--- a/tools/perf/Documentation/security.txt
++++ b/tools/perf/Documentation/security.txt
+@@ -148,6 +148,7 @@ Perf tool provides a message similar to the one below:
+    >= 0: Disallow raw and ftrace function tracepoint access
+    >= 1: Disallow CPU event access
+    >= 2: Disallow kernel profiling
++   >= 3: Disallow use of any event
+    To make the adjusted perf_event_paranoid setting permanent preserve it
+    in /etc/sysctl.conf (e.g. kernel.perf_event_paranoid = <setting>)
+ 

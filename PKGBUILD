@@ -26,11 +26,22 @@ plain '             `.-:///////:-.`'
 
 _where="$PWD" # track basedir as different Arch based distros are moving srcdir around
 _ispkgbuild="true"
+_distro="Arch"
 
 source "$_where"/customization.cfg # load default configuration from file
 source "$_where"/linux-tkg-config/prepare
 
-_tkg_initscript
+if [ -e "$_EXT_CONFIG_PATH" ]; then
+  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
+  source "$_EXT_CONFIG_PATH"
+fi
+
+# Make sure we're in a clean state
+if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
+  _tkg_initscript
+else
+  source "$_where"/BIG_UGLY_FROGMINER
+fi
 
 if [[ "$_sub" = rc* ]]; then
   _srcpath="linux-${_basekernel}-${_sub}"
@@ -48,12 +59,12 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=95
+pkgrel=164
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
 license=('GPL2')
-makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'pahole' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git')
+makedepends=('bison' 'xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf' 'pahole' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git' 'cpio' 'perl' 'tar' 'xz')
 if [ "$_compiler_name" = "-llvm" ]; then
   makedepends+=( 'lld' 'clang' 'llvm')
 fi
@@ -62,10 +73,10 @@ options=('!strip' 'docs')
 
 case $_basever in
 	54)
-	opt_ver="4.19-v5.4"
+	opt_ver="4.19-5.4"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v4.19-v5.4.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-4.19-5.4.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -87,19 +98,18 @@ case $_basever in
         	#0008-5.4-bcachefs.patch
         	0009-glitched-bmq.patch
         	0009-bmq_v5.4-r2.patch
-        	0011-ZFS-fix.patch
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '73b34babbf3e1bf143b2d3496c8b9765b1a3bb0179dd30cf0604a6af464f4a37'
+            '1f0285e744e2a8fc9a2c8be7f0d882c5db95111487b1e538c36fa99c9878988e'
             'SKIP'
-            '55dd5117c1da17c9ec38d7bc995958958bcc8b7ebcfd81de1d4c7650b85537ab'
+            '83d7d518dc9592ffcd79511163c49e50b767f539bc552b636810a8ca67ddca7d'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             '31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
             'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
-            '156a2c75fd228920e3c3da5e04a110afa403951bdfbb85772c2fd4b82fd24d61'
+            '3ef74dd80dc8c4323803cbf868178cf01d8ed69f09fe2f537ff91124cbd6e611'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
@@ -111,14 +121,13 @@ case $_basever in
             '2d9260b80b43bbd605cf420d6bd53aa7262103dfd77196ba590ece5600b6dc0d'
             '3832f828a9f402b153fc9a6829c5a4eaf6091804bcda3a0423c8e1b57e26420d'
             '6a6a736cf1b3513d108bfd36f60baf50bb36b33aec21ab0d0ffad13602b7ff75'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
             'aeb31404c26ee898d007b1f66cb9572c9884ad8eca14edc4587d68f6cba6de46')
 	;;
 	57)
-	opt_ver="5.7%2B"
+	opt_ver="5.7"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7%2B.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -141,14 +150,12 @@ case $_basever in
         	0009-glitched-ondemand-bmq.patch
         	0009-glitched-bmq.patch
         	0009-prjc_v5.7-r3.patch
-        	0011-ZFS-fix.patch
         	0012-linux-hardened.patch
-        	0012-misc-additions.patch
 	)
 	sha256sums=('de8163bb62f822d84f7a3983574ec460060bf013a78ff79cd7c979ff1ec1d7e0'
             '66a0173a13cd58015f5bf1b14f67bfa15dc1db5d8e7225fcd95ac2e9a5341653'
             'SKIP'
-            '6313ccad7f8e4d8ce09dd5bdb51b8dfa124d0034d7097ba47008380a14a84f09'
+            '357a0db541f7de924ed89c21f5a6f3de4889b134c5d05d5e32ccd234bd81eedf'
             '15ce09447b7e9b28425c1df5961c955378f2829e4115037337eef347b1db3d9d'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -168,15 +175,13 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
             'b2a2ae866fc3f1093f67e69ba59738827e336b8f800fb0487599127f7f3ef881'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d'
-            'bdc60c83cd5fbf9912f9201d6e4fe3c84fe5f634e6823bd8e78264ad606b3a9e')
+            '6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d')
 	;;
 	58)
 	opt_ver="5.8%2B"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
         	'config.x86_64' # stock Arch config
         	#'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -200,14 +205,12 @@ case $_basever in
         	0009-glitched-ondemand-bmq.patch
         	0009-glitched-bmq.patch
         	0009-prjc_v5.8-r3.patch
-        	0011-ZFS-fix.patch
         	#0012-linux-hardened.patch
-        	0012-misc-additions.patch
 	)
 	sha256sums=('e7f75186aa0642114af8f19d99559937300ca27acaf7451b36d4f9b0f85cf1f5'
             '5b558a40c2fdad2c497fe0b1a64679313fd5a7ccbaecef8803d49b3baaccbacd'
             'SKIP'
-            'ac66686b0e1ed057ea5f099cd00366decc00f999aa1cb19ba8d3ccf9f92d60e2'
+            'f4754fbe2619ef321e49a7b560fad058b2459d17cff0b90e839cb475f46e8b63'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -223,15 +226,13 @@ case $_basever in
             'e73c3a8a040a35eb48d1e0ce4f66dd6e6f69fd10ee5b1acf3a0334cbf7ffb0c4'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '965a517a283f265a012545fbb5cc9e516efc9f6166d2aa1baf7293a32a1086b7'
-            'f5dbff4833a2e3ca94c202e5197894d5f1006c689ff149355353e77d2e17c943'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '98311deeb474b39e821cd1e64198793d5c4d797155b3b8bbcb1938b7f11e8d74')
+            'f5dbff4833a2e3ca94c202e5197894d5f1006c689ff149355353e77d2e17c943')
 	;;
 	59)
 	opt_ver="5.8%2B"
 	source=("$kernel_site"
         	$patch_site
-		"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+		"https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
         	"config.x86_64" # stock Arch config
         	#$hardened_config_file # hardened Arch config
         	90-cleanup.hook
@@ -254,15 +255,13 @@ case $_basever in
         	0008-5.9-bcachefs.patch
 		0009-glitched-ondemand-bmq.patch
 		0009-glitched-bmq.patch
-		0009-prjc_v5.9-r2.patch
-        	0011-ZFS-fix.patch
+		0009-prjc_v5.9-r3.patch
 	        #0012-linux-hardened.patch
-		0012-misc-additions.patch
 	)
 	sha256sums=('3239a4ee1250bf2048be988cc8cb46c487b2c8a0de5b1b032d38394d5c6b1a06'
-            'fb324619e9785bd2aaf10ad428482046738440e7888865fe9eef3095151f74ac'
+            '46c520da2db82d8f9a15c2117d3a50e0faaaf98f05bd4ea1f3105e2724f207d6'
             'SKIP'
-            '958333f18de79c19ccf9eccb4e16e2a217a0619a1d96c2c65ccba23628815bab'
+            'ce2711b9d628e71af62706b830c2f259a43ad1e614871dd90bcb99d8709e1dab'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -278,20 +277,18 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
-            '7aba0a625404ed78e73c57860871af3b52610ae5196407286811322e3cd76aa3'
+            '14a261f1940a2b21b6b14df7391fc2c6274694bcfabfac3d0e985a67285dbfe7'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            '11d2343174e5486e8ea1a1e98f9f6f1a1625043f6547484f5a729a83f94336eb'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
+            '0d5fe3a9050536fe431564b221badb85af7ff57b330e3978ae90d21989fcad2d')
 	;;
 	510)
 	opt_ver="5.8%2B"
     source=("$kernel_site"
-        #"$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.8%2B.patch"
+        "$patch_site"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
         'config.x86_64' # stock Arch config
-        #'config_hardened.x86_64' # hardened Arch config
+        'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
         cleanup
         # ARCH Patches
@@ -309,17 +306,19 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.10-fsync.patch
-        #0008-5.10-bcachefs.patch
+        0007-v5.10-futex2_interface.patch
+        0008-5.10-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
-        0009-prjc_v5.10-r0.patch
-        0011-ZFS-fix.patch
-        #0012-linux-hardened.patch
+        0009-prjc_v5.10-r2.patch
+        0012-linux-hardened.patch
         0012-misc-additions.patch
     )
-    sha256sums=('8b5e6fdbb6654b90f36c93dc1b4adafce30e37612424eb9f6fc19aa3264586b9'
+    sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
+            'c424275d9dea08448d58424ee8cfbab0ed91dfbe920691b5911be1892087a5cb'
             'SKIP'
-            '834247434877e4e76201ada7df35ebd4622116737e9650e0772f22d03083b426'
+            'e78e683b9a8c15003d91f810cfe576c6266f330f3b8fe13eb52226c50070e87f'
+            'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -328,18 +327,202 @@ case $_basever in
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
-            '4231bd331289f5678b49d084698f0a80a3ae602eccb41d89e4f85ff4465eb971'
+            'e00096244e5cddaa5500d08b5f692fd3f25be9401dfa3b0fc624625ff2f5e198'
             '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
             '31b428c464905e44ed61cdcd1f42b4ec157ebe5a44cb5b608c4c99b466df66ba'
-            'f9f5f0a3a1d6c5233b9d7a4afe8ed99be97c4ff00a80bde4017d117c7d5f98ed'
+            '06e93b57b7a0b96aefc2c0ec12c3be28c6e8dc8506fa8a22c5a2313814a3c7f3'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            '47c05c6e7e1280dca137ed2139dac7da0d026a27d5590fd386748d1827288a61'
+            'c5dd103953b8830640538ba30ff511028bd93310f95e4f5587a6ed5e6414a60d'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            'a5149d7220457d30e03e6999f35a050bce46acafc6230bfe6b4d4994c523516d'
-            '49262ce4a8089fa70275aad742fc914baa28d9c384f710c9a62f64796d13e104'
-            '433b919e6a0be26784fb4304c43b1811a28f12ad3de9e26c0af827f64c0c316e')
+            'e308292fc42840a2366280ea7cf26314e92b931bb11f04ad4830276fc0326ee1'
+            '105f51e904d80f63c1421203e093b612fc724edefd3e388b64f8d371c0b3a842'
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+	;;
+	511)
+	opt_ver="5.8%2B"
+    source=("$kernel_site"
+        "$patch_site"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        'config.x86_64' # stock Arch config
+        'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        0004-glitched-ondemand-muqss.patch
+        0004-glitched-muqss.patch
+        0004-5.11-ck1.patch
+        0005-undead-glitched-ondemand-pds.patch
+        0005-undead-glitched-pds.patch
+        0005-v5.11_undead-pds099o.patch
+        0005-glitched-pds.patch
+        0006-add-acs-overrides_iommu.patch
+        0007-v5.11-fsync.patch
+        0007-v5.11-futex2_interface.patch
+        0007-v5.11-winesync.patch
+        0008-5.11-bcachefs.patch
+        0009-glitched-ondemand-bmq.patch
+        0009-glitched-bmq.patch
+        0009-prjc_v5.11-r3.patch
+        0012-linux-hardened.patch
+        0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
+    )
+    sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
+            '07aac31956d3f483a91506524befd45962f3bbfda2f8d43cf90713caf872d9ba'
+            'SKIP'
+            'fc08ac33e3bc47ed0ee595a2e4b84bc45b02682b383db6acfe281792e88f6231'
+            '837ad05b68d0443580f78f5eb316db46c6b67abfefa66c22b6cb94f4915a52ba'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
+            '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
+            '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
+            '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
+            '2f7e24e70ed1f5561155a1b5e5aab9927aea317db0500e8cf83cd059807f9c7e'
+            '62496f9ca788996181ef145f96ad26291282fcc3fb95cdc04080dcf84365be33'
+            '31b428c464905e44ed61cdcd1f42b4ec157ebe5a44cb5b608c4c99b466df66ba'
+            '4169fffe69eb5216831e545cb7439fa8e3fc09066757d7d4c496fe024fc373ee'
+            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            '073e7b8ab48aa9abdb5cedb5c729a2f624275ebdbe1769476231c9e712145496'
+            'd220593436059b76c975ceee061fd124dec37fff774db45a4419c2ce1839c351'
+            '6c831d7cdfe4897656b76c4ec60e0a18d6f3618f79c402ebc3bf4453a6616319'
+            '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            '5cd64937e3a517f49f4311c47bd692eb8e117f09d655cd456e03366373ba8060'
+            '9e7b1663f5247f15e883ce04e1dc2b18164aa19ebe47f75967be09659eff1101'
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
+	;;
+	512)
+	opt_ver="5.8%2B"
+    source=("$kernel_site"
+        "$patch_site"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        'config.x86_64' # stock Arch config
+        #'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        0003-cacule-5.12.patch
+        0004-glitched-ondemand-muqss.patch
+        0004-glitched-muqss.patch
+        0004-5.12-ck1.patch
+        #0005-undead-glitched-ondemand-pds.patch
+        #0005-undead-glitched-pds.patch
+        #0005-v5.12_undead-pds099o.patch
+        0005-glitched-pds.patch
+        0006-add-acs-overrides_iommu.patch
+        0007-v5.12-fsync.patch
+        0007-v5.12-futex2_interface.patch
+        0007-v5.12-winesync.patch
+        #0008-5.12-bcachefs.patch
+        0009-glitched-ondemand-bmq.patch
+        0009-glitched-bmq.patch
+        0009-prjc_v5.12-r1.patch
+        #0012-linux-hardened.patch
+        0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
+    )
+    sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
+            'b844ec7be25f915578e322838b03c2780c4b1185fbab5e84a8d52db7341804e8'
+            'SKIP'
+            'c14e6820460eec990ada09ac1a2e504c60047d8fab76ae24724bacd450697aa1'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
+            '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
+            '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
+            '2b0a310f577261ed51b25307720bc57119a9d67bb531291997ba93507a98ede5'
+            'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
+            'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
+            '742d12d2e2ab5b59245a897af6e7726b8d14ed39d5fd402faba23fa56382b87a'
+            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
+            'fc0a3274e3285278e925f4b3bfe803e5e610344bebe5bba063ba202dbaff49c8'
+            '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
+            '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            '1bb7308e10568cfaad125ea08ed7f311f06d7bfedab40f4b23ff30cfa30ce3fc'
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
+	;;
+	513)
+	opt_ver="5.8%2B"
+    source=("$kernel_site"
+        #"$patch_site"
+        "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        'config.x86_64' # stock Arch config
+        #'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        0003-cacule-5.13.patch
+        0005-glitched-pds.patch
+        0006-add-acs-overrides_iommu.patch
+        #0007-v5.13-fsync.patch
+        0007-v5.13-futex2_interface.patch
+        0007-v5.13-winesync.patch
+        #0008-5.13-bcachefs.patch
+        0009-glitched-ondemand-bmq.patch
+        0009-glitched-bmq.patch
+        0009-prjc_v5.13-r0.patch
+        #0012-linux-hardened.patch
+        0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
+    )
+    sha256sums=('1a86e9c518d50741ad3922fca5896863de8214ec07f73efc41c7ab2405f7fc13'
+            'SKIP'
+            'c8b4f52577c59595251c62efb63452988f96d854a8420a1196d471fd041ac490'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
+            'ef80c354d08f63363d36485b1b77b15f3d36cad1e00edbe13ba89538fbb38146'
+            '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
+            '858ffe05c9f89ad216edacf36c90512f141667a6e13a91b1b6f85ba5b481e129'
+            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            '732dd9c6b7cf6d15034eeb125787d1400f5d212f84ac45ba4774441939f564d6'
+            '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
+            '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            '741d45b45ee20dab3033e1e074266129d27a7049b14fe62949e2918375bd40c4'
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 esac
 
@@ -381,8 +564,8 @@ build() {
     msg2 'ccache was found and will be used'
   fi
 
-  # document the TkG variables, excluding "_", "_EXT_CONFIG_PATH", and "_where".
-  declare -p | cut -d ' ' -f 3 | grep -P '^_(?!=|EXT_CONFIG_PATH|where)' > "${srcdir}/customization-full.cfg"
+  # document the TkG variables, excluding "_", "_EXT_CONFIG_PATH", "_where", and "_path".
+  declare -p | cut -d ' ' -f 3 | grep -P '^_(?!=|EXT_CONFIG_PATH|where|path)' > "${srcdir}/customization-full.cfg"
 
   # remove -O2 flag and place user optimization flag
   CFLAGS=${CFLAGS/-O2/}
@@ -402,7 +585,11 @@ hackbase() {
               'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
               'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
               'update-grub: Simple wrapper around grub-mkconfig.')
-  provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+  if [ -e "${srcdir}/winesync.rules" ]; then
+    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE WINESYNC-MODULE winesync-header)
+  else
+    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+  fi
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
   cd "${srcdir}/${_srcpath}"
@@ -432,11 +619,36 @@ hackbase() {
 
   # install customization file, for reference
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
+
+  # workaround for missing header with winesync
+  if [ -e "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" ]; then
+    msg2 "Workaround missing winesync header"
+    install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
+  fi
+
+  # load winesync module at boot
+  if [ -e "${srcdir}/winesync.conf" ]; then
+    msg2 "Set the winesync module to be loaded at boot through /etc/modules-load.d"
+    install -Dm644 "${srcdir}"/winesync.conf "${pkgdir}/etc/modules-load.d/winesync.conf"
+  fi
+
+  # install udev rule for winesync
+  if [ -e "${srcdir}/winesync.rules" ]; then
+    msg2 "Installing udev rule for winesync"
+    install -Dm644 "${srcdir}"/winesync.rules "${pkgdir}/etc/udev/rules.d/winesync.rules"
+  fi
 }
 
 hackheaders() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
+  case $_basever in
+    54|57|58|59|510)
+    ;;
+    *)
+      depends=('pahole')
+    ;;
+  esac
 
   cd "${srcdir}/${_srcpath}"
   local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
