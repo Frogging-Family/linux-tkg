@@ -65,7 +65,7 @@ You're set to run Anbox.
 
 
 ## Other stuff included:
-- Graysky's per-CPU-arch native optimizations - https://github.com/graysky2/kernel_gcc_patch
+- Graysky's per-CPU-arch native optimizations - https://github.com/graysky2/kernel_compiler_patch
 - memory management and swapping tweaks
 - scheduling tweaks
 - optional "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
