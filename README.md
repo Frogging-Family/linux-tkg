@@ -36,7 +36,7 @@ The `customization.cfg` file offers many toggles for extra tweaks:
   - Choice between `O2` and `O3` compiler optimizations.
   - `Clang` offers an experimental "Link Time Optimization" (`LTO`) feature that may improve the Kernel's performance (any potential improvement in gaming is yet to be proven). 
     - **Warning:** as of now, building any DKMS module will fail if this feature is used. Do not enable `LTO` if you need `DKMS` modules for proper kernel functioning (_e.g_ Nvidia's drivers). Otherwise the resulting kernel may be unbootable.
-- ["Modprobed-db"](https://github.com/graysky2/modprobed-db): a tool that helps reduce the compilation time and produce a smaller kernel image by providing a database of kernel modules that are actually used in your system.
+- Use [Modprobed-db](https://github.com/graysky2/modprobed-db)'s database to reduce the compilation time and produce a smaller kernel. The produced kernel will only contain the modules listed in that database.
   - **Warning**: make sure to read [thoroughly about it first]((https://wiki.archlinux.org/index.php/Modprobed-db)) since it comes with caveats making it **NOT recommended for most users**. Otherwise the resulting kernel may be unbootable.
 - "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
 - Anbox support (binder, ashmem)
