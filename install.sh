@@ -191,6 +191,14 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
+  if [[ "${_compiler}" = "llvm" && "${_distro}" = "Generic" ]]; then
+    read -p "Replace \"libunwind\" with \"llvm-libunwind\" ? y/[n]:" _libunwind_replace
+    if [[ "${_libunwind_replace}" =~ ^(y|yes|Yes|Y)$ ]]; then
+      export LDFLAGS_MODULE="-unwindlib=libunwind"
+      export HOSTLDFLAGS="-unwindlib=libunwind"
+    fi
+  fi
+
   if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Generic)$ ]]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
     msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
@@ -244,9 +252,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   esac
 
   if [ "$opt_alternative_url" != "true" ]; then
-    wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/more-uarches-for-kernel-${opt_ver}.patch"
+    wget "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-${opt_ver}.patch"
   else
-    wget "https://raw.githubusercontent.com/graysky2/kernel_gcc_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch"
+    wget "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch"
   fi
 
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
