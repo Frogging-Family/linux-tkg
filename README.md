@@ -20,30 +20,33 @@ Alternative schedulers are available to you in tkg:
 - Undead PDS: TkG's port of the pre-Project C "PDS-mq" scheduler by Alfred Chen. While PDS-mq got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par with PDS-mq in gaming. "U" PDS still performs better in some cases than other schedulers, so it's been kept undead.
 
 These alternative schedulers can offer a better performance/latency ratio for gaming and desktop use. The availability of each scheduler depends on the chosen Kernel version: the script will display what's available on a per-version basis.
-#### Other stuff included:
-- [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_compiler_patch): tunes the compiled code to to a specified CPU
-- memory management and swapping tweaks
-- scheduling tweaks
-- CFS tweaks
-- using cake network queue management system
-- using `vm.max_map_count=524288` by default
-- cherry-picked clear linux patches
+#### Default tweaks
+- Memory management and swapping tweaks
+- Scheduling tweaks
+- `CFS` tweaks
+- Using the ["Cake"](https://www.bufferbloat.net/projects/codel/wiki/CakeTechnical/) network queue management system
+- Using `vm.max_map_count=524288` by default
+- Cherry-picked patches from [Clear Linux's patchset](https://github.com/clearlinux-pkgs/linux)
 
-Optional tweaks, can be edited in `customization.cfg`
-- Provide own kernel `.config` file
+#### Optional tweaks
+The `customization.cfg` file offers many toggles for extra tweaks:
+- `Fsync`, `Futex2` and `Fastsync+winesync` support: can improve the performance in games, needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
+- [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_compiler_patch): tunes the compiled code to to a specified CPU
+- Compile with `GCC` or `Clang`
+  - Choice between `O2` and `O3` compiler optimizations.
+  - `Clang` offers an experimental "Link Time Optimization" (`LTO`) feature that may improve the Kernel's performance (any potential improvement in gaming is yet to be proven). 
+    - **Warning:** as of now, building any DKMS module will fail if this feature is used. Do not enable `LTO` if you need `DKMS` modules for proper kernel functioning (_e.g_ Nvidia's drivers). Otherwise the resulting kernel may be unbootable.
+- ["Modprobed-db"](https://github.com/graysky2/modprobed-db): a tool that helps reduce the compilation time and produce a smaller kernel image by providing a database of kernel modules that are actually used in your system.
+  - **Warning**: make sure to read [thoroughly about it first]((https://wiki.archlinux.org/index.php/Modprobed-db)) since it comes with caveats making it **NOT recommended for most users**. Otherwise the resulting kernel may be unbootable.
 - "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
-- Overrides for missing ACS capabilities
-- Fsync / Futex2 / Fastsync+winesync support: needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
 - Anbox support (binder, ashmem)
-- ZFS fpu symbols (<5.9)
-- Use other TCPv4 congestion algorithms
+- `ZFS` FPU symbols (<5.9)
+- Overrides for missing ACS capabilities
+- Provide own kernel `.config` file
+- ...
 #### User patches
 
 To apply your own patch files using the provided scripts, you will need to put them in a `linux5y-tkg-userpatches` folder -- `y` needs to be changed with the kernel version the patch works on, _e.g_ `linux510-tkg-userpatches` -- at the same level as the `PKGBUILD` file, with the `.mypatch` extension. The script will by default ask if you want to apply them, one by one. The option `_user_patches` should be set to `true` in the `customization.cfg` file for this to work.
-#### Modprobed-db
-
-If you want to streamline your kernel config for lower footprint and faster compilations : https://wiki.archlinux.org/index.php/Modprobed-db
-You can optionally enable support for it in the `customization.cfg` file. **Make sure to read everything you need to know about it as there are big caveats making it NOT recommended for most users**.
 
 #### Anbox usage
 
