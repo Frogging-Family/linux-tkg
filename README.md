@@ -85,7 +85,7 @@ You're set to run Anbox.
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg
-# Optional: edit customization.cfg file
+# Optional: edit the file "customization.cfg"
 makepkg -si
 ```
 The script will use a slightly modified Arch config from the `linux-tkg-config` folder. The options selected at build-time are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
@@ -96,7 +96,7 @@ The script will use a slightly modified Arch config from the `linux-tkg-config` 
 ```
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg
-# Optional: edit customization.cfg file
+# Optional: edit the file "customization.cfg"
 ./install.sh install
 ```
 Uninstalling custom kernels installed through the script has to be done
@@ -123,6 +123,7 @@ If your distro is neither DEB nor RPM based, `install.sh` script can clone the k
 
 To do so, run:
 ```
+# Optional: edit the file "customization.cfg"
 ./install.sh config
 ```
 
@@ -134,5 +135,5 @@ sudo make install
 sudo dracut --force --hostonly --kver $_kernelname
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 ```
-**Note:** these changes will not be tracked by your package manager and uninstalling requires manual intervention.
+**Note:** these changes will not be tracked by your package manager and uninstalling requires manual intervention. `./install.sh uninstall-help` can help with useful information if your install procedure follows the `Generic` approach.
 
