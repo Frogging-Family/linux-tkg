@@ -24,7 +24,6 @@ These alternative schedulers can offer a better performance/latency ratio for ga
 - [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_compiler_patch): tunes the compiled code to to a specified CPU
 - memory management and swapping tweaks
 - scheduling tweaks
-- optional "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
 - CFS tweaks
 - using cake network queue management system
 - using `vm.max_map_count=524288` by default
@@ -32,6 +31,7 @@ These alternative schedulers can offer a better performance/latency ratio for ga
 
 Optional tweaks, can be edited in `customization.cfg`
 - Provide own kernel `.config` file
+- "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
 - Overrides for missing ACS capabilities
 - Fsync / Futex2 / Fastsync+winesync support: needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
 - Anbox support (binder, ashmem)
