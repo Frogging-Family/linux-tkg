@@ -20,6 +20,23 @@ Alternative schedulers are available to you in tkg:
 - Undead PDS: TkG's port of the pre-Project C "PDS-mq" scheduler by Alfred Chen. While PDS-mq got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par with PDS-mq in gaming. "U" PDS still performs better in some cases than other schedulers, so it's been kept undead.
 
 These alternative schedulers can offer a better performance/latency ratio for gaming and desktop use. The availability of each scheduler depends on the chosen Kernel version: the script will display what's available on a per-version basis.
+#### Other stuff included:
+- [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_compiler_patch): tunes the compiled code to to a specified CPU
+- memory management and swapping tweaks
+- scheduling tweaks
+- optional "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
+- CFS tweaks
+- using cake network queue management system
+- using `vm.max_map_count=524288` by default
+- cherry-picked clear linux patches
+
+Optional tweaks, can be edited in `customization.cfg`
+- Provide own kernel `.config` file
+- Overrides for missing ACS capabilities
+- Fsync / Futex2 / Fastsync+winesync support: needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
+- Anbox support (binder, ashmem)
+- ZFS fpu symbols (<5.9)
+- Use other TCPv4 congestion algorithms
 #### User patches
 
 To apply your own patch files using the provided scripts, you will need to put them in a `linux5y-tkg-userpatches` folder -- `y` needs to be changed with the kernel version the patch works on, _e.g_ `linux510-tkg-userpatches` -- at the same level as the `PKGBUILD` file, with the `.mypatch` extension. The script will by default ask if you want to apply them, one by one. The option `_user_patches` should be set to `true` in the `customization.cfg` file for this to work.
@@ -58,23 +75,6 @@ systemctl enable anbox-container-manager.service
 You're set to run Anbox.
 
 
-#### Other stuff included:
-- [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_compiler_patch): tunes the compiled code to to a specified CPU
-- memory management and swapping tweaks
-- scheduling tweaks
-- optional "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
-- CFS tweaks
-- using cake network queue management system
-- using `vm.max_map_count=524288` by default
-- cherry-picked clear linux patches
-
-Optional tweaks, can be edited in `customization.cfg`
-- Provide own kernel `.config` file
-- Overrides for missing ACS capabilities
-- Fsync / Futex2 / Fastsync+winesync support: needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
-- Anbox support (binder, ashmem)
-- ZFS fpu symbols (<5.9)
-- Use other TCPv4 congestion algorithms
 
 ### Install procedure
 
