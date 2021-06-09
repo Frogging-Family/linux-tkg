@@ -11,9 +11,9 @@ This repository provides scripts to automatically download, patch and compile th
 ### Customization options
 #### Alternative CPU schedulers
 
-CFS is the only CPU scheduler available in the "vanilla" kernel sources. Its current implementation doesn't allow for injecting additional schedulers, and requires replacing it. Only one scheduler can be patched in at a time.
+[CFS](https://en.wikipedia.org/wiki/Completely_Fair_Scheduler) is the only CPU scheduler available in the "vanilla" kernel sources. Its current implementation doesn't allow for injecting additional schedulers, and requires replacing it. Only one scheduler can be patched in at a time.
 
-Alternative schedulers are available to you in tkg:
+Alternative schedulers are available to you in linux-tkg:
 - Project C / PDS & BMQ by Alfred Chen: [blog](http://cchalpha.blogspot.com/ ), [code repository](https://gitlab.com/alfredchen/projectc)
 - MuQSS by Con Kolivas : [blog](http://ck-hack.blogspot.com/), [code repository](https://github.com/ckolivas/linux)
 - CacULE by Hamad Marri: [code repository](https://github.com/hamadmarri/cacule-cpu-scheduler)
@@ -39,7 +39,7 @@ The `customization.cfg` file offers many toggles for extra tweaks:
 - Use [Modprobed-db](https://github.com/graysky2/modprobed-db)'s database to reduce the compilation time and produce a smaller kernel. The produced kernel will only contain the modules listed in that database.
   - **Warning**: make sure to read [thoroughly about it first]((https://wiki.archlinux.org/index.php/Modprobed-db)) since it comes with caveats making it **NOT recommended for most users**. Otherwise the resulting kernel may be unbootable.
 - "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
-- Anbox support (binder, ashmem)
+- [Anbox](https://wiki.archlinux.org/title/Anbox) support (via the `binder` and `ashmem` kernel modules)
 - `ZFS` FPU symbols (<5.9)
 - Overrides for missing ACS capabilities
 - Provide own kernel `.config` file
