@@ -221,12 +221,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   cd "$_where"
 
-  msg2 "Downloading Graysky2's CPU optimisations patch"
-
   case "$_basever" in
-    "54")
-    opt_ver="4.19-v5.4"
-    ;;
     "57")
     opt_ver="5.7"
     opt_alternative_url="true"
@@ -251,10 +246,13 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     ;;
   esac
 
-  if [ "$opt_alternative_url" != "true" ]; then
-    wget "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-${opt_ver}.patch"
-  else
-    wget "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch"
+  if [ -n "$opt_ver" ]; then
+    msg2 "Downloading Graysky2's CPU optimisations patch"
+    if [ "$opt_alternative_url" != "true" ]; then
+      wget "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-${opt_ver}.patch"
+    else
+      wget "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch"
+    fi
   fi
 
   # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild

@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=164
+pkgrel=165
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -73,10 +73,10 @@ options=('!strip' 'docs')
 
 case $_basever in
 	54)
-	opt_ver="4.19-5.4"
+	#opt_ver="4.19-5.4"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-4.19-5.4.patch"
+        	#"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-4.19-5.4.patch"
         	'config.x86_64' # stock Arch config
         	'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -101,8 +101,8 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '1f0285e744e2a8fc9a2c8be7f0d882c5db95111487b1e538c36fa99c9878988e'
-            'SKIP'
+            'dcc86c957eee2f4e46896fe6553c1d933126f1489a10564969b9680176ee2fea'
+            #'SKIP'
             '83d7d518dc9592ffcd79511163c49e50b767f539bc552b636810a8ca67ddca7d'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -315,7 +315,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'c424275d9dea08448d58424ee8cfbab0ed91dfbe920691b5911be1892087a5cb'
+            '3985b7a55cb603a45003996cb04b5d87b33b6f4c33b172a54da2da26647a1da0'
             'SKIP'
             'e78e683b9a8c15003d91f810cfe576c6266f330f3b8fe13eb52226c50070e87f'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -447,7 +447,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
-            'b844ec7be25f915578e322838b03c2780c4b1185fbab5e84a8d52db7341804e8'
+            '034eb39ad49f3a26fc1b4ef799ef481ce35fe03e2b24131e9cd3d2805a99ad19'
             'SKIP'
             'c14e6820460eec990ada09ac1a2e504c60047d8fab76ae24724bacd450697aa1'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
