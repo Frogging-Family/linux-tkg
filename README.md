@@ -32,14 +32,12 @@ These alternative schedulers can offer a better performance/latency ratio for ga
 The `customization.cfg` file offers many toggles for extra tweaks:
 - `Fsync`, `Futex2` and `Fastsync+winesync` support: can improve the performance in games, needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
 - [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_compiler_patch): tunes the compiled code to to a specified CPU
-- Compile with `GCC` or `Clang`
-  - Choice between `O2` and `O3` compiler optimizations.
-  - `Clang` offers an experimental "Link Time Optimization" (`LTO`) feature that may improve the Kernel's performance (any potential improvement in gaming is yet to be proven). 
-    - **Warning:** as of now, building any DKMS module will fail if this feature is used. Do not enable `LTO` if you need `DKMS` modules for proper kernel functioning (_e.g_ Nvidia's drivers). Otherwise the resulting kernel may be unbootable.
-- Use [Modprobed-db](https://github.com/graysky2/modprobed-db)'s database to reduce the compilation time and produce a smaller kernel. The produced kernel will only contain the modules listed in that database.
-  - **Warning**: make sure to read [thoroughly about it first]((https://wiki.archlinux.org/index.php/Modprobed-db)) since it comes with caveats making it **NOT recommended for most users**. Otherwise the resulting kernel may be unbootable.
+- Compile with GCC or Clang with optional `O2`/`O3` and `LTO` (Clang only) optimizations.
+  - **Warning regarding DKMS modules and Clang LTO:** `DKMS` will default to using GCC, which will fail to build modules against a Clang LTO kernel. This will - for example - break Nvidia drivers. Forcing `DKMS` to use Clang can be done but isn't recommended.
+- Using [Modprobed-db](https://github.com/graysky2/modprobed-db)'s database can reduce the compilation time and produce a smaller kernel which will only contain the modules listed in it. **NOT recommended**
+  - **Warning**: make sure to read [thoroughly about it first]((https://wiki.archlinux.org/index.php/Modprobed-db)) since it comes with caveats that can lead to an unbootable kernel.
 - "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
-- [Anbox](https://wiki.archlinux.org/title/Anbox) support (via the `binder` and `ashmem` kernel modules)
+- [Anbox](https://wiki.archlinux.org/title/Anbox) support (See [Anbox usage](https://github.com/Frogging-Family/linux-tkg#anbox-usage))
 - `ZFS` FPU symbols (<5.9)
 - Overrides for missing ACS capabilities
 - Provide own kernel `.config` file
@@ -50,7 +48,7 @@ To apply your own patch files using the provided scripts, you will need to put t
 
 #### Anbox usage
 
-When enabling the anbox support option, the modules are built-in. You don't have to load them. However you'll need to mount binderfs :
+When enabling the anbox support option, the `binder` and `ashmem` modules are built-in. You don't have to load them. However you'll need to mount binderfs :
 ```
 sudo mkdir /dev/binderfs
 sudo mount -t binder binder /dev/binderfs
