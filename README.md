@@ -33,7 +33,7 @@ The `customization.cfg` file offers many toggles for extra tweaks:
 - `Fsync`, `Futex2` and `Fastsync+winesync` support: can improve the performance in games, needs a patched wine like [wine-tkg](https://github.com/Frogging-Family/wine-tkg-git)
 - [Graysky's per-CPU-arch native optimizations](https://github.com/graysky2/kernel_compiler_patch): tunes the compiled code to to a specified CPU
 - Compile with GCC or Clang with optional `O2`/`O3` and `LTO` (Clang only) optimizations.
-  - **Warning regarding DKMS modules and Clang LTO:** `DKMS` will default to using GCC, which will fail to build modules against a Clang LTO kernel. This will - for example - break Nvidia drivers. Forcing `DKMS` to use Clang can be done but isn't recommended.
+  - **Warning regarding DKMS modules and Clang:** `DKMS` will default to using GCC, which will fail to build modules against a Clang-built kernel. This will - for example - break Nvidia drivers. Forcing `DKMS` to use Clang can be done but isn't recommended.
 - Using [Modprobed-db](https://github.com/graysky2/modprobed-db)'s database can reduce the compilation time and produce a smaller kernel which will only contain the modules listed in it. **NOT recommended**
   - **Warning**: make sure to read [thoroughly about it first]((https://wiki.archlinux.org/index.php/Modprobed-db)) since it comes with caveats that can lead to an unbootable kernel.
 - "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
