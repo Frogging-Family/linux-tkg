@@ -87,6 +87,7 @@ case $_basever in
         	0002-clear-patches.patch
         	0003-glitched-base.patch
         	0003-glitched-cfs.patch
+        	0003-cacule-5.4.patch
         	0004-glitched-ondemand-muqss.patch
         	0004-glitched-muqss.patch
         	0004-5.4-ck1.patch
@@ -111,6 +112,7 @@ case $_basever in
             'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
             '3ef74dd80dc8c4323803cbf868178cf01d8ed69f09fe2f537ff91124cbd6e611'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            '50f99a263482289cd6d5fe9415b4c287afb376f38af711756e808ccb10522885'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
             '815974c65f47301d2a5d1577bf95e8a4b54cad7d77f226e0065f83e763837c48'
@@ -297,6 +299,7 @@ case $_basever in
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
+        0003-cacule-5.10.patch
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
         0004-5.10-ck1.patch
@@ -325,6 +328,7 @@ case $_basever in
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
+            '5bff350e3463acdddb5d8b2ed1af0b54586500c4b4ee6be1f14744a65b383497'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
             'e00096244e5cddaa5500d08b5f692fd3f25be9401dfa3b0fc624625ff2f5e198'
