@@ -725,8 +725,9 @@ hackheaders() {
   mkdir -p "$pkgdir/usr/src"
   ln -sr "$builddir" "$pkgdir/usr/src/$pkgbase"
 
-  echo "Stripping vmlinux..."
-  strip -v $STRIP_STATIC "$builddir/vmlinux"
+  if [ $_STRIP = "true" ]; then
+    strip -v $STRIP_STATIC "$builddir/vmlinux"
+  fi
 
   if [ $_NUKR = "true" ]; then
     rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
