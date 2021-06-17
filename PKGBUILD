@@ -440,7 +440,7 @@ case $_basever in
         0007-v5.12-fsync.patch
         0007-v5.12-futex2_interface.patch
         0007-v5.12-winesync.patch
-        #0008-5.12-bcachefs.patch
+        0008-5.12-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
         0009-prjc_v5.12-r1.patch
@@ -469,6 +469,7 @@ case $_basever in
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             'fc0a3274e3285278e925f4b3bfe803e5e610344bebe5bba063ba202dbaff49c8'
             'f7c68f43599c53ce19a14e6f296e5e0820257e80acb9f52a1dec036d0d9a62ab'
+            'c6c5bcfac976c2304bdd13b80f8ad0329e5e53a6d9e9d130115204ea09fe2848'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '6325b3d6972725e41adbaf5e2db19a040dbf0856046cecc1c4d6786a064d04ff'
