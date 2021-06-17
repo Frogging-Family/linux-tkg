@@ -39,9 +39,9 @@ fi
 # Make sure we're in a clean state
 if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
   _tkg_initscript
-else
-  source "$_where"/BIG_UGLY_FROGMINER
 fi
+
+source "$_where"/BIG_UGLY_FROGMINER
 
 if [[ "$_sub" = rc* ]]; then
   _srcpath="linux-${_basekernel}-${_sub}"
