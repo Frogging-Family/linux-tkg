@@ -453,7 +453,7 @@ case $_basever in
     sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
             '84a39f8cbcca15af34bf431d6eb14d241bb4d1f0455da96ee0cbe1a22d44a39d'
             'SKIP'
-            'c14e6820460eec990ada09ac1a2e504c60047d8fab76ae24724bacd450697aa1'
+            'a0c09bee4da5acbfed5565f96bc2df354467035171cf493e165ba79bb6af04ee'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
