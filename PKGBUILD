@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=173
+pkgrel=174
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -104,7 +104,7 @@ case $_basever in
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
             '550840075be45fab1844e7f799922ca4b83ddedad66f41b97a7d77997ec9a86b'
             #'SKIP'
-            '83d7d518dc9592ffcd79511163c49e50b767f539bc552b636810a8ca67ddca7d'
+            'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -320,7 +320,7 @@ case $_basever in
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
             'c094adedd2ff813c3015122bb4ea8ab3f2dd1a4288c2d06e7ad1a922f77c4f33'
             'SKIP'
-            'e78e683b9a8c15003d91f810cfe576c6266f330f3b8fe13eb52226c50070e87f'
+            'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -453,7 +453,7 @@ case $_basever in
     sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
             '8e192e06d4e4fd28f54f270e70602d95332e43864f7d4a3e0ecf4255ac0c2e6d'
             'SKIP'
-            'a0c09bee4da5acbfed5565f96bc2df354467035171cf493e165ba79bb6af04ee'
+            '828d90d788ad44ba1480486081afb3ec730de5b48dfe344662043940a0b42cdf'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
