@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=174
+pkgrel=176
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -299,6 +299,7 @@ case $_basever in
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
+        0003-glitched-cfs-additions.patch
         0003-cacule-5.10.patch
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
@@ -326,9 +327,10 @@ case $_basever in
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
-            '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
+            'a447e697cb744283e3e89f300c8a8bda04a9c8108f03677fb48bf9675c992cbd'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
-            '5bff350e3463acdddb5d8b2ed1af0b54586500c4b4ee6be1f14744a65b383497'
+            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            'a1758208827816fe01cf34947b0c07553af40b60d8480292e6918966f362d62a'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
             'e00096244e5cddaa5500d08b5f692fd3f25be9401dfa3b0fc624625ff2f5e198'
@@ -428,6 +430,7 @@ case $_basever in
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
+        0003-glitched-cfs-additions.patch
         0003-cacule-5.12.patch
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
@@ -458,9 +461,10 @@ case $_basever in
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
-            '1ac97da07e72ec7e2b0923d32daacacfaa632a44c714d6942d9f143fe239e1b5'
+            'a447e697cb744283e3e89f300c8a8bda04a9c8108f03677fb48bf9675c992cbd'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
-            '2b0a310f577261ed51b25307720bc57119a9d67bb531291997ba93507a98ede5'
+            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            '912786eae40b7993ca04ef3eb86e6f03c95d60749819cb2c75260b63c978989c'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '3cdc90f272465c2edb6bac8a3c90f2e098ba8ca73d27e4c0cadf70b7e87641ea'
             'c8b0f2a1ef84b192c67b61c5a60426a640d5a83ac55a736929f0c4e6ec7b85f8'
@@ -492,6 +496,7 @@ case $_basever in
         0002-clear-patches.patch
         0003-glitched-base.patch
         0003-glitched-cfs.patch
+        0003-glitched-cfs-additions.patch
         0003-cacule-5.13.patch
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
@@ -515,9 +520,10 @@ case $_basever in
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
-            'ef80c354d08f63363d36485b1b77b15f3d36cad1e00edbe13ba89538fbb38146'
+            'ef48eea194c1c101de0461572eaf311f232fee55c155c52904b20085a92db680'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
-            '858ffe05c9f89ad216edacf36c90512f141667a6e13a91b1b6f85ba5b481e129'
+            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            '97d7f9ebecfe12d3b4be73f530c110936cc9bdc5a08303af09711398b64d418d'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '9ec679871cba674cf876ba836cde969296ae5034bcc10e1ec39b372e6e07aab0'
