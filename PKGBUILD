@@ -536,6 +536,54 @@ case $_basever in
             'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
+	514)
+	opt_ver="5.8%2B"
+    source=("$kernel_site"
+        #"$patch_site"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        'config.x86_64' # stock Arch config
+        #'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        0003-glitched-cfs-additions.patch
+        #0003-cacule-5.14.patch
+        #0005-glitched-pds.patch
+        0006-add-acs-overrides_iommu.patch
+        #0007-v5.14-fsync.patch
+        #0007-v5.14-futex2_interface.patch
+        0007-v5.14-winesync.patch
+        #0008-5.14-bcachefs.patch
+        #0009-glitched-ondemand-bmq.patch
+        #0009-glitched-bmq.patch
+        #0009-prjc_v5.14-r0.patch
+        #0012-linux-hardened.patch
+        0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
+    )
+    sha256sums=('5bcbba63d3b61e8929fd0d79eb2bb053f1df30778efe76139fc76281cad29724'
+            'SKIP'
+            '0ff9fc04914b5e8cce20bf8ad7f9c5343bfe44f1baa96211ad5d72f9e8bd62fd'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
+            '404d24e0da6b192c55987b961a49c296aed13a4701ba535eb32d4b98a117e203'
+            '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
+            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
+	;;
 esac
 
 export KBUILD_BUILD_HOST=archlinux
