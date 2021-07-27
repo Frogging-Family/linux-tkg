@@ -74,7 +74,7 @@ systemctl enable anbox-container-manager.service
 ```
 
 You're set to run Anbox.
-
+If you prefer automatic setup you can install `anbox-support` from AUR which will take care of everything by itself.
 
 
 ### Install procedure
