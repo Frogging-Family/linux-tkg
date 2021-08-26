@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'cb0aba28871c9c1ff3d7a43f0fad7ffe466e7fa1112b2f00c89eabb7d2f9a637'
+            '556f5a86611edd8a63d4a6aa0142d61c77914c902c12b31d6812e65b79a046c2'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
