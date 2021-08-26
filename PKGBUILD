@@ -87,7 +87,7 @@ case $_basever in
         	0002-clear-patches.patch
         	0003-glitched-base.patch
         	0003-glitched-cfs.patch
-        	0003-cacule-5.4.patch
+        	0003-glitched-cfs-additions.patch
         	0004-glitched-ondemand-muqss.patch
         	0004-glitched-muqss.patch
         	0004-5.4-ck1.patch
@@ -110,9 +110,9 @@ case $_basever in
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             '31dc68e84aecfb7d069efb1305049122c65694676be8b955634abcf0675922a2'
             'd02bf5ca08fd610394b9d3a0c3b176d74af206f897dee826e5cbaec97bb4a4aa'
-            'bc1c13ca07e471845e561d18dad6afcb3b2b93f17f9216f0a48a29f24f9a4e09'
+            '886ed1d648938d776a795d289af0c83207c1c70c00cd9d79560951d0bc951e25'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
-            '50f99a263482289cd6d5fe9415b4c287afb376f38af711756e808ccb10522885'
+            '9420cf1a04740956008e535725ae38a2f759188841be3776447a4eb635fa5158'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'bc69d6e5ee8172b0242c8fa72d13cfe2b8d2b6601468836908a7dfe8b78a3bbb'
             '815974c65f47301d2a5d1577bf95e8a4b54cad7d77f226e0065f83e763837c48'
@@ -300,7 +300,6 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
-        0003-cacule-5.10.patch
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
         0004-5.10-ck1.patch
@@ -330,7 +329,6 @@ case $_basever in
             'a447e697cb744283e3e89f300c8a8bda04a9c8108f03677fb48bf9675c992cbd'
             '7058e57fd68367b029adc77f2a82928f1433daaf02c8c279cb2d13556c8804d7'
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
-            '502ca6657551a08fd626c098e2bef79b60e3033c1f201577e4cc5eea4dbf7f85'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '2bbbac963b6ca44ef3f8a71ec7c5cad7d66df860869a73059087ee236775970a'
             'e00096244e5cddaa5500d08b5f692fd3f25be9401dfa3b0fc624625ff2f5e198'
@@ -431,7 +429,6 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
-        0003-cacule-5.12.patch
         0004-glitched-ondemand-muqss.patch
         0004-glitched-muqss.patch
         0004-5.12-ck1.patch
@@ -463,7 +460,6 @@ case $_basever in
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             'a447e697cb744283e3e89f300c8a8bda04a9c8108f03677fb48bf9675c992cbd'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
-            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
             '912786eae40b7993ca04ef3eb86e6f03c95d60749819cb2c75260b63c978989c'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             '3cdc90f272465c2edb6bac8a3c90f2e098ba8ca73d27e4c0cadf70b7e87641ea'
@@ -497,7 +493,6 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
-        0003-cacule-5.13.patch
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.13-fsync.patch
@@ -523,7 +518,6 @@ case $_basever in
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             'ef48eea194c1c101de0461572eaf311f232fee55c155c52904b20085a92db680'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
-            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
             'd498816b89a46bde060cbea77313ec14e293f820ea76c682870e894e6ff4af22'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
@@ -554,7 +548,6 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
-        #0003-cacule-5.14.patch
         #0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         #0007-v5.14-fsync.patch
