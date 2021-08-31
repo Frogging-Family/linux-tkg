@@ -493,6 +493,9 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
+        0004-glitched-ondemand-muqss.patch
+        0004-glitched-muqss.patch
+        0004-5.13-ck1.patch
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.13-fsync.patch
@@ -519,6 +522,9 @@ case $_basever in
             'ef48eea194c1c101de0461572eaf311f232fee55c155c52904b20085a92db680'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
+            'de718ecea652a74e1d821459397d3dafaa3de1a7dba3df51ba9fc42b8645c3e2'
+            'fc51648e44314fc3baa5e8fe18936fe3a2bedb9a42b03342ccfa16ff19a3fcfa'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '89d837bfea3515504b1c99fc881ebdc4f15e2999558127a263e795fc69408a39'
