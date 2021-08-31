@@ -548,15 +548,15 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
-        #0005-glitched-pds.patch
+        0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         #0007-v5.14-fsync.patch
         #0007-v5.14-futex2_interface.patch
         0007-v5.14-winesync.patch
         #0008-5.14-bcachefs.patch
-        #0009-glitched-ondemand-bmq.patch
-        #0009-glitched-bmq.patch
-        #0009-prjc_v5.14-r0.patch
+        0009-glitched-ondemand-bmq.patch
+        0009-glitched-bmq.patch
+        0009-prjc_v5.14-r0.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
@@ -573,8 +573,12 @@ case $_basever in
             '404d24e0da6b192c55987b961a49c296aed13a4701ba535eb32d4b98a117e203'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
+            '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            '92e5f35da18fcabfa87a4543b0d1daafff56f3c523a4c516e2600df9de231fd0'
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
             'b1c6599d0e1ac9b66898d652ed99dae3fb8676d840a43ffa920a78d96e0521be'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
