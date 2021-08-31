@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=194
+pkgrel=195
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -551,7 +551,7 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         #0007-v5.14-fsync.patch
-        #0007-v5.14-futex2_interface.patch
+        0007-v5.14-futex2_interface.patch
         0007-v5.14-winesync.patch
         #0008-5.14-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
@@ -575,6 +575,7 @@ case $_basever in
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            '07cbc31f9a92f5690babad6dadc4fa57ea23dec26b2fe08c8ba9f775e02a5d60'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
