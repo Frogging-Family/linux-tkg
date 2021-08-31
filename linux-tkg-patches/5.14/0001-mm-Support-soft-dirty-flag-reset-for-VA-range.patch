@@ -12,18 +12,18 @@ index 3cec6fbef725..7c7865028f10 100644
 --- a/fs/proc/task_mmu.c
 +++ b/fs/proc/task_mmu.c
 @@ -1032,6 +1032,8 @@ enum clear_refs_types {
- 
+
  struct clear_refs_private {
  	enum clear_refs_types type;
 +	unsigned long start, end;
 +	bool clear_range;
  };
- 
+
  #ifdef CONFIG_MEM_SOFT_DIRTY
 @@ -1125,6 +1127,8 @@ static int clear_refs_pte_range(pmd_t *pmd, unsigned long addr,
  	spinlock_t *ptl;
  	struct page *page;
- 
+
 +	BUG_ON(addr < cp->start || end > cp->end);
 +
  	ptl = pmd_trans_huge_lock(pmd, vma);
@@ -32,11 +32,11 @@ index 3cec6fbef725..7c7865028f10 100644
 @@ -1181,9 +1185,11 @@ static int clear_refs_test_walk(unsigned long start, unsigned long end,
  	struct clear_refs_private *cp = walk->private;
  	struct vm_area_struct *vma = walk->vma;
- 
+
 -	if (vma->vm_flags & VM_PFNMAP)
 +	if (!cp->clear_range && (vma->vm_flags & VM_PFNMAP))
  		return 1;
- 
+
 +	BUG_ON(start < cp->start || end > cp->end);
 +
  	/*
@@ -55,7 +55,7 @@ index 3cec6fbef725..7c7865028f10 100644
 +	bool clear_range;
  	int itype;
  	int rv;
- 
+
 @@ -1218,12 +1226,34 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
  		count = sizeof(buffer) - 1;
  	if (copy_from_user(buffer, buf, count))
@@ -94,13 +94,13 @@ index 3cec6fbef725..7c7865028f10 100644
 +		start = 0;
 +		end = -1UL;
 +	}
- 
+
  	task = get_proc_task(file_inode(file));
  	if (!task)
 @@ -1235,41 +1265,87 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
  			.type = type,
  		};
- 
+
 -		if (mmap_write_lock_killable(mm)) {
 -			count = -EINTR;
 -			goto out_mm;
@@ -140,7 +140,7 @@ index 3cec6fbef725..7c7865028f10 100644
 +			mmap_write_unlock(mm);
 +			goto out_mm;
  		}
- 
+
  		if (type == CLEAR_REFS_SOFT_DIRTY) {
 -			for (vma = mm->mmap; vma; vma = vma->vm_next) {
 -				if (!(vma->vm_flags & VM_SOFTDIRTY))
@@ -204,41 +204,42 @@ index 3cec6fbef725..7c7865028f10 100644
  #define PM_SOFT_DIRTY		BIT_ULL(55)
  #define PM_MMAP_EXCLUSIVE	BIT_ULL(56)
 +#define PM_SOFT_DIRTY_PAGE	BIT_ULL(57)
+ #define PM_UFFD_WP		BIT_ULL(57)
  #define PM_FILE			BIT_ULL(61)
  #define PM_SWAP			BIT_ULL(62)
- #define PM_PRESENT		BIT_ULL(63)
-@@ -1373,11 +1450,11 @@ static pagemap_entry_t pte_to_pagemap_entry(struct pagemapread *pm,
+@@ -1373,13 +1450,13 @@ static pagemap_entry_t pte_to_pagemap_entry(struct pagemapread *pm,
  		flags |= PM_PRESENT;
  		page = vm_normal_page(vma, addr, pte);
  		if (pte_soft_dirty(pte))
 -			flags |= PM_SOFT_DIRTY;
 +			flags |= PM_SOFT_DIRTY | PM_SOFT_DIRTY_PAGE;
+ 		if (pte_uffd_wp(pte))
+ 			flags |= PM_UFFD_WP;
  	} else if (is_swap_pte(pte)) {
  		swp_entry_t entry;
  		if (pte_swp_soft_dirty(pte))
 -			flags |= PM_SOFT_DIRTY;
 +			flags |= PM_SOFT_DIRTY | PM_SOFT_DIRTY_PAGE;
+ 		if (pte_swp_uffd_wp(pte))
+ 			flags |= PM_UFFD_WP;
  		entry = pte_to_swp_entry(pte);
- 		if (pm->show_pfn)
- 			frame = swp_type(entry) |
-@@ -1424,7 +1501,7 @@ static int pagemap_pmd_range(pmd_t *pmdp, unsigned long addr, unsigned long end,
- 
+@@ -1500,7 +1500,7 @@
+
  			flags |= PM_PRESENT;
  			if (pmd_soft_dirty(pmd))
 -				flags |= PM_SOFT_DIRTY;
 +				flags |= PM_SOFT_DIRTY | PM_SOFT_DIRTY_PAGE;
+ 			if (pmd_uffd_wp(pmd))
+ 				flags |= PM_UFFD_WP;
  			if (pm->show_pfn)
- 				frame = pmd_pfn(pmd) +
- 					((addr & ~PMD_MASK) >> PAGE_SHIFT);
 @@ -1442,7 +1519,7 @@ static int pagemap_pmd_range(pmd_t *pmdp, unsigned long addr, unsigned long end,
  			}
  			flags |= PM_SWAP;
  			if (pmd_swp_soft_dirty(pmd))
 -				flags |= PM_SOFT_DIRTY;
 +				flags |= PM_SOFT_DIRTY | PM_SOFT_DIRTY_PAGE;
+ 			if (pmd_swp_uffd_wp(pmd))
+ 				flags |= PM_UFFD_WP;
  			VM_BUG_ON(!is_pmd_migration_entry(pmd));
- 			page = migration_entry_to_page(entry);
- 		}
--- 
+--
 2.30.2
-
