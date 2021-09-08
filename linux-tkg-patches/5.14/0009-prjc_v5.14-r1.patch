@@ -463,6 +463,19 @@ index 562f2ef8d157..177b63db4ce0 100644
  	.tasks		= LIST_HEAD_INIT(init_task.tasks),
  #ifdef CONFIG_SMP
  	.pushable_tasks	= PLIST_NODE_INIT(init_task.pushable_tasks, MAX_PRIO),
+diff --git a/kernel/Kconfig.preempt b/kernel/Kconfig.preempt
+index 5876e30c5740..7594d0a31869 100644
+--- a/kernel/Kconfig.preempt
++++ b/kernel/Kconfig.preempt
+@@ -102,7 +102,7 @@ config PREEMPT_DYNAMIC
+ 
+ config SCHED_CORE
+ 	bool "Core Scheduling for SMT"
+-	depends on SCHED_SMT
++	depends on SCHED_SMT && !SCHED_ALT
+ 	help
+ 	  This option permits Core Scheduling, a means of coordinated task
+ 	  selection across SMT siblings. When enabled -- see
 diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
 index adb5190c4429..8c02bce63146 100644
 --- a/kernel/cgroup/cpuset.c
@@ -646,10 +659,10 @@ index 978fcfca5871..0425ee149b4d 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..5df1157a597c
+index 000000000000..900889c838ea
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7224 @@
+@@ -0,0 +1,7248 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -719,7 +732,7 @@ index 000000000000..5df1157a597c
 +#define sched_feat(x)	(0)
 +#endif /* CONFIG_SCHED_DEBUG */
 +
-+#define ALT_SCHED_VERSION "v5.14-r0"
++#define ALT_SCHED_VERSION "v5.14-r1"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -1142,6 +1155,30 @@ index 000000000000..5df1157a597c
 +	__releases(rq->lock)
 +{
 +	raw_spin_unlock_irqrestore(&rq->lock, rf->flags);
++}
++
++void raw_spin_rq_lock_nested(struct rq *rq, int subclass)
++{
++	raw_spinlock_t *lock;
++
++	/* Matches synchronize_rcu() in __sched_core_enable() */
++	preempt_disable();
++
++	for (;;) {
++		lock = __rq_lockp(rq);
++		raw_spin_lock_nested(lock, subclass);
++		if (likely(lock == __rq_lockp(rq))) {
++			/* preempt_count *MUST* be > 1 */
++			preempt_enable_no_resched();
++			return;
++		}
++		raw_spin_unlock(lock);
++	}
++}
++
++void raw_spin_rq_unlock(struct rq *rq)
++{
++	raw_spin_unlock(rq_lockp(rq));
 +}
 +
 +/*
@@ -1768,10 +1805,10 @@ index 000000000000..5df1157a597c
 +}
 +#endif	/* CONFIG_SCHED_HRTICK */
 +
-+static inline int __normal_prio(int policy, int rt_prio, int nice)
++static inline int __normal_prio(int policy, int rt_prio, int static_prio)
 +{
 +	return rt_policy(policy) ? (MAX_RT_PRIO - 1 - rt_prio) :
-+		NICE_TO_PRIO(nice) + MAX_PRIORITY_ADJ;
++		static_prio + MAX_PRIORITY_ADJ;
 +}
 +
 +/*
@@ -1783,7 +1820,7 @@ index 000000000000..5df1157a597c
 + */
 +static inline int normal_prio(struct task_struct *p)
 +{
-+	return __normal_prio(p->policy, p->rt_priority, PRIO_TO_NICE(p->static_prio));
++	return __normal_prio(p->policy, p->rt_priority, p->static_prio);
 +}
 +
 +/*
@@ -5707,7 +5744,7 @@ index 000000000000..5df1157a597c
 +
 +	p->sched_reset_on_fork = reset_on_fork;
 +
-+	newprio = __normal_prio(policy, attr->sched_priority, attr->sched_nice);
++	newprio = __normal_prio(policy, attr->sched_priority, NICE_TO_PRIO(attr->sched_nice));
 +	if (pi) {
 +		/*
 +		 * Take priority boosted tasks into account. If the new
@@ -7913,10 +7950,10 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..7a48809550bf
+index 000000000000..f03af9ab9123
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,662 @@
+@@ -0,0 +1,692 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -8360,6 +8397,36 @@ index 000000000000..7a48809550bf
 +	raw_spin_lock(&rq->lock);
 +
 +	return rq;
++}
++
++extern void raw_spin_rq_lock_nested(struct rq *rq, int subclass);
++extern void raw_spin_rq_unlock(struct rq *rq);
++
++static inline raw_spinlock_t *__rq_lockp(struct rq *rq)
++{
++	return &rq->lock;
++}
++
++static inline raw_spinlock_t *rq_lockp(struct rq *rq)
++{
++	return __rq_lockp(rq);
++}
++
++static inline void raw_spin_rq_lock(struct rq *rq)
++{
++	raw_spin_rq_lock_nested(rq, 0);
++}
++
++static inline void raw_spin_rq_lock_irq(struct rq *rq)
++{
++	local_irq_disable();
++	raw_spin_rq_lock(rq);
++}
++
++static inline void raw_spin_rq_unlock_irq(struct rq *rq)
++{
++	raw_spin_rq_unlock(rq);
++	local_irq_enable();
 +}
 +
 +static inline int task_current(struct rq *rq, struct task_struct *p)

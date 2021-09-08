@@ -131,3 +131,59 @@ index 2c7171e0b0010..85de313ddec29 100644
  	select CPU_FREQ_GOV_CONSERVATIVE
  	select CPU_FREQ_GOV_PERFORMANCE
  	help
+
+https://lore.kernel.org/lkml/20210819004305.20203-1-deepak.sharma@amd.com/
+
+From: Deepak Sharma <deepak.sharma@amd.com>
+To: <deepak.sharma@amd.com>
+Cc: "Rafael J. Wysocki" <rjw@rjwysocki.net>,
+	Len Brown <len.brown@intel.com>, Pavel Machek <pavel@ucw.cz>,
+	Thomas Gleixner <tglx@linutronix.de>,
+	"Ingo Molnar" <mingo@redhat.com>, Borislav Petkov <bp@alien8.de>,
+	"maintainer:X86 ARCHITECTURE (32-BIT AND 64-BIT)"
+	<x86@kernel.org>, "H. Peter Anvin" <hpa@zytor.com>,
+	"open list:SUSPEND TO RAM" <linux-pm@vger.kernel.org>,
+	"open list:X86 ARCHITECTURE (32-BIT AND 64-BIT)"
+	<linux-kernel@vger.kernel.org>
+Subject: [PATCH] x86/ACPI/State: Optimize C3 entry on AMD CPUs
+Date: Wed, 18 Aug 2021 17:43:05 -0700
+Message-ID: <20210819004305.20203-1-deepak.sharma@amd.com> (raw)
+
+AMD CPU which support C3 shares cache. Its not necessary to flush the
+caches in software before entering C3. This will cause performance drop
+for the cores which share some caches. ARB_DIS is not used with current
+AMD C state implementation. So set related flags correctly.
+
+Signed-off-by: Deepak Sharma <deepak.sharma@amd.com>
+---
+ arch/x86/kernel/acpi/cstate.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/x86/kernel/acpi/cstate.c b/arch/x86/kernel/acpi/cstate.c
+index 7de599eba7f0..62a5986d625a 100644
+--- a/arch/x86/kernel/acpi/cstate.c
++++ b/arch/x86/kernel/acpi/cstate.c
+@@ -79,6 +79,21 @@ void acpi_processor_power_init_bm_check(struct acpi_processor_flags *flags,
+ 		 */
+ 		flags->bm_control = 0;
+ 	}
++	if (c->x86_vendor == X86_VENDOR_AMD) {
++		/*
++		 * For all AMD CPUs that support C3, caches should not be
++		 * flushed by software while entering C3 type state. Set
++		 * bm->check to 1 so that kernel doesn't need to execute
++		 * cache flush operation.
++		 */
++		flags->bm_check = 1;
++		/*
++		 * In current AMD C state implementation ARB_DIS is no longer
++		 * used. So set bm_control to zero to indicate ARB_DIS is not
++		 * required while entering C3 type state.
++		 */
++		flags->bm_control = 0;
++	}
+ }
+ EXPORT_SYMBOL(acpi_processor_power_init_bm_check);
+
+--
+2.25.1
