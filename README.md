@@ -86,9 +86,7 @@ cd linux-tkg
 # Optional: edit the "customization.cfg" file
 makepkg -si
 ```
-The script will use a slightly modified Arch config from the `linux-tkg-config` folder. The options selected at build-time are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
-
-
+The script will use a slightly modified Arch config from the `linux-tkg-config` folder, it can be changed through the `_configfile` variable in `customization.cfg`. The options selected at build-time are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
 
 #### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 ```
@@ -103,7 +101,7 @@ manually. The script can can help out with some useful information:
 cd path/to/linux-tkg
 ./install.sh uninstall-help
 ```
-The script will use your current kernel's `.config` file, which will be searched for either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise the script won't work as-is). It's recommended to run the script booted on your distro-provided kernel.
+The script will use a slightly modified Arch config from the `linux-tkg-config` folder, it can be changed through the `_configfile` variable in `customization.cfg`.
 
 #### Void Linux
 ```
@@ -117,9 +115,7 @@ cd void-packages
 If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
 
 #### Other linux distributions
-If your distro is neither DEB nor RPM based, `install.sh` script can clone the kernel tree in the `linux-src-git` folder, patch and edit a `.config` file based on your current kernel's. It's expected either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` (otherwise it won't work as-is).
-
-To do so, run:
+If your distro is neither DEB nor RPM based, `install.sh` script can clone the kernel tree in the `linux-src-git` folder, patch and edit a slightly modified Arch `.config` file from the `linux-tkg-config` folder (it can be changed through the `_configfile` variable in `customization.cfg`). To do so, run:
 ```
 # Optional: edit the "customization.cfg" file
 ./install.sh config
