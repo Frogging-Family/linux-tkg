@@ -183,7 +183,7 @@ case $_basever in
 	opt_ver="5.8%2B"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         	'config.x86_64' # stock Arch config
         	#'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -234,7 +234,7 @@ case $_basever in
 	opt_ver="5.8%2B"
 	source=("$kernel_site"
         	$patch_site
-		"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+		"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         	"config.x86_64" # stock Arch config
         	#$hardened_config_file # hardened Arch config
         	90-cleanup.hook
@@ -288,7 +288,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -350,7 +350,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -417,7 +417,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -452,6 +452,7 @@ case $_basever in
     )
     sha256sums=('7d0df6f2bf2384d68d0bd8e1fe3e071d64364dcdc6002e7b5c87c92d48fac366'
             'a41e4a4eb50c670a48f9c9bcc32ccb2195c02e3caa823a6aaed04537fdd8b73d'
+
             'SKIP'
             '0a7c40402715f8817c4f40173ca1fa8af84c56f7658be281e5424319000370b6'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -481,7 +482,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -519,6 +520,7 @@ case $_basever in
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+
             '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
             'ef48eea194c1c101de0461572eaf311f232fee55c155c52904b20085a92db680'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
@@ -544,7 +546,7 @@ case $_basever in
 	opt_ver="5.8%2B"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -599,6 +601,7 @@ case $_basever in
     source=("$kernel_site"
         #"$patch_site"
         #"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -670,6 +673,7 @@ build() {
   # Use custom compiler paths if defined
   if [ "$_compiler_name" = "-llvm" ] && [ -n "${CUSTOM_LLVM_PATH}" ]; then
     PATH=${CUSTOM_LLVM_PATH}/bin:${CUSTOM_LLVM_PATH}/lib:${CUSTOM_LLVM_PATH}/include:${PATH}
+
   elif [ -n "${CUSTOM_GCC_PATH}" ]; then
     PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
   fi
@@ -846,14 +850,16 @@ hackheaders() {
   ln -sr "$builddir" "$pkgdir/usr/src/$pkgbase"
 
   if [ "$_STRIP" = "true" ]; then
-    echo "Stripping vmlinux..."
+    echo "Stripping vmlinux..."https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch
     strip -v $STRIP_STATIC "$builddir/vmlinux"
   fi
+
 
   if [ "$_NUKR" = "true" ]; then
     rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
   fi
 }
+
 
 source /dev/stdin <<EOF
 package_${pkgbase}() {
