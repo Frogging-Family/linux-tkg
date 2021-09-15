@@ -595,10 +595,10 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	515)
-	#opt_ver="5.8%2B"
+	opt_ver="5.15%2B"
     source=("$kernel_site"
         #"$patch_site"
-        #"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15%2B.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -627,7 +627,7 @@ case $_basever in
     )
     sha256sums=('e09eb58880b25bfadb6eae0656846e732474a6b4bebda04bedbf017b55c7ed55'
             #'c1f363abc032ed8ec223236c4e1eed5e4d8e581cd16cc6caefc7181f97e20e5e'
-            #'SKIP'
+            'SKIP'
             'adf66455eb13fb28db162042e5e888f144f5ad8d3f7911a85539831076e63123'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'

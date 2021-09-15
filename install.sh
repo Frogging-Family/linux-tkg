@@ -246,6 +246,8 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     ;;
     "514")
     opt_ver="5.8-5.14"
+    "515")
+    opt_ver="5.15+"
     ;;
   esac
 
