@@ -14315,3 +14315,403 @@ index ae28b85c999513..c4708a54520f3c 100644
  
  eg:
  	rqshare=mc
+From 4b382ba49343bebb160d99508552730bba1ea028 Mon Sep 17 00:00:00 2001
+From: Eduardo <edzis@inbox.lv>
+Date: Mon, 5 Jul 2021 21:53:34 +0300
+Subject: [PATCH 1/4] muqss: Tune CPU selection v2
+
+I was testing MuQSS for performance using MC, LLC and SMT and discovered that
+it is not up to performance, at least on my machine. This commit fixes the
+performance, at least on my machine (Ryzen 1700), I have no way of checking
+that on any Intel machine as I don't have one I can test on, but it should
+work similarly.
+
+This patch modifies best CPU selection:
+    Adds a check whether not only the CPU in question is in the
+    idle mask, but it will check whether the mask contains its
+    SMT sibling too.
+    The rationale is that SMT shares all resources of the core
+    and if other task is already scheduled there, it's not
+    really optimal to schedule more tasks that share the same
+    SMT resources.
+
+    Patch also refines further best CPU selection and adds an
+    exit threshold.
+    The rationale there is that there is no need to search
+    further if the best selection is already found. The best
+    selection depends on localities processed and is mainly
+    targeted around SMT.
+---
+ kernel/sched/MuQSS.c | 60 ++++++++++++++++++++++++++++++++------------
+ 1 file changed, 44 insertions(+), 16 deletions(-)
+
+diff --git a/kernel/sched/MuQSS.c b/kernel/sched/MuQSS.c
+index b88b52abc179a0..cdd18a8784faf1 100644
+--- a/kernel/sched/MuQSS.c
++++ b/kernel/sched/MuQSS.c
+@@ -1110,24 +1110,37 @@ static void resched_curr(struct rq *rq)
+  * Other node, other CPU, idle cache, idle threads.
+  * Other node, other CPU, busy cache, idle threads.
+  * Other node, other CPU, busy threads.
+- */
++*/
+ static int best_mask_cpu(int best_cpu, struct rq *rq, cpumask_t *tmpmask)
+ {
+ 	int best_ranking = CPUIDLE_DIFF_NODE | CPUIDLE_THREAD_BUSY |
+ 		CPUIDLE_DIFF_CPU | CPUIDLE_CACHE_BUSY | CPUIDLE_DIFF_CORE |
+ 		CPUIDLE_DIFF_CORE_LLC | CPUIDLE_DIFF_THREAD;
+-	int cpu_tmp;
++	int cpu_tmp, best_poss_ranking;
++	struct rq *tmp_rq;
+ 
+-	if (cpumask_test_cpu(best_cpu, tmpmask))
+-		goto out;
++	if (cpumask_test_cpu(best_cpu, tmpmask)) {
++#ifdef CONFIG_SCHED_SMT
++		tmp_rq = cpu_rq(best_cpu);
++		if (tmp_rq->siblings_idle(tmp_rq) || !sched_smp_initialized)
++			return best_cpu;
++#else
++		return best_cpu;
++#endif
++	}
+ 
++#ifdef CONFIG_SCHED_SMT
++	best_poss_ranking = CPUIDLE_DIFF_THREAD;
++#elif CONFIG_SCHED_MC
++	best_poss_ranking = CPUIDLE_DIFF_CORE_LLC;
++#else
++	best_poss_ranking = CPUIDLE_DIFF_CPU;
++#endif
+ 	for_each_cpu(cpu_tmp, tmpmask) {
+ 		int ranking, locality;
+-		struct rq *tmp_rq;
+ 
+ 		ranking = 0;
+ 		tmp_rq = cpu_rq(cpu_tmp);
+-
+ 		locality = rq->cpu_locality[cpu_tmp];
+ #ifdef CONFIG_NUMA
+ 		if (locality > LOCALITY_SMP)
+@@ -1141,23 +1154,38 @@ static int best_mask_cpu(int best_cpu, struct rq *rq, cpumask_t *tmpmask)
+ 				ranking |= CPUIDLE_DIFF_CORE_LLC;
+ 			else if (locality == LOCALITY_MC)
+ 				ranking |= CPUIDLE_DIFF_CORE;
+-		if (!(tmp_rq->cache_idle(tmp_rq)))
+-			ranking |= CPUIDLE_CACHE_BUSY;
+ #endif
+ #ifdef CONFIG_SCHED_SMT
+-		if (locality == LOCALITY_SMT)
+-			ranking |= CPUIDLE_DIFF_THREAD;
++			else if (locality == LOCALITY_SMT)
++				ranking |= CPUIDLE_DIFF_THREAD;
++#endif
++#ifdef CONFIG_SCHED_MC
++		if (ranking < best_ranking) {
++			if (!(tmp_rq->cache_idle(tmp_rq)))
++				ranking |= CPUIDLE_CACHE_BUSY;
++#endif
++#ifdef CONFIG_SCHED_SMT
++			if (ranking < best_ranking) {
++				if (!(tmp_rq->siblings_idle(tmp_rq))) {
++					ranking |= CPUIDLE_THREAD_BUSY;
++					if (locality == LOCALITY_SMT)
++						best_poss_ranking = CPUIDLE_DIFF_CORE_LLC;
++				}
+ #endif
+-		if (ranking < best_ranking
++				if (ranking < best_ranking) {
++					best_cpu = cpu_tmp;
++					best_ranking = ranking;
++				}
+ #ifdef CONFIG_SCHED_SMT
+-			|| (ranking == best_ranking && (tmp_rq->siblings_idle(tmp_rq)))
++			}
+ #endif
+-		) {
+-			best_cpu = cpu_tmp;
+-			best_ranking = ranking;
++#ifdef CONFIG_SCHED_MC
+ 		}
++#endif
++		if (best_ranking <= best_poss_ranking)
++			break;
+ 	}
+-out:
++
+ 	return best_cpu;
+ }
+ 
+
+From 64b68be9fb36e0f438e272bfd91846aaed5fc6cc Mon Sep 17 00:00:00 2001
+From: Steven Barrett <steven@liquorix.net>
+Date: Tue, 24 Aug 2021 09:48:16 -0500
+Subject: [PATCH 2/4] Revert "muqss: Tune CPU selection v2"
+
+Causes my Intel laptop to freeze randomly, and resuming from suspend
+causes the load to overflow.
+
+This reverts commit 4b382ba49343bebb160d99508552730bba1ea028.
+---
+ kernel/sched/MuQSS.c | 60 ++++++++++++--------------------------------
+ 1 file changed, 16 insertions(+), 44 deletions(-)
+
+diff --git a/kernel/sched/MuQSS.c b/kernel/sched/MuQSS.c
+index cdd18a8784faf1..b88b52abc179a0 100644
+--- a/kernel/sched/MuQSS.c
++++ b/kernel/sched/MuQSS.c
+@@ -1110,37 +1110,24 @@ static void resched_curr(struct rq *rq)
+  * Other node, other CPU, idle cache, idle threads.
+  * Other node, other CPU, busy cache, idle threads.
+  * Other node, other CPU, busy threads.
+-*/
++ */
+ static int best_mask_cpu(int best_cpu, struct rq *rq, cpumask_t *tmpmask)
+ {
+ 	int best_ranking = CPUIDLE_DIFF_NODE | CPUIDLE_THREAD_BUSY |
+ 		CPUIDLE_DIFF_CPU | CPUIDLE_CACHE_BUSY | CPUIDLE_DIFF_CORE |
+ 		CPUIDLE_DIFF_CORE_LLC | CPUIDLE_DIFF_THREAD;
+-	int cpu_tmp, best_poss_ranking;
+-	struct rq *tmp_rq;
++	int cpu_tmp;
+ 
+-	if (cpumask_test_cpu(best_cpu, tmpmask)) {
+-#ifdef CONFIG_SCHED_SMT
+-		tmp_rq = cpu_rq(best_cpu);
+-		if (tmp_rq->siblings_idle(tmp_rq) || !sched_smp_initialized)
+-			return best_cpu;
+-#else
+-		return best_cpu;
+-#endif
+-	}
++	if (cpumask_test_cpu(best_cpu, tmpmask))
++		goto out;
+ 
+-#ifdef CONFIG_SCHED_SMT
+-	best_poss_ranking = CPUIDLE_DIFF_THREAD;
+-#elif CONFIG_SCHED_MC
+-	best_poss_ranking = CPUIDLE_DIFF_CORE_LLC;
+-#else
+-	best_poss_ranking = CPUIDLE_DIFF_CPU;
+-#endif
+ 	for_each_cpu(cpu_tmp, tmpmask) {
+ 		int ranking, locality;
++		struct rq *tmp_rq;
+ 
+ 		ranking = 0;
+ 		tmp_rq = cpu_rq(cpu_tmp);
++
+ 		locality = rq->cpu_locality[cpu_tmp];
+ #ifdef CONFIG_NUMA
+ 		if (locality > LOCALITY_SMP)
+@@ -1154,38 +1141,23 @@ static int best_mask_cpu(int best_cpu, struct rq *rq, cpumask_t *tmpmask)
+ 				ranking |= CPUIDLE_DIFF_CORE_LLC;
+ 			else if (locality == LOCALITY_MC)
+ 				ranking |= CPUIDLE_DIFF_CORE;
++		if (!(tmp_rq->cache_idle(tmp_rq)))
++			ranking |= CPUIDLE_CACHE_BUSY;
+ #endif
+ #ifdef CONFIG_SCHED_SMT
+-			else if (locality == LOCALITY_SMT)
+-				ranking |= CPUIDLE_DIFF_THREAD;
+-#endif
+-#ifdef CONFIG_SCHED_MC
+-		if (ranking < best_ranking) {
+-			if (!(tmp_rq->cache_idle(tmp_rq)))
+-				ranking |= CPUIDLE_CACHE_BUSY;
+-#endif
+-#ifdef CONFIG_SCHED_SMT
+-			if (ranking < best_ranking) {
+-				if (!(tmp_rq->siblings_idle(tmp_rq))) {
+-					ranking |= CPUIDLE_THREAD_BUSY;
+-					if (locality == LOCALITY_SMT)
+-						best_poss_ranking = CPUIDLE_DIFF_CORE_LLC;
+-				}
++		if (locality == LOCALITY_SMT)
++			ranking |= CPUIDLE_DIFF_THREAD;
+ #endif
+-				if (ranking < best_ranking) {
+-					best_cpu = cpu_tmp;
+-					best_ranking = ranking;
+-				}
++		if (ranking < best_ranking
+ #ifdef CONFIG_SCHED_SMT
+-			}
++			|| (ranking == best_ranking && (tmp_rq->siblings_idle(tmp_rq)))
+ #endif
+-#ifdef CONFIG_SCHED_MC
++		) {
++			best_cpu = cpu_tmp;
++			best_ranking = ranking;
+ 		}
+-#endif
+-		if (best_ranking <= best_poss_ranking)
+-			break;
+ 	}
+-
++out:
+ 	return best_cpu;
+ }
+ 
+
+From 1fb7f0e32caf628f0e70480922ab606f2d859605 Mon Sep 17 00:00:00 2001
+From: Steven Barrett <steven@liquorix.net>
+Date: Wed, 1 Sep 2021 19:00:11 -0500
+Subject: [PATCH 3/4] muqss: Replace "while(42)" with "for (;;)" to match
+ mainline
+
+Using "while(42)" was probably a funny replacement for "for (;;)" back
+when the decision to use it was made, but all it does is make syncing
+code from mainline frustrating.
+
+Sync up with mainline to make porting easier.
+---
+ kernel/sched/MuQSS.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/sched/MuQSS.h b/kernel/sched/MuQSS.h
+index 63935d778c50cb..a8f9b6087d94d2 100644
+--- a/kernel/sched/MuQSS.h
++++ b/kernel/sched/MuQSS.h
+@@ -455,7 +455,7 @@ static inline struct rq *task_rq_lock(struct task_struct *p, struct rq_flags *rf
+ {
+ 	struct rq *rq;
+ 
+-	while (42) {
++	for (;;) {
+ 		raw_spin_lock_irqsave(&p->pi_lock, rf->flags);
+ 		rq = task_rq(p);
+ 		raw_spin_lock(rq->lock);
+@@ -482,7 +482,7 @@ static inline struct rq *__task_rq_lock(struct task_struct *p, struct rq_flags _
+ 
+ 	lockdep_assert_held(&p->pi_lock);
+ 
+-	while (42) {
++	for (;;) {
+ 		rq = task_rq(p);
+ 		raw_spin_lock(rq->lock);
+ 		if (likely(rq == task_rq(p)))
+
+From 00a9b574b607dc45c0435687d1f02dd0ab0deb6f Mon Sep 17 00:00:00 2001
+From: Steven Barrett <steven@liquorix.net>
+Date: Wed, 1 Sep 2021 19:22:43 -0500
+Subject: [PATCH 4/4] muqss: Synchronize "(__)task_rq_lock" functions from
+ mainline
+
+It looks like at some point mainline moved the locking functions
+directly into the core.c file for CFS.  MuQSS kept them in the header
+with minor differences in implementation.
+
+Sync them up so porting code is easier.
+---
+ kernel/sched/MuQSS.c | 39 +++++++++++++++++++++++++++++++++++++++
+ kernel/sched/MuQSS.h | 38 +++++---------------------------------
+ 2 files changed, 44 insertions(+), 33 deletions(-)
+
+diff --git a/kernel/sched/MuQSS.c b/kernel/sched/MuQSS.c
+index b88b52abc179a0..eff16baf8d0f21 100644
+--- a/kernel/sched/MuQSS.c
++++ b/kernel/sched/MuQSS.c
+@@ -277,6 +277,45 @@ struct rq *uprq;
+  * Looking up task_rq must be done under rq->lock to be safe.
+  */
+ 
++/*
++ * __task_rq_lock - lock the rq @p resides on.
++ */
++struct rq *__task_rq_lock(struct task_struct *p, struct rq_flags __always_unused *rf)
++	__acquires(rq->lock)
++{
++	struct rq *rq;
++
++	lockdep_assert_held(&p->pi_lock);
++
++	for (;;) {
++		rq = task_rq(p);
++		raw_spin_lock(rq->lock);
++		if (likely(rq == task_rq(p)))
++			return rq;
++		raw_spin_unlock(rq->lock);
++	}
++}
++
++/*
++ * task_rq_lock - lock p->pi_lock and lock the rq @p resides on.
++ */
++struct rq *task_rq_lock(struct task_struct *p, struct rq_flags *rf)
++	__acquires(p->pi_lock)
++	__acquires(rq->lock)
++{
++	struct rq *rq;
++
++	for (;;) {
++		raw_spin_lock_irqsave(&p->pi_lock, rf->flags);
++		rq = task_rq(p);
++		raw_spin_lock(rq->lock);
++		if (likely(rq == task_rq(p)))
++			return rq;
++		raw_spin_unlock(rq->lock);
++		raw_spin_unlock_irqrestore(&p->pi_lock, rf->flags);
++	}
++}
++
+ /*
+  * RQ-clock updating methods:
+  */
+diff --git a/kernel/sched/MuQSS.h b/kernel/sched/MuQSS.h
+index a8f9b6087d94d2..3db551b436b725 100644
+--- a/kernel/sched/MuQSS.h
++++ b/kernel/sched/MuQSS.h
+@@ -449,23 +449,12 @@ static inline void rq_unlock_irqrestore(struct rq *rq, struct rq_flags *rf)
+ 	raw_spin_unlock_irqrestore(rq->lock, rf->flags);
+ }
+ 
+-static inline struct rq *task_rq_lock(struct task_struct *p, struct rq_flags *rf)
+-	__acquires(p->pi_lock)
+-	__acquires(rq->lock)
+-{
+-	struct rq *rq;
++struct rq *__task_rq_lock(struct task_struct *p, struct rq_flags *rf)
++	__acquires(rq->lock);
+ 
+-	for (;;) {
+-		raw_spin_lock_irqsave(&p->pi_lock, rf->flags);
+-		rq = task_rq(p);
+-		raw_spin_lock(rq->lock);
+-		if (likely(rq == task_rq(p)))
+-			break;
+-		raw_spin_unlock(rq->lock);
+-		raw_spin_unlock_irqrestore(&p->pi_lock, rf->flags);
+-	}
+-	return rq;
+-}
++struct rq *task_rq_lock(struct task_struct *p, struct rq_flags *rf)
++	__acquires(p->pi_lock)
++	__acquires(rq->lock);
+ 
+ static inline void task_rq_unlock(struct rq *rq, struct task_struct *p, struct rq_flags *rf)
+ 	__releases(rq->lock)
+@@ -475,23 +464,6 @@ static inline void task_rq_unlock(struct rq *rq, struct task_struct *p, struct r
+ 	raw_spin_unlock_irqrestore(&p->pi_lock, rf->flags);
+ }
+ 
+-static inline struct rq *__task_rq_lock(struct task_struct *p, struct rq_flags __always_unused *rf)
+-	__acquires(rq->lock)
+-{
+-	struct rq *rq;
+-
+-	lockdep_assert_held(&p->pi_lock);
+-
+-	for (;;) {
+-		rq = task_rq(p);
+-		raw_spin_lock(rq->lock);
+-		if (likely(rq == task_rq(p)))
+-			break;
+-		raw_spin_unlock(rq->lock);
+-	}
+-	return rq;
+-}
+-
+ static inline void __task_rq_unlock(struct rq *rq, struct rq_flags __always_unused *rf)
+ {
+ 	rq_unlock(rq);
