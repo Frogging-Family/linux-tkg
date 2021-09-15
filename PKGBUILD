@@ -180,7 +180,7 @@ case $_basever in
             '6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d')
 	;;
 	58)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
 	source=("$kernel_site"
         	"$patch_site"
         	"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
@@ -231,7 +231,7 @@ case $_basever in
             'f5dbff4833a2e3ca94c202e5197894d5f1006c689ff149355353e77d2e17c943')
 	;;
 	59)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
 	source=("$kernel_site"
         	$patch_site
 		"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
@@ -285,7 +285,7 @@ case $_basever in
             '0d5fe3a9050536fe431564b221badb85af7ff57b330e3978ae90d21989fcad2d')
 	;;
 	510)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
@@ -347,7 +347,7 @@ case $_basever in
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
 	;;
 	511)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
@@ -414,7 +414,7 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	512)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
@@ -478,7 +478,7 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	513)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
@@ -541,7 +541,7 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	514)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"

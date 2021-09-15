@@ -227,25 +227,25 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     opt_alternative_url="true"
     ;;
     "58")
-    opt_ver="5.8+"
+    opt_ver="5.8-5.14"
     ;;
     "59")
-    opt_ver="5.8+"
+    opt_ver="5.8-5.14"
     ;;
     "510")
-    opt_ver="5.8+"
+    opt_ver="5.8-5.14"
     ;;
     "511")
-    opt_ver="5.8+"
+    opt_ver="5.8-5.14"
     ;;
     "512")
-    opt_ver="5.8+"
+    opt_ver="5.8-5.14"
     ;;
     "513")
-    opt_ver="5.8+"
+    opt_ver="5.8-5.14"
     ;;
     "514")
-    opt_ver="5.8+"
+    opt_ver="5.8-5.14"
     ;;
   esac
 
