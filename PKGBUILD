@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=199
+pkgrel=200
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'e3f29048724196ca4fa69c1446c6971f8a929fa2b26ce044617fa719540922d5'
+            'ad91a33ad5fca64ff45e73fb203a3dc7d127c8ff2b1f384efaa4914ae099a8a7'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -318,7 +318,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '701713c274afdc0575fd782fed03f10720dedb5098f39681c835332e41108e12'
+            '621c60438eb2ef4e1f1897969767e7c7549f890f7bc1ee45bddc6a06dc8462cc'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -512,7 +512,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('3f6baa97f37518439f51df2e4f3d65a822ca5ff016aa8e60d2cc53b95a6c89d9'
-            'f9e14b904092a6a52a7e17954febe103b51b0217b18db752418349a47af89f25'
+            'a8c282dcb95a8cba7c0f1f3ab80eeaada699dff60f668305d3252b41cf77a348'
             'SKIP'
             '06ad99b810943f7ce4650fe656156f4b40d11fabd9b89e2b1beff06c46836efc'
             '49a34dfc8ee7663a8a20c614f086e16ec70e8822db27a91050fd6ffebf87a650'
@@ -572,7 +572,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('7e068b5e0d26a62b10e5320b25dce57588cbbc6f781c090442138c9c9c3271b2'
-            'c41a668d085b1c1404b6f56df254e0f888191f9338b42d74f877b6fef8f268a5'
+            '82327f7e35f83d2f7f02854fe862b63894777d1f43a5d9526b7f8dcbb64ba6cd'
             'SKIP'
             'e2140782726c69db81dd5be0602479bb4e161772e83e77de1470c9ceea622ca4'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
