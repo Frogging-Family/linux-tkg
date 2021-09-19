@@ -29,7 +29,7 @@ plain() {
 _distro_prompt() {
   echo "Which linux distribution are you running ?"
   echo "if it's not on the list, chose the closest one to it: Fedora/Suse for RPM, Ubuntu/Debian for DEB"
-  _prompt_from_array "Debian" "Fedora" "Suse" "Ubuntu" "Generic"
+  _prompt_from_array "Debian" "Fedora" "Suse" "Ubuntu" "Gentoo" "Generic"
   _distro="${_selected_value}"
 }
 
@@ -88,14 +88,14 @@ _linux_git_branch_checkout() {
     cd linux-src-git
 
     # Remove "origin" remote if present
-    if git remote -v | grep "origin" ; then
+    if git remote -v | grep -w "origin" ; then
       git remote rm origin
     fi
 
-    if ! git remote -v | grep "kernel.org" ; then
+    if ! git remote -v | grep -w "kernel.org" ; then
       git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
     fi
-    if ! git remote -v | grep "googlesource.com" ; then
+    if ! git remote -v | grep -w "googlesource.com" ; then
       git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
     fi
 
@@ -103,13 +103,7 @@ _linux_git_branch_checkout() {
     msg2 "Reseting files to their original state"
 
     git reset --hard HEAD
-
-    if [ "${_distro}" = "Generic" ]; then
-      msg2 "Please enter your sudo password so the script can clean root owned files from the kernel sources"
-      sudo git clean -fdx
-    else
-      git clean -f -d -x
-    fi
+    git clean -f -d -x
   fi
 
   if [[ "$_sub" = rc* ]]; then
@@ -138,7 +132,7 @@ _linux_git_branch_checkout() {
     fi
 
     msg2 "Switching to linux-${_basekernel}.y"
-    if ! git branch --list | grep "linux-${_basekernel}-${_git_mirror}" ; then
+    if ! git branch --list | grep -w "linux-${_basekernel}-${_git_mirror}" ; then
       msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
       git remote set-branches --add kernel.org linux-${_basekernel}.y
       git remote set-branches --add googlesource.com linux-${_basekernel}.y
@@ -154,7 +148,6 @@ _linux_git_branch_checkout() {
     msg2 "Checking out latest release: ${_kernel_tag}"
     git checkout "${_kernel_tag}"
   fi
-
 }
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
@@ -188,18 +181,17 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
-  if [[ "${_compiler}" = "llvm" && "${_distro}" = "Generic" ]]; then
-    read -p "Replace \"libunwind\" with \"llvm-libunwind\" ? y/[n]:" _libunwind_replace
+  if [[ "${_compiler}" = "llvm" && "${_distro}" =~ ^(Generic|Gentoo)$ ]]; then
+    read -p "Replace \"libunwind\" with \"llvm-libunwind\" ? Y/[n]:" _libunwind_replace
     if [[ "${_libunwind_replace}" =~ ^(y|yes|Yes|Y)$ ]]; then
       export LDFLAGS_MODULE="-unwindlib=libunwind"
       export HOSTLDFLAGS="-unwindlib=libunwind"
     fi
   fi
 
-  if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Generic)$ ]]; then
-    msg2 "Variable \"_distro\" in \"customization.cfg\" hasn't been set to \"Ubuntu\", \"Debian\",  \"Fedora\" or \"Suse\""
-    msg2 "This script can only install custom kernels for RPM and DEB based distros, though only those keywords are permitted. Exiting..."
-    exit 0
+  if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Gentoo|Generic)$ ]]; then
+    msg2 "Variable \"_distro\" in \"customization.cfg\" has been set to an unkown value. Prompting..."
+    _distro_prompt
   fi
 
   # Install the needed dependencies if the user wants to install the kernel
@@ -258,17 +250,24 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     fi
   fi
 
-  # Follow Ubuntu install isntructions in https://wiki.ubuntu.com/KernelTeam/GitKernelBuild
-
-  # cd in linux folder, copy Ubuntu's current config file, update with new params
-  cd "$_where"/linux-src-git
-
-
-  yes '' | make ${llvm_opt} oldconfig
-  msg2 "Done"
-
-  # apply linux-tkg patching script
+  # cd into the linux-src folder is important before calling _tkg_srcprep
+  cd "$_where/linux-src-git"
   _tkg_srcprep
+
+  _build_dir="$_where"
+  if [ "$_use_tmpfs" = "true" ]; then
+    if [ -d "$_tmpfs_path/linux-tkg" ]; then
+      msg2 "Nuking linux-tkg tmpfs folder $_tmpfs_path/linux-tkg"
+      rm -rf "$_tmpfs_path/linux-tkg"
+    fi
+    mkdir "$_tmpfs_path/linux-tkg"
+    cp -r "$_where/linux-src-git" "$_tmpfs_path/linux-tkg/linux-src-git"
+
+    # cd into the linux-src folder is important before calling _tkg_srcprep
+    _build_dir="$_tmpfs_path/linux-tkg"
+    cd "$_tmpfs_path/linux-tkg/linux-src-git"
+  fi
+
 
   # Uppercase characters are not allowed in source package name for debian based distros
   if [ "$_distro" = "Debian" ] || [ "$_distro" = "Ubuntu" ] && [ "$_cpusched" = "MuQSS" ]; then
@@ -328,34 +327,37 @@ if [ "$1" = "install" ]; then
     _kernel_subver="${_sub}"
   fi
 
+  _timed_build() {
+    _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 "$@" 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( "$@" 2>&1 ) 3>&1 1>&2 2>&3 )
+  }
+
   if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
 
-    if make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}; then
-      msg2 "Building successfully finished!"
+    msg2 "Building kernel DEB packages"
+    _timed_build make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
+    msg2 "Building successfully finished!"
 
+    # Create DEBS folder if it doesn't exist
+    cd "$_where"
+    mkdir -p DEBS
+
+    # Move deb files to DEBS folder inside the linux-tkg folder
+    mv "$_build_dir"/*.deb "$_where"/DEBS/
+
+    read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+    if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
       cd "$_where"
-
-      # Create DEBS folder if it doesn't exist
-      mkdir -p DEBS
-
-      # Move rpm files to RPMS folder inside the linux-tkg folder
-      mv "$_where"/*.deb "$_where"/DEBS/
-
-      read -p "Do you want to install the new Kernel ? y/[n]: " _install
-      if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
-        cd "$_where"
-        if [[ "$_sub" = rc* ]]; then
-          _kernelname=$_basekernel.$_kernel_subver-$_sub-$_kernel_flavor
-        else
-          _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
-        fi
-        _headers_deb="linux-headers-${_kernelname}*.deb"
-        _image_deb="linux-image-${_kernelname}_*.deb"
-        _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
-
-        cd DEBS
-        sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
+      if [[ "$_sub" = rc* ]]; then
+        _kernelname=$_basekernel.$_kernel_subver-$_sub-$_kernel_flavor
+      else
+        _kernelname=$_basekernel.$_kernel_subver-$_kernel_flavor
       fi
+      _headers_deb="linux-headers-${_kernelname}*.deb"
+      _image_deb="linux-image-${_kernelname}_*.deb"
+      _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
+
+      cd DEBS
+      sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
     fi
 
   elif [[ "$_distro" = "Fedora" ||  "$_distro" = "Suse" ]]; then
@@ -370,80 +372,155 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    if RPMOPTS="--define '_topdir ${HOME}/.cache/linux-tkg-rpmbuild'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"; then
-      msg2 "Building successfully finished!"
-
-      cd "$_where"
-
-      # Create RPMS folder if it doesn't exist
-      mkdir -p RPMS
-
-      # Move rpm files to RPMS folder inside the linux-tkg folder
-      mv ${HOME}/.cache/linux-tkg-rpmbuild/RPMS/x86_64/*tkg* "$_where"/RPMS/
-
-      read -p "Do you want to install the new Kernel ? y/[n]: " _install
-      if [ "$_install" = "y" ] || [ "$_install" = "Y" ] || [ "$_install" = "yes" ] || [ "$_install" = "Yes" ]; then
-
-        if [[ "$_sub" = rc* ]]; then
-          _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
-        else
-          _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
-        fi
-        _headers_rpm="kernel-headers-${_kernelname}*.rpm"
-        _kernel_rpm="kernel-${_kernelname}*.rpm"
-        # The headers are actually contained in the kernel-devel RPM and not the headers one...
-        _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
-
-        cd RPMS
-        if [ "$_distro" = "Fedora" ]; then
-          sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
-        elif [ "$_distro" = "Suse" ]; then
-          msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
-          msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'"
-          sudo zypper install --replacefiles --allow-unsigned-rpm $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
-        fi
-
-        msg2 "Install successful"
-      fi
+    _fedora_work_dir="${HOME}/.cache/linux-tkg-rpmbuild"
+    if [ "$_use_tmpfs" = "true" ]; then
+      _fedora_work_dir="$_tmpfs_path/linux-tkg/linux-tkg-rpmbuild"
     fi
 
-  elif [ "$_distro" = "Generic" ]; then
+    msg2 "Building kernel RPM packages"
+    RPMOPTS="--define '_topdir ${_fedora_work_dir}'" _timed_build make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
+    msg2 "Building successfully finished!"
+
+    # Create RPMS folder if it doesn't exist
+    cd "$_where"
+    mkdir -p RPMS
+
+    # Move rpm files to RPMS folder inside the linux-tkg folder
+    mv ${_fedora_work_dir}/RPMS/x86_64/*tkg* "$_where"/RPMS/
+
+    read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+    if [[ "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
+
+      if [[ "$_sub" = rc* ]]; then
+        _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
+      else
+        _kernelname=$_basekernel.${_kernel_subver}_$_kernel_flavor
+      fi
+      _headers_rpm="kernel-headers-${_kernelname}*.rpm"
+      _kernel_rpm="kernel-${_kernelname}*.rpm"
+      # The headers are actually contained in the kernel-devel RPM and not the headers one...
+      _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
+
+      cd RPMS
+      if [ "$_distro" = "Fedora" ]; then
+        sudo dnf install $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
+      elif [ "$_distro" = "Suse" ]; then
+        msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
+        msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'"
+        sudo zypper install --replacefiles --allow-unsigned-rpm $_headers_rpm $_kernel_rpm $_kernel_devel_rpm
+      fi
+
+      msg2 "Install successful"
+    fi
+
+  elif [[ "$_distro" =~ ^(Gentoo|Generic)$ ]]; then
 
     ./scripts/config --set-str LOCALVERSION "-${_kernel_flavor}"
 
-    if make ${llvm_opt} -j ${_thread_num}; then
-
-      if [[ "$_sub" = rc* ]]; then
-        _kernelname=$_basekernel.${_kernel_subver}-${_sub}-$_kernel_flavor
-      else
-        _kernelname=$_basekernel.${_kernel_subver}-$_kernel_flavor
-      fi
-
-      msg2 "Building successful"
-      msg2 "The installation process will run the following commands:"
-      echo "    sudo make modules_install"
-      echo "    sudo make headers_install INSTALL_HDR_PATH=/usr # CAUTION: this will replace files in /usr/include"
-      echo "    sudo make install"
-      echo "    sudo dracut --hostonly --kver $_kernelname"
-      echo "    sudo grub-mkconfig -o /boot/grub/grub.cfg"
-      msg2 "Note: Uninstalling requires manual intervention, use './install.sh uninstall-help' for more information."
-      read -p "Continue ? [Y/n]: " _continue
-
-      if ! [[ $_continue =~ ^(Y|y|Yes|yes)$ ]];then
-        exit 0
-      fi
-
-      msg2 "Installing modules"
-      sudo make modules_install
-      msg2 "Installing headers"
-      sudo make headers_install INSTALL_HDR_PATH=/usr
-      msg2 "Installing kernel"
-      sudo make install
-      msg2 "Creating initramfs"
-      sudo dracut --force --hostonly --kver $_kernelname
-      msg2 "Updating GRUB"
-      sudo grub-mkconfig -o /boot/grub/grub.cfg
+    if [[ "$_sub" = rc* ]]; then
+      _kernelname=$_basekernel.${_kernel_subver}-${_sub}-$_kernel_flavor
+    else
+      _kernelname=$_basekernel.${_kernel_subver}-$_kernel_flavor
     fi
+
+    msg2 "Building kernel"
+    _timed_build make ${llvm_opt} -j ${_thread_num}
+    msg2 "Build successful"
+
+    if [ "$_STRIP" = "true" ]; then
+      echo "Stripping vmlinux..."
+      strip -v $STRIP_STATIC "vmlinux"
+    fi
+
+    _headers_folder_name="linux-$_kernelname"
+
+    msg2 "Removing unneeded architectures..."
+    for arch in arch/*/; do
+      [[ $arch = */x86/ ]] && continue
+      echo "Removing $(basename "$arch")"
+      rm -r "$arch"
+    done
+
+    msg2 "Removing broken symlinks..."
+    find -L . -type l -printf 'Removing %P\n' -delete
+
+    msg2 "Removing loose objects..."
+    find . -type f -name '*.o' -printf 'Removing %P\n' -delete
+
+    msg2 "Stripping build tools..."
+    while read -rd '' file; do
+      case "$(file -bi "$file")" in
+        application/x-sharedlib\;*)      # Libraries (.so)
+          strip -v $STRIP_SHARED "$file" ;;
+        application/x-archive\;*)        # Libraries (.a)
+          strip -v $STRIP_STATIC "$file" ;;
+        application/x-executable\;*)     # Binaries
+          strip -v $STRIP_BINARIES "$file" ;;
+        application/x-pie-executable\;*) # Relocatable binaries
+          strip -v $STRIP_SHARED "$file" ;;
+      esac
+    done < <(find . -type f -perm -u+x ! -name vmlinux -print0)
+
+    echo -e "\n\n"
+
+    msg2 "The installation process will run the following commands:"
+    echo "    # copy the patched and compiled sources to /usr/src/$_headers_folder_name"
+    echo "    sudo make modules_install"
+    echo "    sudo make install"
+    echo "    sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname"
+    echo "    sudo grub-mkconfig -o /boot/grub/grub.cfg"
+
+    msg2 "Note: Uninstalling requires manual intervention, use './install.sh uninstall-help' for more information."
+    read -p "Continue ? Y/[n]: " _continue
+
+    if ! [[ $_continue =~ ^(Y|y|Yes|yes)$ ]];then
+      exit 0
+    fi
+
+    msg2 "Copying files over to /usr/src/$_headers_folder_name"
+    if [ -d "/usr/src/$_headers_folder_name" ]; then
+      msg2 "Removing old folder in /usr/src/$_headers_folder_name"
+      sudo rm -rf "/usr/src/$_headers_folder_name"
+    fi
+    sudo cp -R . "/usr/src/$_headers_folder_name"
+    sudo rm -rf "/usr/src/$_headers_folder_name/.git"
+    cd "/usr/src/$_headers_folder_name"
+
+    msg2 "Installing modules"
+    if [ "$_STRIP" = "true" ]; then
+      sudo make modules_install INSTALL_MOD_STRIP="1"
+    else
+      sudo make modules_install
+    fi
+    msg2 "Removing modules from source folder in /usr/src/${_kernel_src_gentoo}"
+    sudo find . -type f -name '*.ko' -delete
+    sudo find . -type f -name '*.ko.cmd' -delete
+
+    msg2 "Installing kernel"
+    sudo make install
+    msg2 "Creating initramfs"
+    sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
+    msg2 "Updating GRUB"
+    sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+    if [ "$_distro" = "Gentoo" ]; then
+
+      msg2 "Selecting the kernel source code as default source folder"
+      sudo ln -sfn "/usr/src/$_headers_folder_name" "/usr/src/linux"
+
+      msg2 "Rebuild kernel modules with \"emerge @module-rebuild\" ?"
+      if [ "$_compiler" = "llvm" ];then
+        warning "Building modules with LLVM/Clang is mostly unsupported OOTB by \"emerge @module-rebuild\" except for Nvidia 465.31+"
+        warning "     Manually setting \"CC=clang\" for some modules may work if you haven't used LTO"
+      fi
+
+      read -p "Y/[n]: " _continue
+      if [[ $_continue =~ ^(Y|y|Yes|yes)$ ]];then
+        sudo emerge @module-rebuild --keep-going
+      fi
+
+    fi
+
   fi
 fi
 
@@ -477,7 +554,7 @@ if [ "$1" = "uninstall-help" ]; then
     msg2 "      sudo zypper remove --no-clean-deps kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second to last column"
     msg2 "Note: kernel-headers packages are no longer created and installed, you can safely remove any remnants."
-  elif [ "$_distro" = "Generic" ]; then
+  elif [[ "$_distro" =~ ^(Generic|Gentoo)$ ]]; then
     msg2 "Folders in /lib/modules :"
     ls /lib/modules
     msg2 "Files in /boot :"

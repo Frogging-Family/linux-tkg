@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=199
+pkgrel=201
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'e3f29048724196ca4fa69c1446c6971f8a929fa2b26ce044617fa719540922d5'
+            'ad91a33ad5fca64ff45e73fb203a3dc7d127c8ff2b1f384efaa4914ae099a8a7'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -318,7 +318,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '701713c274afdc0575fd782fed03f10720dedb5098f39681c835332e41108e12'
+            'f841c8844ce7d5b3c6124f3915a348a3a79f87c78bd4c013c8772d554a351729'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -512,7 +512,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('3f6baa97f37518439f51df2e4f3d65a822ca5ff016aa8e60d2cc53b95a6c89d9'
-            'f9e14b904092a6a52a7e17954febe103b51b0217b18db752418349a47af89f25'
+            '6fadc31348a0c0bbce86b067811d1dadae307bbde5b712c688b3193d73f0fb71'
             'SKIP'
             '06ad99b810943f7ce4650fe656156f4b40d11fabd9b89e2b1beff06c46836efc'
             '49a34dfc8ee7663a8a20c614f086e16ec70e8822db27a91050fd6ffebf87a650'
@@ -525,7 +525,7 @@ case $_basever in
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'de718ecea652a74e1d821459397d3dafaa3de1a7dba3df51ba9fc42b8645c3e2'
-            'fc51648e44314fc3baa5e8fe18936fe3a2bedb9a42b03342ccfa16ff19a3fcfa'
+            '12d7c7457d4605ba00cb888383779e591a58e701643d763d8fe05dcdec3e9830'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '89d837bfea3515504b1c99fc881ebdc4f15e2999558127a263e795fc69408a39'
@@ -572,7 +572,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('7e068b5e0d26a62b10e5320b25dce57588cbbc6f781c090442138c9c9c3271b2'
-            'c41a668d085b1c1404b6f56df254e0f888191f9338b42d74f877b6fef8f268a5'
+            '1149f28bdb4ffe49c99bfd2ef73e379c2e64b56579a13227c47a0cd02c8767d7'
             'SKIP'
             'e2140782726c69db81dd5be0602479bb4e161772e83e77de1470c9ceea622ca4'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
