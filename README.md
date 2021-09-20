@@ -49,7 +49,7 @@ To apply your own patch files using the provided scripts, you will need to put t
 #### Anbox usage
 
 When enabling the anbox support option, the `binder` and `ashmem` modules are built-in. You don't have to load them. However you'll need to mount binderfs :
-```
+```shell
 sudo mkdir /dev/binderfs
 sudo mount -t binder binder /dev/binderfs
 ```
@@ -64,12 +64,12 @@ binder                         /dev/binderfs binder   nofail  0      0
 ```
 
 Then, if needed, start the anbox service :
-```
+```shell
 systemctl start anbox-container-manager.service
 ```
 
 You can also enable the service for it to be auto-started on boot :
-```
+```shell
 systemctl enable anbox-container-manager.service
 ```
 
@@ -80,7 +80,7 @@ If you prefer automatic setup you can install `anbox-support` from AUR which wil
 ### Install procedure
 
 #### Arch & derivatives
-```
+```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg
 # Optional: edit the "customization.cfg" file
@@ -89,22 +89,23 @@ makepkg -si
 The script will use a slightly modified Arch config from the `linux-tkg-config` folder, it can be changed through the `_configfile` variable in `customization.cfg`. The options selected at build-time are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
 
 #### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
-```
+The interactive `install.sh` script will create, depending on the selected distro, `.deb` or `.rpm` packages, move them in the the subfolder `DEBS` or `RPMS` then prompts to install them with the distro's package manager.
+```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg
 # Optional: edit the "customization.cfg" file
 ./install.sh install
 ```
 Uninstalling custom kernels installed through the script has to be done
-manually. The script can can help out with some useful information:
-```
+manually. `install.sh` can can help out with some useful information:
+```shell
 cd path/to/linux-tkg
 ./install.sh uninstall-help
 ```
 The script will use a slightly modified Arch config from the `linux-tkg-config` folder, it can be changed through the `_configfile` variable in `customization.cfg`.
 
 #### Void Linux
-```
+```shell
 git clone -b tkg https://github.com/Hyper-KVM/void-packages/
 cd void-packages
 ./xbps-src binary-bootstrap
@@ -113,20 +114,34 @@ cd void-packages
 ./xbps-src pkg -j$(nproc) linux-tkg
 ```
 If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
-
-#### Other linux distributions
-If your distro is neither DEB nor RPM based, `install.sh` script can clone the kernel tree in the `linux-src-git` folder, patch and edit a slightly modified Arch `.config` file from the `linux-tkg-config` folder (it can be changed through the `_configfile` variable in `customization.cfg`). To do so, run:
-```
-# Optional: edit the "customization.cfg" file
-./install.sh config
-```
-
-When selecting `Generic` as distro, `./install.sh install` will compile the kernel then prompt before doing the following:
+#### Generic install
+The interactive `install.sh` script can be used to perform a "Generic" install by choosing `Generic` when prompted. It git clones the kernel tree in the `linux-src-git` folder, patches the code and edits a `.config` file in it. The commands to do are the following:
 ```shell
+git clone https://github.com/Frogging-Family/linux-tkg.git
+cd linux-tkg
+# Optional: edit the "customization.cfg" file
+./install.sh install
+```
+The script will compile the kernel then prompt before doing the following:
+```shell
+sudo cp -R . /usr/src/linux-tkg-${kernel_flavor}
+cd /usr/src/linux-tkg-${kernel_flavor}
 sudo make modules_install
-sudo make headers_install INSTALL_HDR_PATH=/usr # CAUTION: this will replace files in /usr/include
 sudo make install
-sudo dracut --force --hostonly --kver $_kernelname
+sudo dracut --force --hostonly --kver $_kernelname $_dracut_options
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 ```
-**Note:** these changes will not be tracked by your package manager and uninstalling requires manual intervention. `./install.sh uninstall-help` can help with useful information if your install procedure follows the `Generic` approach.
+**Notes:**
+- If you only want the script to patch the sources in `linux-src-git`, you can use `./install.sh config`
+- `${kernel_flavor}` is a default naming scheme but can be customized with the variable `_kernel_localversion` in `customization.cfg`.
+- `_dracut_options` is a variable that can be changed in `customization.cfg`.
+- The script uses Arch's `.config` file as a base. A custom one can be provided through `_configfile` in `customization.cfg`.
+- The installed files will not be tracked by your package manager and uninstalling requires manual intervention. `./install.sh uninstall-help` can help with useful information if your install procedure follows the `Generic` approach.
+#### Gentoo
+The interactive `install.sh` script supports Gentoo by following the same procedure as `Generic`, symlinks the sources folder in `/usr/src/` to `/usr/src/linux`, then offers to do an `emerge @module-rebuild` for convenience
+```shell
+git clone https://github.com/Frogging-Family/linux-tkg.git
+cd linux-tkg
+# Optional: edit the "customization.cfg" file
+./install.sh install
+```

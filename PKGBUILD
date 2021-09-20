@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=197
+pkgrel=201
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '43fe342628490acf3040827ef1c17253365f9e6e72bb0e8ec68c194e2299a014'
+            'ad91a33ad5fca64ff45e73fb203a3dc7d127c8ff2b1f384efaa4914ae099a8a7'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -180,10 +180,10 @@ case $_basever in
             '6821f92bd2bde3a3938d17b070d70f18a2f33cae81647567b5a4d94c9cd75f3d')
 	;;
 	58)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
 	source=("$kernel_site"
         	"$patch_site"
-        	"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        	"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         	'config.x86_64' # stock Arch config
         	#'config_hardened.x86_64' # hardened Arch config
         	90-cleanup.hook
@@ -231,10 +231,10 @@ case $_basever in
             'f5dbff4833a2e3ca94c202e5197894d5f1006c689ff149355353e77d2e17c943')
 	;;
 	59)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
 	source=("$kernel_site"
         	$patch_site
-		"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+		"https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         	"config.x86_64" # stock Arch config
         	#$hardened_config_file # hardened Arch config
         	90-cleanup.hook
@@ -285,10 +285,10 @@ case $_basever in
             '0d5fe3a9050536fe431564b221badb85af7ff57b330e3978ae90d21989fcad2d')
 	;;
 	510)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -318,7 +318,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'c5defedc963ab5bd69c4ca8a64b5c5eb0db204831a5d5356e36ea52f016dbcc8'
+            'f841c8844ce7d5b3c6124f3915a348a3a79f87c78bd4c013c8772d554a351729'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -347,10 +347,10 @@ case $_basever in
             '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
 	;;
 	511)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -414,10 +414,10 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	512)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -478,10 +478,10 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	513)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -512,7 +512,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('3f6baa97f37518439f51df2e4f3d65a822ca5ff016aa8e60d2cc53b95a6c89d9'
-            '47c6b0316e7688ff7b3166235acb6e35e2c838658ba909a97da2419b3e1582bf'
+            '6fadc31348a0c0bbce86b067811d1dadae307bbde5b712c688b3193d73f0fb71'
             'SKIP'
             '06ad99b810943f7ce4650fe656156f4b40d11fabd9b89e2b1beff06c46836efc'
             '49a34dfc8ee7663a8a20c614f086e16ec70e8822db27a91050fd6ffebf87a650'
@@ -525,7 +525,7 @@ case $_basever in
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
             'c605f638d74c61861ebdc36ebd4cb8b6475eae2f6273e1ccb2bbb3e10a2ec3fe'
             'de718ecea652a74e1d821459397d3dafaa3de1a7dba3df51ba9fc42b8645c3e2'
-            'fc51648e44314fc3baa5e8fe18936fe3a2bedb9a42b03342ccfa16ff19a3fcfa'
+            '12d7c7457d4605ba00cb888383779e591a58e701643d763d8fe05dcdec3e9830'
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '89d837bfea3515504b1c99fc881ebdc4f15e2999558127a263e795fc69408a39'
@@ -541,10 +541,10 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	514)
-	opt_ver="5.8%2B"
+	opt_ver="5.8-5.14"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.8-5.14.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -572,9 +572,9 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('7e068b5e0d26a62b10e5320b25dce57588cbbc6f781c090442138c9c9c3271b2'
-            '3641a8d48c57d7fd79fee7ebf6830a1a40f740d208052c0addd267bc28b84531'
+            '1149f28bdb4ffe49c99bfd2ef73e379c2e64b56579a13227c47a0cd02c8767d7'
             'SKIP'
-            'b6ec10132a4d0a656aa65c7c11686dc5d80fce396e761b398506b364e3529e30'
+            'e2140782726c69db81dd5be0602479bb4e161772e83e77de1470c9ceea622ca4'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -590,6 +590,60 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '8a3913bc8ee08df3812f202b3a223402d7b344cc1c5c1e69581c3c6ecf817409'
+            '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
+            '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
+	;;
+	515)
+	opt_ver="5.15%2B"
+    source=("$kernel_site"
+        #"$patch_site"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15%2B.patch"
+        'config.x86_64' # stock Arch config
+        #'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        0003-glitched-cfs-additions.patch
+        #0005-glitched-pds.patch
+        0006-add-acs-overrides_iommu.patch
+        0007-v5.15-fsync.patch
+        #0007-v5.15-futex2_interface.patch
+        0007-v5.15-winesync.patch
+        #0008-5.14-bcachefs.patch
+        #0009-glitched-ondemand-bmq.patch
+        #0009-glitched-bmq.patch
+        #0009-prjc_v5.15-r0.patch
+        #0012-linux-hardened.patch
+        0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
+    )
+    sha256sums=('66480f7d395966e54736df2e2f20cec7477512a3cf27e8968352854b703f09e2'
+            #'c1f363abc032ed8ec223236c4e1eed5e4d8e581cd16cc6caefc7181f97e20e5e'
+            'SKIP'
+            'adf66455eb13fb28db162042e5e888f144f5ad8d3f7911a85539831076e63123'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
+            '2e2c5c546fb2aabfa90f31310355324f58c6783d520b45b8898577bb7d1a5277'
+            '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
+            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            #'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            '6c4f0099896f69e56ebd8c9eac266ac8ad993acecd50945e0e84ef6f95f9ddca'
+            #'efe5e21706fdf64559ead866c85a5d88c5c3f743d814410df3810ca61cc5b966'
+            '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
+            #'9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            #'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            #'8a3913bc8ee08df3812f202b3a223402d7b344cc1c5c1e69581c3c6ecf817409'
             '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
