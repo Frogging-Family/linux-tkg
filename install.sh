@@ -37,10 +37,7 @@ _install_dependencies() {
   if [ "$_compiler_name" = "llvm" ]; then
     clang_deps="llvm clang lld"
   fi
-  if [ "$_distro" = "Ubuntu" ]; then
-    msg2 "Installing dependencies"
-    sudo apt install git build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev libelf-dev ${clang_deps} -y
-  elif [ "$_distro" = "Debian" ]; then
+  if [ "$_distro" = "Debian" -o "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
     sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev ${clang_deps} -y
   elif [ "$_distro" = "Fedora" ]; then
