@@ -86,8 +86,7 @@ cd linux-tkg
 # Optional: edit the "customization.cfg" file
 makepkg -si
 ```
-The script will use a slightly modified Arch config from the `linux-tkg-config` folder. The options selected at build-time are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
-
+The script will use a slightly modified Arch config from the `linux-tkg-config` folder, it can be changed through the `_configfile` variable in `customization.cfg`. The options selected at build-time are installed to `/usr/share/doc/$pkgbase/customization.cfg`, where `$pkgbase` is the package name.
 
 #### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 The interactive `install.sh` script will create, depending on the selected distro, `.deb` or `.rpm` packages, move them in the the subfolder `DEBS` or `RPMS` then prompts to install them with the distro's package manager.
@@ -103,7 +102,7 @@ manually. `install.sh` can can help out with some useful information:
 cd path/to/linux-tkg
 ./install.sh uninstall-help
 ```
-The script will use your current kernel's `.config` file, which will be searched for either at ``/boot/config-`uname -r`.config`` or ``/proc/config.gz`` otherwise it defaults the the "vanilla" upstream `.config` file. It's recommended to run the script booted on your distro-provided kernel.
+The script will use a slightly modified Arch config from the `linux-tkg-config` folder, it can be changed through the `_configfile` variable in `customization.cfg`.
 
 #### Void Linux
 ```shell
@@ -136,10 +135,10 @@ sudo grub-mkconfig -o /boot/grub/grub.cfg
 - If you only want the script to patch the sources in `linux-src-git`, you can use `./install.sh config`
 - `${kernel_flavor}` is a default naming scheme but can be customized with the variable `_kernel_localversion` in `customization.cfg`.
 - `_dracut_options` is a variable that can be changed in `customization.cfg`.
-- The script uses a base `.config` file. Its path can be provided through `_configfile` in `customization.cfg`. Otherwise ``/boot/config-`uname -r`.config``, ``/proc/config.gz`` or a "vanilla" upstream `.config` file are used, in that order, by default.
+- The script uses Arch's `.config` file as a base. A custom one can be provided through `_configfile` in `customization.cfg`.
 - The installed files will not be tracked by your package manager and uninstalling requires manual intervention. `./install.sh uninstall-help` can help with useful information if your install procedure follows the `Generic` approach.
 #### Gentoo
-The interactive `install.sh` script supports Gentoo by following the same procedure as `Generic`. Then it offers to conveniently do an `emerge @module-rebuild` after symlinking the sources folder in `/usr/src/` to `/usr/src/linux`.
+The interactive `install.sh` script supports Gentoo by following the same procedure as `Generic`, symlinks the sources folder in `/usr/src/` to `/usr/src/linux`, then offers to do an `emerge @module-rebuild` for convenience
 ```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg

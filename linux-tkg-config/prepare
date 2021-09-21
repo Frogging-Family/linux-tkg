@@ -362,15 +362,15 @@ _tkg_srcprep() {
       tkgpatch="$srcdir/patch-${pkgver}"
       _msg="Patching from $_basekernel to $pkgver" && _tkg_patcher
     fi
+  fi
 
-    # ARCH Patches
-    if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
-      tkgpatch="$srcdir/0012-linux-hardened.patch"
-      _msg="Using linux hardened patchset" && _tkg_patcher
-    else
-      tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
-      _msg="Using Arch patches" && _tkg_patcher
-    fi
+  # Hardened Patches
+  if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
+    tkgpatch="$srcdir/0012-linux-hardened.patch"
+    _msg="Using linux hardened patchset" && _tkg_patcher
+  else
+    tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
+    _msg="Using Arch patches" && _tkg_patcher
   fi
 
   # Void
@@ -527,18 +527,21 @@ _tkg_srcprep() {
 
 
   if [ -z "${_configfile}" ]; then
-    if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
-      cat "${srcdir}"/config.x86_64 > ./.config
+    msg2 "Using archlinux's default config file for kernel ${_basekernel}"
+    cat "${srcdir}"/config.x86_64 > ./.config
+  elif [ "${_configfile}" = "config_hardened.x86_64" ]; then
+    msg2 "Using archlinux's hardened config file for kernel ${_basekernel}"
+    cat "${srcdir}"/config_hardened.x86_64 > ./.config
+  elif [ "${_configfile}" = "running-kernel" ]; then
+    if [ -f /boot/config-`uname -r` ];then
+      msg2 "Using /boot/config-`uname -r` as config file"
+      cp /boot/config-`uname -r` .config
+    elif [ -f /proc/config.gz ];then
+      msg2 "Using /proc/config.gz as config file"
+      zcat --verbose /proc/config.gz > .config
     else
-      if [ -f /boot/config-`uname -r` ];then
-        msg2 "Using /boot/config-`uname -r` as config file"
-        cp /boot/config-`uname -r` .config
-      elif [ -f /proc/config.gz ];then
-        msg2 "Using /proc/config.gz as config file"
-        zcat --verbose /proc/config.gz > .config
-      else
-        msg2 "Current kernel config not found! Falling back to default..."
-      fi
+      warning "Cannot get config file of running kernel"
+      exit 1
     fi
   else
     msg2 "Using user-provided config file in ${_where}/${_configfile}"
