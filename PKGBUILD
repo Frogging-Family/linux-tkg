@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=201
+pkgrel=202
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'ad91a33ad5fca64ff45e73fb203a3dc7d127c8ff2b1f384efaa4914ae099a8a7'
+            '6e4e952ab005d77e8266dad6d88c290b956cc2c63e60fd903ce6ff629aafd084'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -318,7 +318,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'f841c8844ce7d5b3c6124f3915a348a3a79f87c78bd4c013c8772d554a351729'
+            '2aba8c5affb9b2012d7ce10d4f65bacc668b5549cb185c53333817e0f5137b19'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -572,7 +572,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('7e068b5e0d26a62b10e5320b25dce57588cbbc6f781c090442138c9c9c3271b2'
-            '1149f28bdb4ffe49c99bfd2ef73e379c2e64b56579a13227c47a0cd02c8767d7'
+            '658488092a10a4d247851bc8afdc6ea94cecf673af2569c245ff95003781cf16'
             'SKIP'
             'e2140782726c69db81dd5be0602479bb4e161772e83e77de1470c9ceea622ca4'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
