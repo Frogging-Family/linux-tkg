@@ -316,6 +316,7 @@ case $_basever in
         0009-prjc_v5.10-r2.patch
         0012-linux-hardened.patch
         0012-misc-additions.patch
+        0013-amd-c3-no-cache-flush.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
             '2aba8c5affb9b2012d7ce10d4f65bacc668b5549cb185c53333817e0f5137b19'
@@ -344,7 +345,8 @@ case $_basever in
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '77e71048389e3e1d6bbdfaf384f62120d3f984257b758d75366c7bebe6be64fa'
             '105f51e904d80f63c1421203e093b612fc724edefd3e388b64f8d371c0b3a842'
-            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24')
+            '7fb1104c167edb79ec8fbdcde97940ed0f806aa978bdd14d0c665a1d76d25c24'
+            'ad1ddaeb5a13d6c8d47089799db343b8df8fcc11ee12f358057410f303d9ee69')
 	;;
 	511)
 	opt_ver="5.8-5.14"
@@ -567,6 +569,7 @@ case $_basever in
         0009-prjc_v5.14-r2.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
+        0013-amd-c3-no-cache-flush.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
@@ -591,6 +594,7 @@ case $_basever in
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '42ca7bceade1e6a998eeee394c77e3dd93db45ff0870a5dab22350bd0af45272'
             '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
+            'ad1ddaeb5a13d6c8d47089799db343b8df8fcc11ee12f358057410f303d9ee69'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
