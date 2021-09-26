@@ -313,7 +313,7 @@ case $_basever in
         0008-5.10-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
-        0009-prjc_v5.10-lts-r3.patch
+        0009-prjc_v5.10-r3.patch
         0012-linux-hardened.patch
         0012-misc-additions.patch
     )
