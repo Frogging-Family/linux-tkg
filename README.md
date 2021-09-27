@@ -145,3 +145,8 @@ cd linux-tkg
 # Optional: edit the "customization.cfg" file
 ./install.sh install
 ```
+**Notes:**
+- To compile with `clang` with this script, you need to have the `default-compiler-rt` `USE` flag for `sys-devel/clang`.
+- The script will prompt for using `llvm-libunwind`, it can only work with the `llvm-libunwind` `USE` flag in `sys-devel/clang` but it is experimental:
+  - Manual intervention is needed on the `net-fs/samba` EBUILD, see [here](https://bugs.gentoo.org/791349)
+  - The `-unwind` `USE` flag is needed in `app-emulation/wine*` EBUILDs
