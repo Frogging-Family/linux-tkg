@@ -341,6 +341,20 @@ index e5af028c08b4..0a7565d0d3cf 100644
  	return false;
  }
  
+diff --git a/include/linux/sched/topology.h b/include/linux/sched/topology.h
+index 8f0f778b7c91..991f2280475b 100644
+--- a/include/linux/sched/topology.h
++++ b/include/linux/sched/topology.h
+@@ -225,7 +225,8 @@ static inline bool cpus_share_cache(int this_cpu, int that_cpu)
+ 
+ #endif	/* !CONFIG_SMP */
+ 
+-#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
++#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) && \
++	!defined(CONFIG_SCHED_ALT)
+ extern void rebuild_sched_domains_energy(void);
+ #else
+ static inline void rebuild_sched_domains_energy(void)
 diff --git a/init/Kconfig b/init/Kconfig
 index 55f9f7738ebb..9a9b244d3ca3 100644
 --- a/init/Kconfig
@@ -659,10 +673,10 @@ index 978fcfca5871..0425ee149b4d 100644
  obj-$(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) += cpufreq_schedutil.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..7c998e606114
+index 000000000000..56aed2b1e42c
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7339 @@
+@@ -0,0 +1,7341 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -732,7 +746,7 @@ index 000000000000..7c998e606114
 +#define sched_feat(x)	(0)
 +#endif /* CONFIG_SCHED_DEBUG */
 +
-+#define ALT_SCHED_VERSION "v5.14-r2"
++#define ALT_SCHED_VERSION "v5.14-r3"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -4133,6 +4147,7 @@ index 000000000000..7c998e606114
 +	s64 ns = rq->clock_task - p->last_ran;
 +
 +	p->sched_time += ns;
++	cgroup_account_cputime(p, ns);
 +	account_group_exec_runtime(p, ns);
 +
 +	p->time_slice -= ns;
@@ -4695,6 +4710,7 @@ index 000000000000..7c998e606114
 +		if (cpumask_test_cpu(dest_cpu, p->cpus_ptr)) {
 +			__SCHED_DEQUEUE_TASK(p, rq, 0, );
 +			set_task_cpu(p, dest_cpu);
++			sched_task_sanity_check(p, dest_rq);
 +			__SCHED_ENQUEUE_TASK(p, dest_rq, 0);
 +			nr_migrated++;
 +		}
