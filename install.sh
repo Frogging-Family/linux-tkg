@@ -180,10 +180,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
-  if [ "$_vanilla_build" != "true" ]; then
-    _tkg_initscript_patched
-  fi
-  _tkg_srcprep_set_config
 
   if [[ "${_compiler}" = "llvm" && "${_distro}" =~ ^(Generic|Gentoo)$ ]]; then
     read -p "Replace \"libunwind\" with \"llvm-libunwind\" ? Y/[n]:" _libunwind_replace
@@ -257,6 +253,10 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # cd into the linux-src folder is important before calling _tkg_srcprep
   cd "$_where/linux-src-git"
   _tkg_srcprep
+  if [ "$_vanilla_build" != "true" ]; then
+    _tkg_srcprep_patched
+  fi
+  _tkg_srcprep_set_config
 
   _build_dir="$_where"
   if [ "$_use_tmpfs" = "true" ]; then
