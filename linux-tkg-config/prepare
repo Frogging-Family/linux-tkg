@@ -339,7 +339,6 @@ _tkg_patcher() {
 }
 
 _tkg_srcprep() {
-
   if [ "${_distro}" = "Void" ] && [ -e ${srcdir}/sum_failed ]; then
     exit 1
   fi
@@ -366,15 +365,6 @@ _tkg_srcprep() {
     fi
   fi
 
-  # Hardened Patches
-  if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
-    tkgpatch="$srcdir/0012-linux-hardened.patch"
-    _msg="Using linux hardened patchset" && _tkg_patcher
-  else
-    tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
-    _msg="Using Arch patches" && _tkg_patcher
-  fi
-
   # Void
   if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
     cd ${wrksrc}/linux-${_rc_kern_ver}
@@ -382,7 +372,320 @@ _tkg_srcprep() {
     cd ${wrksrc}/linux-${_kern_ver}
   fi
 
-  if [ -z $_debug ]; then
+  if [ -z "${_configfile}" ]; then
+    if [ "${_distro}" = "Arch" ] || [ "$_distro" = "Void" ]; then
+      cat "${srcdir}"/config.x86_64 > ./.config
+    else
+      if [ -f /boot/config-`uname -r` ];then
+        msg2 "Using /boot/config-`uname -r` as config file"
+        cp /boot/config-`uname -r` .config
+      elif [ -f /proc/config.gz ];then
+        msg2 "Using /proc/config.gz as config file"
+        zcat --verbose /proc/config.gz > .config
+      else
+        msg2 "Current kernel config not found! Falling back to default..."
+      fi
+    fi
+  else
+    msg2 "Using user-provided config file in ${_where}/${_configfile}"
+    cat "${_where}/${_configfile}" > ./.config
+  fi
+
+  if [ "${_distro}" = "Arch" ]; then
+    # Reset local version string if ever it's in the .config file
+    scripts/config --set-str localversion ""
+  fi
+
+  # ccache fix
+  if [ "$_noccache" != "true" ]; then
+    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }\
+	    || { [ "$_distro" = "Void" ] && xbps-query -s ccache > /dev/null; } ; then
+      _disable "GCC_PLUGINS"
+    fi
+  fi
+
+  # Clang LTO
+  if [ "$_compiler_name" = "-llvm" ] && [ $_basever -ge 512 ]; then
+    if [ "$_lto_mode" = "full" ]; then
+      _enable LTO_CLANG_FULL
+      _disable LTO_CLANG_THIN
+    elif [ "$_lto_mode" = "thin" ]; then
+      _disable LTO_CLANG_FULL
+      _enable LTO_CLANG_THIN
+    fi
+  fi
+
+  # Void uses LibreSSL
+  if [ "$_distro" = "Void" ]; then
+    _disable "MODULE_SIG_SHA512"
+    _enable "MODULE_SIG_SHA1"
+    scripts/config --set-str "MODULE_SIG_HASH" "sha1"
+  fi
+
+  # Prevent Debian and Ubuntu to sign stuff because it breaks stuff
+  if [[ "$_distro" = "Debian" || "$_distro" = "Ubuntu" ]]; then
+    #Help Debian cert compile problem.
+    scripts/config --set-str "SYSTEM_TRUSTED_KEYS" ""
+  fi
+
+  # Skip dbg package creation on non-Arch
+  if [ "$_distro" != "Arch" ]; then
+    _disable "DEBUG_INFO"
+  fi
+
+  # Disable some debugging
+  if [ "${_debugdisable}" = "true" ]; then
+    _disable "SLUB_DEBUG" "PM_DEBUG" "PM_ADVANCED_DEBUG" "PM_SLEEP_DEBUG" "ACPI_DEBUG" "SCHED_DEBUG" "LATENCYTOP" "DEBUG_PREEMPT"
+  fi
+
+  # TCP algorithms
+  _tcp_cong_alg_list=("yeah" "bbr" "cubic" "vegas" "westwood" "reno")
+  _user_set_tcp_alg="false"
+  _enable "TCP_CONG_ADVANCED"
+
+  for _alg in "${_tcp_cong_alg_list[@]}"
+  do
+    _alg_upper=`echo "$_alg" | tr '[a-z]' '[A-Z]'`
+    _enable "TCP_CONG_${_alg_upper}"
+    if [ "$_tcp_cong_alg" = "$_alg" ];then
+      _user_set_tcp_alg="true"
+      _enable "DEFAULT_${_alg_upper}"
+      scripts/config --set-str "DEFAULT_TCP_CONG" "${_alg}"
+    else
+      _disable "DEFAULT_${_alg_upper}"
+    fi
+  done
+
+  if [ "$_user_set_tcp_alg" = "false" ];then
+    _enable "DEFAULT_CUBIC"
+    scripts/config --set-str DEFAULT_TCP_CONG "cubic"
+  fi
+
+  # compiler optimization level
+  if [ "$_compileroptlevel" = "1" ]; then
+    if [ "$_basever" != "54" ]; then
+      _disable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
+    else
+      _disable "CC_OPTIMIZE_HARDER"
+    fi
+  elif [ "$_compileroptlevel" = "2" ]; then
+    _disable "CC_OPTIMIZE_FOR_PERFORMANCE"
+    if [ "$_basever" != "54" ]; then
+      _enable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
+    else
+      _enable "CC_OPTIMIZE_HARDER"
+    fi
+  elif [ "$_compileroptlevel" = "3" ]; then
+    _disable "CC_OPTIMIZE_FOR_PERFORMANCE"
+    _enable "CC_OPTIMIZE_FOR_SIZE"
+    if [ "$_basever" != "54" ]; then
+      _disable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
+    else
+      _disable "CC_OPTIMIZE_HARDER"
+    fi
+  fi
+
+  # smt nice
+  if [ "$_smt_nice" = "true" ]; then
+    _enable "SMT_NICE"
+  elif [ "$_smt_nice" = "false" ]; then
+    _disable "SMT_NICE"
+  fi
+
+  # random trust cpu
+  if [ "$_random_trust_cpu" = "true" ]; then
+    _enable "RANDOM_TRUST_CPU"
+  fi
+
+  # timer freq
+  _avail_timer_frequencies=("100" "250" "300" "500" "750" "1000")
+  _avail_timer_frequencies_text=("100 Hz" "250 Hz" "300 Hz" "500 Hz" "750 Hz" "1000 Hz")
+
+  typeset -A _default_timer_frequencies_index
+  _default_timer_frequencies_index=( ["cfs"]="3" )
+
+  if [[ -n "$_timer_freq" && ! "${_avail_timer_frequencies[*]}" =~ "$_timer_freq" ]]; then
+    warning "The entered timer frequency, ${_timer_freq}Hz, is not available, prompting..."
+    _timer_freq=""
+  fi
+
+  # Default to 500Hz if _timer_freq is not set
+  if [ -z "$_timer_freq" ]; then
+    _default_index="${_default_timer_frequencies_index[$_cpusched]}"
+    msg2 "Which kernel interrupt timer frequency would you like to use ?"
+    msg2 "Higher Hz means lower latency (but higher overhead / less throughput). So it's a double edged sword"
+    msg2 "Pick default (aka press enter with empty input) if unsure"
+    _prompt_from_array "${_avail_timer_frequencies_text[@]}"
+    _timer_freq="${_avail_timer_frequencies[$_selected_index]}"
+  fi
+
+  for _freq in "${_avail_timer_frequencies[@]}"; do
+    if [ "$_freq" = "$_timer_freq" ]; then
+      _enable "HZ_${_freq}" "HZ_${_freq}_NODEF"
+    else
+      _disable "HZ_${_freq}" "HZ_${_freq}_NODEF"
+    fi
+  done
+
+  # default cpu gov
+  if [ "$_default_cpu_gov" = "performance" ]; then
+    _disable "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
+    _enable "CPU_FREQ_DEFAULT_GOV_PERFORMANCE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF"
+  elif [ "$_default_cpu_gov" = "ondemand" ]; then
+    _disable "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
+    _enable "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_GOV_ONDEMAND"
+  fi
+
+  # ftrace
+  if [ -z "$_ftracedisable" ]; then
+    plain ""
+    plain "Disable FUNCTION_TRACER/GRAPH_TRACER? Lowers overhead but limits debugging"
+    plain "and analyzing of kernel functions."
+    read -rp "`echo $'    > N/y : '`" CONDITION2;
+  fi
+  if [[ "$CONDITION2" =~ [yY] ]] || [ "$_ftracedisable" = "true" ]; then
+    _disable "FUNCTION_TRACER" "FUNCTION_GRAPH_TRACER"
+  fi
+
+  # disable numa
+  if [ -z "$_numadisable" ]; then
+    plain ""
+    plain "Disable NUMA? Lowers overhead, but breaks CUDA/NvEnc on Nvidia if disabled."
+    plain "https://bbs.archlinux.org/viewtopic.php?id=239174"
+    read -rp "`echo $'    > N/y : '`" CONDITION3;
+  fi
+  if [[ "$CONDITION3" =~ [yY] ]] || [ "$_numadisable" = "true" ]; then
+    # disable NUMA since 99.9% of users do not have multiple CPUs but do have multiple cores in one CPU
+    _disable "NUMA" "AMD_NUMA" "ACPI_NUMA" "X86_64_ACPI_NUMA" "NODES_SPAN_OTHER_NODES" "NUMA_EMU" "NODES_SHIFT" "NEED_MULTIPLE_NODES" "USE_PERCPU_NUMA_NODE_ID"
+  fi
+
+  # tickless
+  if [[ -z "$_tickless" || ! "$_tickless" =~ ^(0|1|2)$ ]]; then
+  # Set to "1" to use CattaRappa mode (enabling full tickless), "2" for tickless idle only, or "0" for periodic ticks.
+    plain "Use CattaRappa mode (Tickless/Dynticks) ?"
+    _tickless_array_text=(
+      "No, use periodic ticks."
+      "Yes, full tickless baby!\n        Can give higher performances in many cases but lower consistency on some hardware."
+      "Just tickless idle plz.\n        Just tickless idle can perform better with some platforms (mostly AMD) or CPU schedulers (mostly MuQSS)."
+    )
+    _default_index="2"
+    _prompt_from_array "${_tickless_array_text[@]}"
+    _tickless="${_selected_index}"
+  fi
+  if [ "$_tickless" = "0" ]; then
+    _disable "NO_HZ_FULL_NODEF" "NO_HZ_IDLE" "NO_HZ_FULL" "NO_HZ" "NO_HZ_COMMON"
+    _enable "HZ_PERIODIC"
+  elif [ "$_tickless" = "1" ]; then
+    _disable "HZ_PERIODIC" "NO_HZ_IDLE" "CONTEXT_TRACKING_FORCE"
+    _enable "NO_HZ_FULL_NODEF" "NO_HZ_FULL" "NO_HZ" "NO_HZ_COMMON" "CONTEXT_TRACKING"
+  else
+    _disable "NO_HZ_FULL_NODEF" "HZ_PERIODIC" "NO_HZ_FULL"
+    _enable "NO_HZ_IDLE" "NO_HZ" "NO_HZ_COMMON"
+  fi
+
+  # Anbox modules
+  if [ "$_basever" != "54" ]; then
+    if [ -z "$_anbox" ]; then
+      plain ""
+      plain "Enable android modules for use with Anbox?"
+      plain "https://github.com/anbox/anbox"
+      read -rp "`echo $'    > N/y : '`" CONDITION12;
+    fi
+    if [[ "$CONDITION12" =~ [yY] ]] || [ "$_anbox" = "true" ]; then
+      _enable "ASHMEM" "ION" "ION_CMA_HEAP" "ANDROID" "ANDROID_BINDER_IPC" "ANDROID_BINDERFS"
+      _disable "ION_SYSTEM_HEAP" "ANDROID_BINDER_IPC_SELFTEST"
+      scripts/config --set-str "ANDROID_BINDER_DEVICES" "binder,hwbinder,vndbinder"
+      warning "Please make sure to read up on how to use this; https://github.com/Frogging-Family/linux-tkg#anbox-usage"
+      if [[ "$CONDITION12" =~ [yY] ]]; then
+        read -rp "Press enter to continue..."
+      fi
+    fi
+  fi
+
+  if [ "$_distro" = "Arch" ] || [ "$_distro" = "Void" ]; then
+    # don't run depmod on 'make install'. We'll do this ourselves in packaging
+    sed -i '2iexit 0' scripts/depmod.sh
+
+    # get kernel version
+    make prepare ${llvm_opt}
+  fi
+
+  # modprobed-db
+  if [ -z "$_modprobeddb" ]; then
+    plain ""
+    plain "Use modprobed db to clean config from unneeded modules?"
+    plain "Speeds up compilation considerably. Requires root."
+    plain "https://wiki.archlinux.org/index.php/Modprobed-db"
+    plain "!!!! Make sure to have a well populated db !!!!"
+    read -rp "`echo $'    > N/y : '`" CONDITIONMPDB;
+  fi
+  if [[ "$CONDITIONMPDB" =~ [yY] ]] || [ "$_modprobeddb" = "true" ]; then
+    if [ -f "$where"/"$_modprobeddb_db_path" ];then
+      _modprobeddb_db_path="$where"/"$_modprobeddb_db_path"
+    fi
+    if [ ! -f $_modprobeddb_db_path ]; then
+      msg2 "modprobed-db database not found"
+      exit 1
+    fi
+    # Workaround for: https://github.com/Tk-Glitch/PKGBUILDS/issues/404.
+    # Long live #404!
+    _disable "GPIO_BT8XX" "SND_SE6X"
+
+    make LSMOD=$_modprobeddb_db_path localmodconfig ${llvm_opt}
+  fi
+
+  if [ true = "$_config_fragments" ]; then
+    local fragments=()
+    mapfile -d '' -t fragments < <(find "$_where"/ -type f -name "*.myfrag" -print0)
+
+    if [ true = "$_config_fragments_no_confirm" ]; then
+      printf 'Using config fragment %s\n' "${fragments[@]#$_where/}"
+    else
+      for i in "${!fragments[@]}"; do
+        while true; do
+          read -r -p 'Found config fragment '"${fragments[$i]#$_where/}"', apply it? [y/N] ' CONDITIONMPDB
+          CONDITIONMPDB="$(printf '%s' "$CONDITIONMPDB" | tr '[:upper:]' '[:lower:]')"
+          case "$CONDITIONMPDB" in
+            y|yes)
+              break;;
+            n|no|'')
+              unset fragments[$i]
+              break;;
+            *)
+              echo 'Please answer with yes or no'
+          esac
+        done
+      done
+    fi
+
+    if [ 0 -lt "${#fragments[@]}" ]; then
+      scripts/kconfig/merge_config.sh -m .config "${fragments[@]}"
+    fi
+  fi
+
+  # Distro specific workarounds in the .config file, when using Arch config file by default
+  if [ -z  "$_configfile" ] || [ "$_configfile" = "config_hardened.x86_64" ]; then
+    if [[ "$_distro" =~ ^(Debian|Ubuntu)$ ]]; then
+      _disable "MODULE_COMPRESS_ZSTD"
+      _enable "MODULE_COMPRESS_NONE"
+    fi
+  fi
+
+  # set _menuconfig early for Void
+  if [ "$_distro" = "Void" ]; then
+    _menuconfig="Void"
+  fi
+}
+
+_tkg_srcprep_patched() {
+  # ARCH Patches
+  if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
+    tkgpatch="$srcdir/0012-linux-hardened.patch"
+    _msg="Using linux hardened patchset" && _tkg_patcher
+  else
+    tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
+    _msg="Using Arch patches" && _tkg_patcher
+  fi
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_compiler_patch
   if [ "${_distro}" = "Arch" ]; then
@@ -519,43 +822,11 @@ _tkg_srcprep() {
     tkgpatch="$srcdir/0003-glitched-cfs-additions.patch" && _tkg_patcher
   fi
 
-  fi
-
   if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
     cd ${wrksrc}/linux-${_rc_kern_ver}
   elif [ "$_distro" = "Void" ] && [[ "$_sub" != rc* ]]; then
     cd ${wrksrc}/linux-${_kern_ver}
   fi
-
-
-  if [ -z "${_configfile}" ]; then
-    msg2 "Using archlinux's default config file for kernel ${_basekernel}"
-    cat "${srcdir}"/config.x86_64 > ./.config
-  elif [ "${_configfile}" = "config_hardened.x86_64" ]; then
-    msg2 "Using archlinux's hardened config file for kernel ${_basekernel}"
-    cat "${srcdir}"/config_hardened.x86_64 > ./.config
-  elif [ "${_configfile}" = "running-kernel" ]; then
-    if [ -f /boot/config-`uname -r` ];then
-      msg2 "Using /boot/config-`uname -r` as config file"
-      cp /boot/config-`uname -r` .config
-    elif [ -f /proc/config.gz ];then
-      msg2 "Using /proc/config.gz as config file"
-      zcat --verbose /proc/config.gz > .config
-    else
-      warning "Cannot get config file of running kernel"
-      exit 1
-    fi
-  else
-    msg2 "Using user-provided config file in ${_where}/${_configfile}"
-    cat "${_where}/${_configfile}" > ./.config
-  fi
-
-  if [ "${_distro}" = "Arch" ]; then
-    # Reset local version string if ever it's in the .config file
-    scripts/config --set-str localversion ""
-  fi
-
-  if [ -z $_debug ]; then
 
   # Set some -tkg defaults
   _disable "DYNAMIC_FAULT" "DEFAULT_FQ_CODEL"
@@ -666,40 +937,6 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
   # openrgb
   _module "I2C_NCT6775"
 
-  # ccache fix
-  if [ "$_noccache" != "true" ]; then
-    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }\
-	    || { [ "$_distro" = "Void" ] && xbps-query -s ccache > /dev/null; } ; then
-      _disable "GCC_PLUGINS"
-    fi
-  fi
-  # Clang LTO
-  if [ "$_compiler_name" = "-llvm" ] && [ $_basever -ge 512 ]; then
-    if [ "$_lto_mode" = "full" ]; then
-      _enable LTO_CLANG_FULL
-      _disable LTO_CLANG_THIN
-    elif [ "$_lto_mode" = "thin" ]; then
-      _disable LTO_CLANG_FULL
-      _enable LTO_CLANG_THIN
-    fi
-  fi
-  # Void uses LibreSSL
-  if [ "$_distro" = "Void" ]; then
-    _disable "MODULE_SIG_SHA512"
-    _enable "MODULE_SIG_SHA1"
-    scripts/config --set-str "MODULE_SIG_HASH" "sha1"
-  fi
-
-  # Prevent Debian and Ubuntu to sign stuff because it breaks stuff
-  if [[ "$_distro" = "Debian" || "$_distro" = "Ubuntu" ]]; then
-    #Help Debian cert compile problem.
-    scripts/config --set-str "SYSTEM_TRUSTED_KEYS" ""
-  fi
-  # Skip dbg package creation on non-Arch
-  if [ "$_distro" != "Arch" ]; then
-    _disable "DEBUG_INFO"
-  fi
-
   if [ "$_compiler_name" = "-llvm" ]; then
     _disable "KCSAN"
     if [ "$_basever" != "54" ] && [ "$_basever" != "57" ] && [ "$_basever" != "58" ]; then
@@ -768,38 +1005,6 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
       fi
     done
   fi
-
-  # Disable some debugging
-  if [ "${_debugdisable}" = "true" ]; then
-    _disable "SLUB_DEBUG" "PM_DEBUG" "PM_ADVANCED_DEBUG" "PM_SLEEP_DEBUG" "ACPI_DEBUG" "SCHED_DEBUG" "LATENCYTOP" "DEBUG_PREEMPT"
-  fi
-
-  # TCP algorithms
-  _tcp_cong_alg_list=("yeah" "bbr" "cubic" "vegas" "westwood" "reno")
-  _user_set_tcp_alg="false"
-
-  _enable "TCP_CONG_ADVANCED"
-
-  for _alg in "${_tcp_cong_alg_list[@]}"
-  do
-    _alg_upper=`echo "$_alg" | tr '[a-z]' '[A-Z]'`
-    _enable "TCP_CONG_${_alg_upper}"
-    if [ "$_tcp_cong_alg" = "$_alg" ];then
-      _user_set_tcp_alg="true"
-      _enable "DEFAULT_${_alg_upper}"
-      scripts/config --set-str "DEFAULT_TCP_CONG" "${_alg}"
-    else
-      _disable "DEFAULT_${_alg_upper}"
-    fi
-  done
-
-  if [ "$_user_set_tcp_alg" = "false" ];then
-    _enable "DEFAULT_CUBIC"
-    scripts/config --set-str DEFAULT_TCP_CONG "cubic"
-  fi
-
-  #######
-
 
   if [ "${_cpusched}" = "muqss" ]; then
     # MuQSS default config
@@ -948,47 +1153,11 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     _enable "ZENIFY"
   fi
 
-  # compiler optimization level
-  if [ "$_compileroptlevel" = "1" ]; then
-    if [ "$_basever" != "54" ]; then
-      _disable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
-    else
-      _disable "CC_OPTIMIZE_HARDER"
-    fi
-  elif [ "$_compileroptlevel" = "2" ]; then
-    _disable "CC_OPTIMIZE_FOR_PERFORMANCE"
-    if [ "$_basever" != "54" ]; then
-      _enable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
-    else
-      _enable "CC_OPTIMIZE_HARDER"
-    fi
-  elif [ "$_compileroptlevel" = "3" ]; then
-    _disable "CC_OPTIMIZE_FOR_PERFORMANCE"
-    _enable "CC_OPTIMIZE_FOR_SIZE"
-    if [ "$_basever" != "54" ]; then
-      _disable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
-    else
-      _disable "CC_OPTIMIZE_HARDER"
-    fi
-  fi
-
   # irq threading
   if [ "$_irq_threading" = "true" ]; then
     _enable "FORCE_IRQ_THREADING"
   elif [ "$_irq_threading" = "false" ]; then
     _disable "FORCE_IRQ_THREADING"
-  fi
-
-  # smt nice
-  if [ "$_smt_nice" = "true" ]; then
-    _enable "SMT_NICE"
-  elif [ "$_smt_nice" = "false" ]; then
-    _disable "SMT_NICE"
-  fi
-
-  # random trust cpu
-  if [ "$_random_trust_cpu" = "true" ]; then
-    _enable "RANDOM_TRUST_CPU"
   fi
 
   # rq sharing
@@ -1049,62 +1218,6 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
       _disable "HZ_${_freq}" "HZ_${_freq}_NODEF"
     fi
   done
-
-  # default cpu gov
-  if [ "$_default_cpu_gov" = "performance" ]; then
-    _disable "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
-    _enable "CPU_FREQ_DEFAULT_GOV_PERFORMANCE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF"
-  elif [ "$_default_cpu_gov" = "ondemand" ]; then
-    _disable "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
-    _enable "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_GOV_ONDEMAND"
-  fi
-
-  # ftrace
-  if [ -z "$_ftracedisable" ]; then
-    plain ""
-    plain "Disable FUNCTION_TRACER/GRAPH_TRACER? Lowers overhead but limits debugging"
-    plain "and analyzing of kernel functions."
-    read -rp "`echo $'    > N/y : '`" CONDITION2;
-  fi
-  if [[ "$CONDITION2" =~ [yY] ]] || [ "$_ftracedisable" = "true" ]; then
-    _disable "FUNCTION_TRACER" "FUNCTION_GRAPH_TRACER"
-  fi
-
-  # disable numa
-  if [ -z "$_numadisable" ]; then
-    plain ""
-    plain "Disable NUMA? Lowers overhead, but breaks CUDA/NvEnc on Nvidia if disabled."
-    plain "https://bbs.archlinux.org/viewtopic.php?id=239174"
-    read -rp "`echo $'    > N/y : '`" CONDITION3;
-  fi
-  if [[ "$CONDITION3" =~ [yY] ]] || [ "$_numadisable" = "true" ]; then
-    # disable NUMA since 99.9% of users do not have multiple CPUs but do have multiple cores in one CPU
-    _disable "NUMA" "AMD_NUMA" "ACPI_NUMA" "X86_64_ACPI_NUMA" "NODES_SPAN_OTHER_NODES" "NUMA_EMU" "NODES_SHIFT" "NEED_MULTIPLE_NODES" "USE_PERCPU_NUMA_NODE_ID"
-  fi
-
-  # tickless
-  if [[ -z "$_tickless" || ! "$_tickless" =~ ^(0|1|2)$ ]]; then
-  # Set to "1" to use CattaRappa mode (enabling full tickless), "2" for tickless idle only, or "0" for periodic ticks.
-    plain "Use CattaRappa mode (Tickless/Dynticks) ?"
-    _tickless_array_text=(
-      "No, use periodic ticks."
-      "Yes, full tickless baby!\n        Can give higher performances in many cases but lower consistency on some hardware."
-      "Just tickless idle plz.\n        Just tickless idle can perform better with some platforms (mostly AMD) or CPU schedulers (mostly MuQSS)."
-    )
-    _default_index="2"
-    _prompt_from_array "${_tickless_array_text[@]}"
-    _tickless="${_selected_index}"
-  fi
-  if [ "$_tickless" = "0" ]; then
-    _disable "NO_HZ_FULL_NODEF" "NO_HZ_IDLE" "NO_HZ_FULL" "NO_HZ" "NO_HZ_COMMON"
-    _enable "HZ_PERIODIC"
-  elif [ "$_tickless" = "1" ]; then
-    _disable "HZ_PERIODIC" "NO_HZ_IDLE" "CONTEXT_TRACKING_FORCE"
-    _enable "NO_HZ_FULL_NODEF" "NO_HZ_FULL" "NO_HZ" "NO_HZ_COMMON" "CONTEXT_TRACKING"
-  else
-    _disable "NO_HZ_FULL_NODEF" "HZ_PERIODIC" "NO_HZ_FULL"
-    _enable "NO_HZ_IDLE" "NO_HZ" "NO_HZ_COMMON"
-  fi
 
   # acs override
   tkgpatch="$srcdir/0006-add-acs-overrides_iommu.patch"
@@ -1192,31 +1305,6 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     fi
   fi
 
-  # We're done with tkgpatch
-  unset tkgpatch
-  unset _msg
-
-  # Anbox modules
-  if [ "$_basever" != "54" ]; then
-    if [ -z "$_anbox" ]; then
-      plain ""
-      plain "Enable android modules for use with Anbox?"
-      plain "https://github.com/anbox/anbox"
-      read -rp "`echo $'    > N/y : '`" CONDITION12;
-    fi
-    if [[ "$CONDITION12" =~ [yY] ]] || [ "$_anbox" = "true" ]; then
-      _enable "ASHMEM" "ION" "ION_CMA_HEAP" "ANDROID" "ANDROID_BINDER_IPC" "ANDROID_BINDERFS"
-      _disable "ION_SYSTEM_HEAP" "ANDROID_BINDER_IPC_SELFTEST"
-      scripts/config --set-str "ANDROID_BINDER_DEVICES" "binder,hwbinder,vndbinder"
-      warning "Please make sure to read up on how to use this; https://github.com/Frogging-Family/linux-tkg#anbox-usage"
-      if [[ "$CONDITION12" =~ [yY] ]]; then
-        read -rp "Press enter to continue..."
-      fi
-    fi
-  fi
-
-  fi
-
   # Community patches
   if [ -n "$_community_patches" ]; then
     if [ ! -d "$_where/../community-patches" ]; then
@@ -1240,80 +1328,12 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
   for _p in ${_community_patches[@]}; do
     rm -f "$_where"/linux"$_basever"-tkg-userpatches/$_p
   done
+}
 
-  if [ "$_distro" = "Arch" ] || [ "$_distro" = "Void" ]; then
-    # don't run depmod on 'make install'. We'll do this ourselves in packaging
-    sed -i '2iexit 0' scripts/depmod.sh
-
-    # get kernel version
-    make prepare ${llvm_opt}
-  fi
-
-  # modprobed-db
-  if [ -z "$_modprobeddb" ]; then
-    plain ""
-    plain "Use modprobed db to clean config from unneeded modules?"
-    plain "Speeds up compilation considerably. Requires root."
-    plain "https://wiki.archlinux.org/index.php/Modprobed-db"
-    plain "!!!! Make sure to have a well populated db !!!!"
-    read -rp "`echo $'    > N/y : '`" CONDITIONMPDB;
-  fi
-  if [[ "$CONDITIONMPDB" =~ [yY] ]] || [ "$_modprobeddb" = "true" ]; then
-    if [ -f "$where"/"$_modprobeddb_db_path" ];then
-      _modprobeddb_db_path="$where"/"$_modprobeddb_db_path"
-    fi
-    if [ ! -f $_modprobeddb_db_path ]; then
-      msg2 "modprobed-db database not found"
-      exit 1
-    fi
-    # Workaround for: https://github.com/Tk-Glitch/PKGBUILDS/issues/404.
-    # Long live #404!
-    _disable "GPIO_BT8XX" "SND_SE6X"
-
-    make LSMOD=$_modprobeddb_db_path localmodconfig ${llvm_opt}
-  fi
-
-  if [ true = "$_config_fragments" ]; then
-    local fragments=()
-    mapfile -d '' -t fragments < <(find "$_where"/ -type f -name "*.myfrag" -print0)
-
-    if [ true = "$_config_fragments_no_confirm" ]; then
-      printf 'Using config fragment %s\n' "${fragments[@]#$_where/}"
-    else
-      for i in "${!fragments[@]}"; do
-        while true; do
-          read -r -p 'Found config fragment '"${fragments[$i]#$_where/}"', apply it? [y/N] ' CONDITIONMPDB
-          CONDITIONMPDB="$(printf '%s' "$CONDITIONMPDB" | tr '[:upper:]' '[:lower:]')"
-          case "$CONDITIONMPDB" in
-            y|yes)
-              break;;
-            n|no|'')
-              unset fragments[$i]
-              break;;
-            *)
-              echo 'Please answer with yes or no'
-          esac
-        done
-      done
-    fi
-
-    if [ 0 -lt "${#fragments[@]}" ]; then
-      scripts/kconfig/merge_config.sh -m .config "${fragments[@]}"
-    fi
-  fi
-
-  # Distro specific workarounds in the .config file, when using Arch config file by default
-  if [ -z  "$_configfile" ] || [ "$_configfile" = "config_hardened.x86_64" ]; then
-    if [[ "$_distro" =~ ^(Debian|Ubuntu)$ ]]; then
-      _disable "MODULE_COMPRESS_ZSTD"
-      _enable "MODULE_COMPRESS_NONE"
-    fi
-  fi
-
-  # set _menuconfig early for Void
-  if [ "$_distro" = "Void" ]; then
-    _menuconfig="Void"
-  fi
+_tkgsrcprep_set_config() {
+  # We're done with tkgpatch
+  unset tkgpatch
+  unset msg
 
   # rewrite configuration
   msg2 "Setting config"

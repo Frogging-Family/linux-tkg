@@ -662,6 +662,8 @@ prepare() {
   cd "${srcdir}/${_srcpath}"
 
   _tkg_srcprep
+  _tkg_srcprep_patched
+  _tkgsrcprep_set_config
 }
 
 build() {
