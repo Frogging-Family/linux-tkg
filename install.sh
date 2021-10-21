@@ -39,7 +39,7 @@ _install_dependencies() {
   fi
   if [ "$_distro" = "Debian" -o "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
-    sudo apt install git wget build-essential fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev lz4 zstd ${clang_deps} -y
+    sudo apt install git wget build-essential schedtool fakeroot libncurses5-dev libssl-dev ccache bison flex qtbase5-dev bc rsync kmod cpio libelf-dev lz4 zstd ${clang_deps} -y
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
     if [ $(rpm -E %fedora) = "32" ]; then
