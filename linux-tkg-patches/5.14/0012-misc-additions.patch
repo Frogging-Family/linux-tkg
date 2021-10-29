@@ -187,3 +187,37 @@ index 7de599eba7f0..62a5986d625a 100644
 
 --
 2.25.1
+
+Subject: Revert drm/amdgpu: init iommu after amdkfd device init
+This reportedly breaks multiple amd platforms
+
+https://github.com/Frogging-Family/linux-tkg/issues/340
+https://bugzilla.kernel.org/show_bug.cgi?id=214859
+
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+index d60096b3b2c2a..cd8cc7d31b49c 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+@@ -2342,6 +2342,10 @@ static int amdgpu_device_ip_init(struct amdgpu_device *adev)
+ 	if (r)
+ 		goto init_failed;
+
++	r = amdgpu_amdkfd_resume_iommu(adev);
++	if (r)
++		goto init_failed;
++
+ 	r = amdgpu_device_ip_hw_init_phase1(adev);
+ 	if (r)
+ 		goto init_failed;
+@@ -2384,10 +2380,6 @@ static int amdgpu_device_ip_init(struct amdgpu_device *adev)
+ 	if (!adev->gmc.xgmi.pending_reset)
+ 		amdgpu_amdkfd_device_init(adev);
+
+-	r = amdgpu_amdkfd_resume_iommu(adev);
+-	if (r)
+-		goto init_failed;
+-
+ 	amdgpu_fru_get_product_info(adev);
+
+ init_failed:
