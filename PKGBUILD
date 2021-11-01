@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=210
+pkgrel=211
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -614,16 +614,16 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
-        #0005-glitched-pds.patch
+        0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.15-fsync.patch
         #0007-v5.15-futex2_interface.patch
         0007-v5.15-futex_waitv.patch
         0007-v5.15-winesync.patch
         #0008-5.14-bcachefs.patch
-        #0009-glitched-ondemand-bmq.patch
-        #0009-glitched-bmq.patch
-        #0009-prjc_v5.15-r0.patch
+        0009-glitched-ondemand-bmq.patch
+        0009-glitched-bmq.patch
+        0009-prjc_v5.15-r0.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
@@ -641,15 +641,15 @@ case $_basever in
             '2e2c5c546fb2aabfa90f31310355324f58c6783d520b45b8898577bb7d1a5277'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
-            #'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '6c4f0099896f69e56ebd8c9eac266ac8ad993acecd50945e0e84ef6f95f9ddca'
             #'efe5e21706fdf64559ead866c85a5d88c5c3f743d814410df3810ca61cc5b966'
             'c8f7c50d9b1418ba22b5ca735c47111a162be416109714d26a674162e5b2cb97'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
-            #'9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
-            #'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            #'8a3913bc8ee08df3812f202b3a223402d7b344cc1c5c1e69581c3c6ecf817409'
+            '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            'f215a286490071d6f870dda89677236123d84b3eede51bdb2b516e33ad219d86'
             '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
