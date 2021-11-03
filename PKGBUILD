@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=212
+pkgrel=213
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -561,6 +561,7 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.14-fsync.patch
+        0007-v5.14-fsync-waitvcompat.patch
         0007-v5.14-futex2_interface.patch
         0007-v5.14-futex_waitv.patch
         0007-v5.14-winesync.patch
@@ -588,6 +589,7 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'aa67e81a27d9062e463594acb91eca6dd13388f23cbe53ca56298f9dba61cc10'
+            'ee97a751e9b3d2b7ea1707b807ab775cd6f4c392a5efaa475d24d16202518a6a'
             'efe5e21706fdf64559ead866c85a5d88c5c3f743d814410df3810ca61cc5b966'
             '5742277f41f22bf29fa9742562946b8a01377f8a22adb42ceed3607541c1d5b6'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
@@ -617,7 +619,7 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.15-fsync.patch
-        #0007-v5.15-futex2_interface.patch
+        0007-v5.15-fsync-waitvcompat.patch
         0007-v5.15-futex_waitv.patch
         0007-v5.15-winesync.patch
         #0008-5.14-bcachefs.patch
@@ -644,7 +646,7 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '6c4f0099896f69e56ebd8c9eac266ac8ad993acecd50945e0e84ef6f95f9ddca'
-            #'efe5e21706fdf64559ead866c85a5d88c5c3f743d814410df3810ca61cc5b966'
+            'd6753a5d95a422eeb443edc04dee67512de8408aac1231e8f2e8ff9e000ad48e'
             'c8f7c50d9b1418ba22b5ca735c47111a162be416109714d26a674162e5b2cb97'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
