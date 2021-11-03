@@ -187,3 +187,134 @@ index 7de599eba7f0..62a5986d625a 100644
 
 --
 2.25.1
+
+amd-drm-staging-next dcc image stores perf regression fixes
+
+https://gitlab.freedesktop.org/mesa/mesa/-/issues/5396#note_1071669
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index ab5aad21a04157fa3164e2b6d5e1b48329b1ac58..e577bc93465bebb5a520ba69860d1cddf36066b8 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -5052,10 +5052,15 @@ fill_gfx9_plane_attributes_from_modifiers(struct amdgpu_device *adev,
+
+ 	if (modifier_has_dcc(modifier) && !force_disable_dcc) {
+ 		uint64_t dcc_address = afb->address + afb->base.offsets[1];
++		bool independent_64b_blks = AMD_FMT_MOD_GET(DCC_INDEPENDENT_64B, modifier);
+
+ 		dcc->enable = 1;
+ 		dcc->meta_pitch = afb->base.pitches[1];
+-		dcc->independent_64b_blks = AMD_FMT_MOD_GET(DCC_INDEPENDENT_64B, modifier);
++		dcc->independent_64b_blks = independent_64b_blks;
++		if (independent_64b_blks)
++			dcc->dcc_ind_blk = hubp_ind_block_64b;
++		else
++			dcc->dcc_ind_blk = hubp_ind_block_unconstrained;
+
+ 		address->grph.meta_addr.low_part = lower_32_bits(dcc_address);
+ 		address->grph.meta_addr.high_part = upper_32_bits(dcc_address);
+diff --git a/drivers/gpu/drm/amd/display/dc/core/dc.c b/drivers/gpu/drm/amd/display/dc/core/dc.c
+index e362ec65349de2b6275a190128b6b3ab9ce1b5f4..331a7517176b5ae06b5d308096561e06f9363584 100644
+--- a/drivers/gpu/drm/amd/display/dc/core/dc.c
++++ b/drivers/gpu/drm/amd/display/dc/core/dc.c
+@@ -2015,7 +2015,7 @@ static enum surface_update_type get_plane_info_update_type(const struct dc_surfa
+ 	}
+
+ 	if (u->plane_info->dcc.enable != u->surface->dcc.enable
+-			|| u->plane_info->dcc.independent_64b_blks != u->surface->dcc.independent_64b_blks
++			|| u->plane_info->dcc.dcc_ind_blk != u->surface->dcc.dcc_ind_blk
+ 			|| u->plane_info->dcc.meta_pitch != u->surface->dcc.meta_pitch) {
+ 		/* During DCC on/off, stutter period is calculated before
+ 		 * DCC has fully transitioned. This results in incorrect
+diff --git a/drivers/gpu/drm/amd/display/dc/dcn30/dcn30_hubp.c b/drivers/gpu/drm/amd/display/dc/dcn30/dcn30_hubp.c
+index f246125232482c894f5440c9c6682924577c7f49..eac08926b57419815d1f68a1236e8f37ae86c25b 100644
+--- a/drivers/gpu/drm/amd/display/dc/dcn30/dcn30_hubp.c
++++ b/drivers/gpu/drm/amd/display/dc/dcn30/dcn30_hubp.c
+@@ -356,12 +356,6 @@ void hubp3_dcc_control_sienna_cichlid(struct hubp *hubp,
+ {
+ 	struct dcn20_hubp *hubp2 = TO_DCN20_HUBP(hubp);
+
+-	/*Workaround until UMD fix the new dcc_ind_blk interface */
+-	if (dcc->independent_64b_blks && dcc->dcc_ind_blk == 0)
+-		dcc->dcc_ind_blk = 1;
+-	if (dcc->independent_64b_blks_c && dcc->dcc_ind_blk_c == 0)
+-		dcc->dcc_ind_blk_c = 1;
+-
+ 	REG_UPDATE_6(DCSURF_SURFACE_CONTROL,
+ 		PRIMARY_SURFACE_DCC_EN, dcc->enable,
+ 		PRIMARY_SURFACE_DCC_IND_BLK, dcc->dcc_ind_blk,
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index e577bc93465bebb5a520ba69860d1cddf36066b8..db2ca49a36e1a316af7790b26301370200cc0d48 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -5053,14 +5053,26 @@ fill_gfx9_plane_attributes_from_modifiers(struct amdgpu_device *adev,
+ 	if (modifier_has_dcc(modifier) && !force_disable_dcc) {
+ 		uint64_t dcc_address = afb->address + afb->base.offsets[1];
+ 		bool independent_64b_blks = AMD_FMT_MOD_GET(DCC_INDEPENDENT_64B, modifier);
++		bool independent_128b_blks = AMD_FMT_MOD_GET(DCC_INDEPENDENT_128B, modifier);
+
+ 		dcc->enable = 1;
+ 		dcc->meta_pitch = afb->base.pitches[1];
+ 		dcc->independent_64b_blks = independent_64b_blks;
+-		if (independent_64b_blks)
+-			dcc->dcc_ind_blk = hubp_ind_block_64b;
+-		else
+-			dcc->dcc_ind_blk = hubp_ind_block_unconstrained;
++		if (AMD_FMT_MOD_GET(TILE_VERSION, modifier) == AMD_FMT_MOD_TILE_VER_GFX10_RBPLUS) {
++			if (independent_64b_blks && independent_128b_blks)
++				dcc->dcc_ind_blk = hubp_ind_block_64b;
++			else if (independent_128b_blks)
++				dcc->dcc_ind_blk = hubp_ind_block_128b;
++			else if (independent_64b_blks && !independent_128b_blks)
++				dcc->dcc_ind_blk = hubp_ind_block_64b_no_128bcl;
++			else
++				dcc->dcc_ind_blk = hubp_ind_block_unconstrained;
++		} else {
++			if (independent_64b_blks)
++				dcc->dcc_ind_blk = hubp_ind_block_64b;
++			else
++				dcc->dcc_ind_blk = hubp_ind_block_unconstrained;
++		}
+
+ 		address->grph.meta_addr.low_part = lower_32_bits(dcc_address);
+ 		address->grph.meta_addr.high_part = upper_32_bits(dcc_address);
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index db2ca49a36e1a316af7790b26301370200cc0d48..5d3679bd6b29b837c4ffb17c92416dca58e70e09 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -4955,6 +4955,16 @@ add_gfx10_3_modifiers(const struct amdgpu_device *adev,
+ 		    AMD_FMT_MOD_SET(DCC_INDEPENDENT_128B, 1) |
+ 		    AMD_FMT_MOD_SET(DCC_MAX_COMPRESSED_BLOCK, AMD_FMT_MOD_DCC_BLOCK_64B));
+
++	add_modifier(mods, size, capacity, AMD_FMT_MOD |
++		    AMD_FMT_MOD_SET(TILE, AMD_FMT_MOD_TILE_GFX9_64K_R_X) |
++		    AMD_FMT_MOD_SET(TILE_VERSION, AMD_FMT_MOD_TILE_VER_GFX10_RBPLUS) |
++		    AMD_FMT_MOD_SET(PIPE_XOR_BITS, pipe_xor_bits) |
++		    AMD_FMT_MOD_SET(PACKERS, pkrs) |
++		    AMD_FMT_MOD_SET(DCC, 1) |
++		    AMD_FMT_MOD_SET(DCC_CONSTANT_ENCODE, 1) |
++		    AMD_FMT_MOD_SET(DCC_INDEPENDENT_128B, 1) |
++		    AMD_FMT_MOD_SET(DCC_MAX_COMPRESSED_BLOCK, AMD_FMT_MOD_DCC_BLOCK_128B));
++
+ 	add_modifier(mods, size, capacity, AMD_FMT_MOD |
+ 		    AMD_FMT_MOD_SET(TILE, AMD_FMT_MOD_TILE_GFX9_64K_R_X) |
+ 		    AMD_FMT_MOD_SET(TILE_VERSION, AMD_FMT_MOD_TILE_VER_GFX10_RBPLUS) |
+@@ -4967,6 +4977,17 @@ add_gfx10_3_modifiers(const struct amdgpu_device *adev,
+ 		    AMD_FMT_MOD_SET(DCC_INDEPENDENT_128B, 1) |
+ 		    AMD_FMT_MOD_SET(DCC_MAX_COMPRESSED_BLOCK, AMD_FMT_MOD_DCC_BLOCK_64B));
+
++	add_modifier(mods, size, capacity, AMD_FMT_MOD |
++		    AMD_FMT_MOD_SET(TILE, AMD_FMT_MOD_TILE_GFX9_64K_R_X) |
++		    AMD_FMT_MOD_SET(TILE_VERSION, AMD_FMT_MOD_TILE_VER_GFX10_RBPLUS) |
++		    AMD_FMT_MOD_SET(PIPE_XOR_BITS, pipe_xor_bits) |
++		    AMD_FMT_MOD_SET(PACKERS, pkrs) |
++		    AMD_FMT_MOD_SET(DCC, 1) |
++		    AMD_FMT_MOD_SET(DCC_RETILE, 1) |
++		    AMD_FMT_MOD_SET(DCC_CONSTANT_ENCODE, 1) |
++		    AMD_FMT_MOD_SET(DCC_INDEPENDENT_128B, 1) |
++		    AMD_FMT_MOD_SET(DCC_MAX_COMPRESSED_BLOCK, AMD_FMT_MOD_DCC_BLOCK_128B));
++
+ 	add_modifier(mods, size, capacity, AMD_FMT_MOD |
+ 		    AMD_FMT_MOD_SET(TILE, AMD_FMT_MOD_TILE_GFX9_64K_R_X) |
+ 		    AMD_FMT_MOD_SET(TILE_VERSION, AMD_FMT_MOD_TILE_VER_GFX10_RBPLUS) |
+

@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=213
+pkgrel=214
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -596,7 +596,7 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '2e2247183034fa4a2ea1cd943d3d24ee9ea52daf70d47e69d5564f8ac1367aa2'
-            'd456fe1fbcbaf6767f653f60e45b089d3964b53e815ca1fe185b7c847fb2b82a'
+            'a9ab984ff4bcd0e5d2deeab5f0b28cf2f1616c66d5ebabc182d4d5f7a124acd1'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
@@ -652,7 +652,7 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'decd4a55c0d47b1eb808733490cdfea1207a2022d46f06d04a3cc60fdcb3f32c'
-            '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
+            '434e4707efc1bc3919597c87d44fa537f7563ae04236479bbf1adb5f410ab69d'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
