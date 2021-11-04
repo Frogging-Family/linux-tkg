@@ -501,6 +501,7 @@ case $_basever in
         0007-v5.13-fsync.patch
         0007-v5.13-futex2_interface.patch
         0007-v5.13-futex_waitv.patch
+        0007-v5.13-fsync1_via_futex_waitv.patch
         0007-v5.13-winesync.patch
         0008-5.13-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
@@ -532,6 +533,7 @@ case $_basever in
             '89d837bfea3515504b1c99fc881ebdc4f15e2999558127a263e795fc69408a39'
             '9ec679871cba674cf876ba836cde969296ae5034bcc10e1ec39b372e6e07aab0'
             '0e3473c19e5513bee886f03cf2476f746d8b5b2fbc0841c9d60d609b16a97c14'
+            'f5ed3062543074472172e30f3db4baa1e292b50e11c1c19e2511b71b28ac7e48'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             'b0004bc559653fd8719b8adcfa1ead1075db3425d30d7d7adb8cbc6296386a8f'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
@@ -561,9 +563,9 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.14-fsync.patch
-        0007-v5.14-fsync-waitvcompat.patch
         0007-v5.14-futex2_interface.patch
         0007-v5.14-futex_waitv.patch
+        0007-v5.14-fsync1_via_futex_waitv.patch
         0007-v5.14-winesync.patch
         #0008-5.14-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
@@ -589,9 +591,9 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'aa67e81a27d9062e463594acb91eca6dd13388f23cbe53ca56298f9dba61cc10'
-            'ee97a751e9b3d2b7ea1707b807ab775cd6f4c392a5efaa475d24d16202518a6a'
             'efe5e21706fdf64559ead866c85a5d88c5c3f743d814410df3810ca61cc5b966'
             '5742277f41f22bf29fa9742562946b8a01377f8a22adb42ceed3607541c1d5b6'
+            '5bd2e13d3c70abe4efefa1c4374a5d3801fece087f093ce6a8ca5b8466dc1f20'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -619,8 +621,8 @@ case $_basever in
         0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.15-fsync.patch
-        0007-v5.15-fsync-waitvcompat.patch
         0007-v5.15-futex_waitv.patch
+        0007-v5.15-fsync1_via_futex_waitv.patch
         0007-v5.15-winesync.patch
         #0008-5.14-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
@@ -646,8 +648,8 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '6c4f0099896f69e56ebd8c9eac266ac8ad993acecd50945e0e84ef6f95f9ddca'
-            'd6753a5d95a422eeb443edc04dee67512de8408aac1231e8f2e8ff9e000ad48e'
             'c8f7c50d9b1418ba22b5ca735c47111a162be416109714d26a674162e5b2cb97'
+            '63a2ddf7ca9d3922f4eac3ac66bc37ffb10ad8b18b3e596832d3faa66b93dfa6'
             '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
