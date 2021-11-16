@@ -677,6 +677,7 @@ case $_basever in
         #0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         #0007-v5.16-fsync.patch
+        0007-v5.16-fsync1_via_futex_waitv.patch
         #0007-v5.16-winesync.patch
         #0008-5.14-bcachefs.patch
         #0009-glitched-ondemand-bmq.patch
@@ -702,6 +703,7 @@ case $_basever in
             #'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             #'4503034f211de3013f8500106da753e5d1bcac14bc5576671cbe6f574805b3cd'
+            '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
             #'a71ea523f0a7bcd24e2ad144ff12160aa03dc3f0c64daceac8dc1aae523d4491'
             #'9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             #'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
