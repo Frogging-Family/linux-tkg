@@ -8725,3 +8725,62 @@ index b5e3496cf803..0816db0b9c16 100644
  	};
  	struct wakeup_test_data *x = data;
  
+diff --git a/kernel/sched/pds.c b/kernel/sched/pds.c
+index 9576c57f82da0a1f831b02474db8cd64b945f294..b8d5b1db9fac55ce5ee74033c253832cc36999b6 100644
+--- a/kernel/sched/pds.c
++++ b/kernel/sched/pds.c
+@@ -2912,10 +2912,7 @@ static inline void __sched_fork(unsigned long clone_flags, struct task_struct *p
+  */
+ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
+ {
+-	unsigned long flags;
+ 	int cpu = get_cpu();
+-	struct rq *rq = this_rq();
+-
+ #ifdef CONFIG_PREEMPT_NOTIFIERS
+ 	INIT_HLIST_HEAD(&p->preempt_notifiers);
+ #endif
+@@ -2948,6 +2945,20 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
+ 		p->sched_reset_on_fork = 0;
+ 	}
+
++#ifdef CONFIG_SCHED_INFO
++	if (unlikely(sched_info_on()))
++		memset(&p->sched_info, 0, sizeof(p->sched_info));
++#endif
++	init_task_preempt_count(p);
++
++	return 0;
++}
++
++void sched_post_fork(struct task_struct *p, struct kernel_clone_args *kargs)
++{
++	unsigned long flags;
++	struct rq *rq;
++
+ 	/*
+ 	 * The child is not yet in the pid-hash so no cgroup attach races,
+ 	 * and the cgroup is pinned to this child due to cgroup_fork()
+@@ -2982,21 +2993,10 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
+ 	 * We're setting the CPU for the first time, we don't migrate,
+ 	 * so use __set_task_cpu().
+ 	 */
+-	__set_task_cpu(p, cpu);
++	__set_task_cpu(p, smp_processor_id());
+ 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+-
+-#ifdef CONFIG_SCHED_INFO
+-	if (unlikely(sched_info_on()))
+-		memset(&p->sched_info, 0, sizeof(p->sched_info));
+-#endif
+-	init_task_preempt_count(p);
+-
+-	put_cpu();
+-	return 0;
+ }
+
+-void sched_post_fork(struct task_struct *p) {}
+-
+ #ifdef CONFIG_SCHEDSTATS
+
+ DEFINE_STATIC_KEY_FALSE(sched_schedstats);
