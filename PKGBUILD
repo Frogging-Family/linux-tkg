@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=223
+pkgrel=224
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -690,7 +690,7 @@ case $_basever in
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
-    sha256sums=('90be486cc939f008d40c8217e5e9bbd3dd0e0a998440214573a128295fb0dd80'
+    sha256sums=('f6ea4727cfd9637ee45af0eec402e67757d6bf295c5ad73a4748c1ee53d828d4'
             #'42a0a582319be3cda01979970dbcd1c2cbe847d34b18f509bf4d27cc1a48dd34'
             'SKIP'
             '0addf43dd8c58a7a30502058e254d4d3777abae7f66b2b6688ced6d86fd2caea'
