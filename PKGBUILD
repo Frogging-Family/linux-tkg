@@ -855,6 +855,15 @@ hackheaders() {
   # add xfs and shmem for aufs building
   mkdir -p "$builddir"/{fs/xfs,mm}
 
+  # add resolve_btfids on 5.16
+  case $_basever in
+    516)
+    ;;
+    *)
+      install -Dt "$builddir/tools/bpf/resolve_btfids" tools/bpf/resolve_btfids/resolve_btfids
+    ;;
+  esac
+
   msg2 "Installing headers..."
   cp -t "$builddir" -a include
   cp -t "$builddir/arch/x86" -a arch/x86/include
