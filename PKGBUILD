@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=224
+pkgrel=225
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'fda82c324c5bfa499f3e86489041fd82c9760b97cf7dffc85409f9cd2faf60d0'
+            '50e4719eb877720934c18f8ba3044a81650709d8cbcb356bcca87fd41609daf3'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -318,7 +318,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'c46f7ee8d945c28cf4a5c972a13eadf971f8c532bdedadccb8eaaf88be96e20f'
+            'b8dc24276c5ceac17afbd67bd472e1e0dc55436bb4ad7855039f2fa798d0e99d'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -635,7 +635,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            '8fdc0ef34a877379bcb9b617006edafba66f9213fc2c1df7451b578ae33b5496'
+            '23f5753121e2f18ef757449f94728d18ba70a20728dd217a53d4fa0a1cde621e'
             'SKIP'
             '011d94a86f16c66772bdf0540ab9add74f2ccaa7d51dd2074492f70a663aa4a2'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -655,7 +655,7 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '978b197efa56781a1d5651a3649c3d8b926d55748b4b9063788dfe1a861fc1bc'
             '768239d739180c0199545b5c5cf2d78de6261aec769008e6a2b7e97c7477b756'
-            '4cd39ae0f0cd218c32bc3d0ad14ff35a34851da71f0cf0116385ac501354ed16'
+            '434e4707efc1bc3919597c87d44fa537f7563ae04236479bbf1adb5f410ab69d'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
