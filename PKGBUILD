@@ -858,9 +858,9 @@ hackheaders() {
   # add resolve_btfids on 5.16
   case $_basever in
     516)
+        install -Dt "$builddir"/tools/bpf/resolve_btfids tools/bpf/resolve_btfids/resolve_btfids
     ;;
     *)
-      install -Dt "$builddir/tools/bpf/resolve_btfids" tools/bpf/resolve_btfids/resolve_btfids
     ;;
   esac
 
