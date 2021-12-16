@@ -3,7 +3,7 @@
 # Needed for prompting with the correct order
 _supported_kernels=("5.16" "5.15" "5.14" "5.13" "5.12" "5.11" "5.10" "5.9" "5.8" "5.7" "5.4")
 
-typeset -A _kver_subver_map
+typeset -Ag _kver_subver_map
 _kver_subver_map=(
   ["5.4"]="164"
   ["5.7"]="19"
@@ -14,8 +14,31 @@ _kver_subver_map=(
   ["5.12"]="19"
   ["5.13"]="19"
   ["5.14"]="21"
-  ["5.15"]="7"
+  ["5.15"]="8"
   ["5.16"]="rc4"
+)
+
+# PREEMPT_RT's supported kernel subversion
+typeset -Ag _rt_subver_map
+_rt_subver_map=(
+  ["5.4"]="161"
+  ["5.9"]="1"
+  ["5.10"]="83"
+  ["5.11"]="4"
+  ["5.14"]="2"
+  ["5.15"]="5"
+)
+
+# PREEMPT_RT's patch revision for the kernel
+# We separated this to allow for forcing the application of the patch when _preempt_rt_force=1 on version mismatch
+typeset -Ag _rt_rev_map
+_rt_rev_map=(
+  ["5.4"]="66"
+  ["5.9"]="20"
+  ["5.10"]="58"
+  ["5.11"]="11"
+  ["5.14"]="21"
+  ["5.15"]="22"
 )
 
 _undefine() {
@@ -138,6 +161,10 @@ _set_cpu_scheduler() {
   elif [ "$_basever" = "515" ]; then
     _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
   else
+    _avail_cpu_scheds=("cfs")
+  fi
+
+  if [ "${_preempt_rt}" = "1" ]; then
     _avail_cpu_scheds=("cfs")
   fi
 
@@ -392,6 +419,29 @@ _tkg_srcprep() {
     tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch"
   fi
   _msg="Applying graysky's cpu opts patch (legacy)" && _tkg_patcher
+
+  # PREEMPT_RT patch
+  if [ "${_preempt_rt}" = "1" ]; then
+    if [ ${_rt_subver_map[$_basekernel]+_} = "_" ]; then
+      preempt_rt_ksubver="${_rt_subver_map[$_basekernel]}"
+      # Check if subversion is supported, skip check if forced
+      if [ "${_preempt_rt_force}" = "1" ] || [ "${preempt_rt_ksubver}" = "${_kver_subver_map[$_basekernel]}" ]; then
+        preempt_rt_file_gz="patch-${_basekernel}.${preempt_rt_ksubver}-rt${_rt_rev_map["$_basekernel"]}.patch.gz"
+        preempt_rt_file=`basename ${preempt_rt_file_gz} .gz`
+        wget -P "$srcdir" "https://cdn.kernel.org/pub/linux/kernel/projects/rt/${_basekernel}/${preempt_rt_file_gz}"
+        last_pwd=`pwd`
+        cd "$srcdir"
+        gunzip -k "$srcdir/${preempt_rt_file_gz}"
+        cd "$last_pwd"
+        tkgpatch="$srcdir/${preempt_rt_file}"
+        _msg="Applying PREEMPT_RT patch" && _tkg_patcher
+      else
+        msg2 "Skipping PREEMPT_RT patch for ${_basekernel}.${_sub}"
+      fi
+    else
+      msg2 "Skipping PREEMPT_RT patch on unsupported kernel version"
+    fi
+  fi
 
   # TkG
   tkgpatch="$srcdir/0002-clear-patches.patch"

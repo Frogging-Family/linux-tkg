@@ -314,7 +314,11 @@ if [ "$1" = "install" ]; then
   fi
 
   if [ -z $_kernel_localversion ]; then
-    _kernel_flavor="tkg-${_cpusched}${_compiler_name}"
+    if [ "$_preempt_rt" = "1" ]; then
+      _kernel_flavor="tkg-${_cpusched}-rt${_compiler_name}"
+    else
+      _kernel_flavor="tkg-${_cpusched}${_compiler_name}"
+    fi
   else
     _kernel_flavor="tkg-${_kernel_localversion}"
   fi
