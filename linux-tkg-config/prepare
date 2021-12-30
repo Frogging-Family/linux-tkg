@@ -3,19 +3,42 @@
 # Needed for prompting with the correct order
 _supported_kernels=("5.16" "5.15" "5.14" "5.13" "5.12" "5.11" "5.10" "5.9" "5.8" "5.7" "5.4")
 
-typeset -A _kver_subver_map
+typeset -Ag _kver_subver_map
 _kver_subver_map=(
-  ["5.4"]="160"
+  ["5.4"]="168"
   ["5.7"]="19"
   ["5.8"]="18"
   ["5.9"]="16"
-  ["5.10"]="81"
+  ["5.10"]="88"
   ["5.11"]="22"
   ["5.12"]="19"
   ["5.13"]="19"
   ["5.14"]="21"
-  ["5.15"]="4"
-  ["5.16"]="rc1"
+  ["5.15"]="11"
+  ["5.16"]="rc6"
+)
+
+# PREEMPT_RT's supported kernel subversion
+typeset -Ag _rt_subver_map
+_rt_subver_map=(
+  ["5.4"]="161"
+  ["5.9"]="1"
+  ["5.10"]="83"
+  ["5.11"]="4"
+  ["5.14"]="2"
+  ["5.15"]="7"
+)
+
+# PREEMPT_RT's patch revision for the kernel
+# We separated this to allow for forcing the application of the patch when _preempt_rt_force=1 on version mismatch
+typeset -Ag _rt_rev_map
+_rt_rev_map=(
+  ["5.4"]="67"
+  ["5.9"]="20"
+  ["5.10"]="58"
+  ["5.11"]="11"
+  ["5.14"]="21"
+  ["5.15"]="23"
 )
 
 _undefine() {
@@ -141,6 +164,10 @@ _set_cpu_scheduler() {
     _avail_cpu_scheds=("cfs")
   fi
 
+  if [ "${_preempt_rt}" = "1" ]; then
+    _avail_cpu_scheds=("cfs")
+  fi
+
   # Populate descriptions of the available CPU schedulers
   _avail_cpu_scheds_text=()
   for _sched in "${_avail_cpu_scheds[@]}"; do
@@ -248,19 +275,6 @@ _tkg_initscript() {
   else
     cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_path"
     cp "$_where"/linux-tkg-config/${_basekernel}/* "$_path"
-  fi
-
-  if [[ -z "$_OPTIPROFILE" || ! "$_OPTIPROFILE" =~ ^(1|2|3)$ ]]; then
-    # Prompt about optimized configurations. Available variable values will overwrite customization.cfg/external config ones.
-    plain "Do you want to use a predefined optimized profile?"
-    _default_index="0"
-    _prompt_from_array "Custom" "Ryzen Desktop (Performance)" "Other Desktop (Performance)"
-    _OPTIPROFILE=$((${_selected_index}+1))
-  fi
-  if [ "$_OPTIPROFILE" = "2" ]; then
-    source "$_where"/linux-tkg-config/ryzen-desktop-profile.cfg && msg2 "Ryzen Desktop (Performance) profile will be used." && msg2 ""
-  elif [ "$_OPTIPROFILE" = "3" ]; then
-    source "$_where"/linux-tkg-config/generic-desktop-profile.cfg && msg2 "Generic Desktop (Performance) profile will be used." && msg2 ""
   fi
 
   # Set compiler
@@ -405,6 +419,29 @@ _tkg_srcprep() {
     tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch"
   fi
   _msg="Applying graysky's cpu opts patch (legacy)" && _tkg_patcher
+
+  # PREEMPT_RT patch
+  if [ "${_preempt_rt}" = "1" ]; then
+    if [ ${_rt_subver_map[$_basekernel]+_} = "_" ]; then
+      preempt_rt_ksubver="${_rt_subver_map[$_basekernel]}"
+      # Check if subversion is supported, skip check if forced
+      if [ "${_preempt_rt_force}" = "1" ] || [ "${preempt_rt_ksubver}" = "${_kver_subver_map[$_basekernel]}" ]; then
+        preempt_rt_file_gz="patch-${_basekernel}.${preempt_rt_ksubver}-rt${_rt_rev_map["$_basekernel"]}.patch.gz"
+        preempt_rt_file=`basename ${preempt_rt_file_gz} .gz`
+        wget -P "$srcdir" "https://cdn.kernel.org/pub/linux/kernel/projects/rt/${_basekernel}/${preempt_rt_file_gz}"
+        last_pwd=`pwd`
+        cd "$srcdir"
+        gunzip -k "$srcdir/${preempt_rt_file_gz}"
+        cd "$last_pwd"
+        tkgpatch="$srcdir/${preempt_rt_file}"
+        _msg="Applying PREEMPT_RT patch" && _tkg_patcher
+      else
+        msg2 "Skipping PREEMPT_RT patch for ${_basekernel}.${_sub}"
+      fi
+    else
+      msg2 "Skipping PREEMPT_RT patch on unsupported kernel version"
+    fi
+  fi
 
   # TkG
   tkgpatch="$srcdir/0002-clear-patches.patch"
@@ -585,6 +622,7 @@ _tkg_srcprep() {
   _disable "DEBUG_FORCE_FUNCTION_ALIGN_64B"
   scripts/config --set-str "ZSWAP_COMPRESSOR_DEFAULT" "lz4"
   scripts/config --set-str "CMDLINE" "${_custom_commandline}"
+  scripts/config --set-val "NR_CPUS" "64"
   _disable "CMDLINE_OVERRIDE" "X86_P6_NOP" "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_DEFAULT_GOV_CONSERVATIVE"
   #echo "# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE is not set" >> ./.config
 
@@ -603,9 +641,15 @@ _tkg_srcprep() {
     if [ "$_lto_mode" = "full" ]; then
       _enable LTO_CLANG_FULL
       _disable LTO_CLANG_THIN
+      _disable LTO_NONE
     elif [ "$_lto_mode" = "thin" ]; then
       _disable LTO_CLANG_FULL
       _enable LTO_CLANG_THIN
+      _disable LTO_NONE
+    else
+      _disable LTO_CLANG_FULL
+      _disable LTO_CLANG_THIN
+      _enable LTO_NONE
     fi
   fi
   # Void uses LibreSSL

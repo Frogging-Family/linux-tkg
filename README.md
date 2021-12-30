@@ -134,6 +134,7 @@ sudo dracut --force --hostonly --kver $_kernelname $_dracut_options
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 ```
 **Notes:**
+- All the needed dependencies to patch, configure, compile or install the kernel are expected to be installed by the user beforehand.
 - If you only want the script to patch the sources in `linux-src-git`, you can use `./install.sh config`
 - `${kernel_flavor}` is a default naming scheme but can be customized with the variable `_kernel_localversion` in `customization.cfg`.
 - `_dracut_options` is a variable that can be changed in `customization.cfg`.

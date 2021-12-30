@@ -88,3 +88,68 @@ index 9270a4370d54..30d01e647417 100644
  
  static void set_task_reclaim_state(struct task_struct *task,
  				   struct reclaim_state *rs)
+From f0438700352f5adebbdf122c00a3360bb0f5247c Mon Sep 17 00:00:00 2001
+From: Torge Matthies <openglfreak@googlemail.com>
+Date: Sun, 21 Nov 2021 23:58:50 +0100
+Subject: [PATCH 1/2] sched/alt: Optimize loops in update_sched_rq_watermark.
+
+With the old code, gcc misses an optimization opportunity and compiles
+the loops to five instructions each:
+
+    0x0000000000000ed3 <+83>:	lock bts %rdi,(%rax)
+    0x0000000000000ed8 <+88>:	dec    %rdx
+    0x0000000000000edb <+91>:	add    $0x400,%rax
+    0x0000000000000ee1 <+97>:	cmp    %rdx,%rsi
+    0x0000000000000ee4 <+100>:	jne    0xed3 <update_sched_rq_watermark+83>
+    ...
+    0x0000000000000f13 <+147>:	lock btr %rdi,(%rax)
+    0x0000000000000f18 <+152>:	dec    %rdx
+    0x0000000000000f1b <+155>:	add    $0x400,%rax
+    0x0000000000000f21 <+161>:	cmp    %rcx,%rdx
+    0x0000000000000f24 <+164>:	jne    0xf13 <update_sched_rq_watermark+147>
+
+With this change, the loops get optimized to four instructions each:
+
+    0x0000000000000ed7 <+87>:	lock bts %rsi,(%rdx)
+    0x0000000000000edc <+92>:	add    $0x400,%rdx
+    0x0000000000000ee3 <+99>:	dec    %rcx
+    0x0000000000000ee6 <+102>:	jne    0xed7 <update_sched_rq_watermark+87>
+    ...
+    0x0000000000000f1a <+154>:	lock btr %rsi,(%rax)
+    0x0000000000000f1f <+159>:	add    $0x400,%rax
+    0x0000000000000f25 <+165>:	dec    %rdx
+    0x0000000000000f28 <+168>:	jne    0xf1a <update_sched_rq_watermark+154>
+
+Signed-off-by: Torge Matthies <openglfreak@googlemail.com>
+---
+ kernel/sched/alt_core.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 8b0ddbdd24e4..7d926e8eab96 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -185,8 +185,8 @@ static inline void update_sched_rq_watermark(struct rq *rq)
+ 	rq->watermark = watermark;
+ 	cpu = cpu_of(rq);
+ 	if (watermark < last_wm) {
+-		for (i = last_wm; i > watermark; i--)
+-			cpumask_clear_cpu(cpu, sched_rq_watermark + SCHED_BITS - 1 - i);
++		for (i = last_wm - watermark; i > 0; i--)
++			cpumask_clear_cpu(cpu, sched_rq_watermark + SCHED_BITS - 1 - (i + watermark));
+ #ifdef CONFIG_SCHED_SMT
+ 		if (static_branch_likely(&sched_smt_present) &&
+ 		    IDLE_TASK_SCHED_PRIO == last_wm)
+@@ -196,8 +196,8 @@ static inline void update_sched_rq_watermark(struct rq *rq)
+ 		return;
+ 	}
+ 	/* last_wm < watermark */
+-	for (i = watermark; i > last_wm; i--)
+-		cpumask_set_cpu(cpu, sched_rq_watermark + SCHED_BITS - 1 - i);
++	for (i = watermark - last_wm; i > 0; i--)
++		cpumask_set_cpu(cpu, sched_rq_watermark + SCHED_BITS - 1 - (i + last_wm));
+ #ifdef CONFIG_SCHED_SMT
+ 	if (static_branch_likely(&sched_smt_present) &&
+ 	    IDLE_TASK_SCHED_PRIO == watermark) {
+--
+GitLab

@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=221
+pkgrel=230
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'fda82c324c5bfa499f3e86489041fd82c9760b97cf7dffc85409f9cd2faf60d0'
+            '87df0bd8ca4766f4f7a12f1e3d538e5a46188ff0f5c140e7e11303beb870856c'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -310,6 +310,7 @@ case $_basever in
         0006-add-acs-overrides_iommu.patch
         0007-v5.10-fsync.patch
         0007-v5.10-futex2_interface.patch
+        0007-v5.10-winesync.patch
         0008-5.10-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
@@ -318,7 +319,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'c46f7ee8d945c28cf4a5c972a13eadf971f8c532bdedadccb8eaaf88be96e20f'
+            'bfdd891c3ea96366269bbeb8dd4ba1eea61f0f050f623305ed519170cea260a5'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -339,6 +340,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             'f46ed0f026490b11b6a6cfb21e78cd253f0d7c308dc5a34e93971659a4eaa19e'
+            'c2c0c6423d09278e300c481d891b8072ec5fd89e49e75f36a698b610aa819e65'
             '377d0eb1df251808b8280d1aec598b4a2986f7d167306cdec9048c337cdcf2e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -383,7 +385,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('04f07b54f0d40adfab02ee6cbd2a942c96728d87c1ef9e120d0cb9ba3fe067b4'
-            '2612c275d5dbb5c0b612aa774a6cd9e7b38bdde42070961a688d7ac3819a9186'
+            '07aac31956d3f483a91506524befd45962f3bbfda2f8d43cf90713caf872d9ba'
             'SKIP'
             'fc08ac33e3bc47ed0ee595a2e4b84bc45b02682b383db6acfe281792e88f6231'
             '837ad05b68d0443580f78f5eb316db46c6b67abfefa66c22b6cb94f4915a52ba'
@@ -403,7 +405,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             '073e7b8ab48aa9abdb5cedb5c729a2f624275ebdbe1769476231c9e712145496'
-            'd220593436059b76c975ceee061fd124dec37fff774db45a4419c2ce1839c351'
+            'c2c0c6423d09278e300c481d891b8072ec5fd89e49e75f36a698b610aa819e65'
             '6c831d7cdfe4897656b76c4ec60e0a18d6f3618f79c402ebc3bf4453a6616319'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -468,7 +470,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             '540dda70cccc0cb23f0d0311f9947209cfe377070620e5fca69f66cc1efe817e'
-            'f7c68f43599c53ce19a14e6f296e5e0820257e80acb9f52a1dec036d0d9a62ab'
+            '9b324790ecf0240cbb314b8e02a7dcbfb14e3408267b702ad96f40a2ce77fdc2'
             'c6c5bcfac976c2304bdd13b80f8ad0329e5e53a6d9e9d130115204ea09fe2848'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -534,7 +536,7 @@ case $_basever in
             '9ec679871cba674cf876ba836cde969296ae5034bcc10e1ec39b372e6e07aab0'
             '0e3473c19e5513bee886f03cf2476f746d8b5b2fbc0841c9d60d609b16a97c14'
             'f5ed3062543074472172e30f3db4baa1e292b50e11c1c19e2511b71b28ac7e48'
-            '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
+            '9b324790ecf0240cbb314b8e02a7dcbfb14e3408267b702ad96f40a2ce77fdc2'
             'b0004bc559653fd8719b8adcfa1ead1075db3425d30d7d7adb8cbc6296386a8f'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -594,7 +596,7 @@ case $_basever in
             'efe5e21706fdf64559ead866c85a5d88c5c3f743d814410df3810ca61cc5b966'
             '5742277f41f22bf29fa9742562946b8a01377f8a22adb42ceed3607541c1d5b6'
             '5bd2e13d3c70abe4efefa1c4374a5d3801fece087f093ce6a8ca5b8466dc1f20'
-            '034d12a73b507133da2c69a34d61efd2f6b6618549650aa26d748142d22002e1'
+            '9b324790ecf0240cbb314b8e02a7dcbfb14e3408267b702ad96f40a2ce77fdc2'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '1565038792869f1e99dc321b57d00dbfa14ab824a995f39c4d3effceab0b5415'
@@ -624,7 +626,7 @@ case $_basever in
         0007-v5.15-futex_waitv.patch
         0007-v5.15-fsync1_via_futex_waitv.patch
         0007-v5.15-winesync.patch
-        #0008-5.14-bcachefs.patch
+        0008-5.15-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
         0009-prjc_v5.15-r1.patch
@@ -635,9 +637,9 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            'c33801f2d4ae027b5cb6ba49ff7daacc1ac25243cefcc0a4e6e358f5d36dca5b'
+            'ad0392a077fab3781cfa6084a84de35364068ae46f58e8463db7826933778260'
             'SKIP'
-            '0eecdc29b3bde4bccda282c4c04ef114250fedddcf3dbf07a3cc201dce35838f'
+            '6000b247aac5620ba08ec862353063f5f8806a33c4c8f55263843c8f47027e63'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -645,14 +647,15 @@ case $_basever in
             '2e2c5c546fb2aabfa90f31310355324f58c6783d520b45b8898577bb7d1a5277'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
-            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            '0b73ec751187d899a4c347b9287c7a76d06523abaeca985a76d0f7ae167d4b1f'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '6c4f0099896f69e56ebd8c9eac266ac8ad993acecd50945e0e84ef6f95f9ddca'
             'c8f7c50d9b1418ba22b5ca735c47111a162be416109714d26a674162e5b2cb97'
             '63a2ddf7ca9d3922f4eac3ac66bc37ffb10ad8b18b3e596832d3faa66b93dfa6'
-            'a71ea523f0a7bcd24e2ad144ff12160aa03dc3f0c64daceac8dc1aae523d4491'
+            '751c4b010d3cef24586fa35498d19060691ad4def35066a0048275b2c371781f'
+            '68659b54bd0c0539c22869feea8017faf947af6883d75c00089f2bfd9f265f8e'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
-            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            '978b197efa56781a1d5651a3649c3d8b926d55748b4b9063788dfe1a861fc1bc'
             '768239d739180c0199545b5c5cf2d78de6261aec769008e6a2b7e97c7477b756'
             '434e4707efc1bc3919597c87d44fa537f7563ae04236479bbf1adb5f410ab69d'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
@@ -689,10 +692,10 @@ case $_basever in
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
-    sha256sums=('f15cb8ed94671ac2e094380b429bafdab04f44bc3f29cca0b050ee2370a21d2c'
+    sha256sums=('2fb1dca461e00412822fa8de089701e5ae1ef703e1a57e839f5fd1a194f33ecb'
             #'42a0a582319be3cda01979970dbcd1c2cbe847d34b18f509bf4d27cc1a48dd34'
             'SKIP'
-            'f94423d68a2f4d004b5122527d98d22bade1d4cee750a7e218f1f2453a0c3217'
+            '0addf43dd8c58a7a30502058e254d4d3777abae7f66b2b6688ced6d86fd2caea'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -704,7 +707,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             #'4503034f211de3013f8500106da753e5d1bcac14bc5576671cbe6f574805b3cd'
             '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
-            '2a5495656bf9d8af85534e51cc547429fcb4403d17f769225b0d47995bf286df'
+            'f91223f98f132602a4fa525917a1f27afe30bdb55a1ac863e739c536188417b3'
             #'9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             #'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             #'decd4a55c0d47b1eb808733490cdfea1207a2022d46f06d04a3cc60fdcb3f32c'
@@ -853,6 +856,15 @@ hackheaders() {
 
   # add xfs and shmem for aufs building
   mkdir -p "$builddir"/{fs/xfs,mm}
+
+  # add resolve_btfids on 5.16
+  case $_basever in
+    516)
+        install -Dt "$builddir"/tools/bpf/resolve_btfids tools/bpf/resolve_btfids/resolve_btfids
+    ;;
+    *)
+    ;;
+  esac
 
   msg2 "Installing headers..."
   cp -t "$builddir" -a include
