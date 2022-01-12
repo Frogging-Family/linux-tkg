@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'afbcc8ed7d85485af299567f307b03057ffff3ec7bee02a21c33933d435b4958'
+            'd28321f7f5bcd5ec96d23f995d21b5ff2071945a66a9df6dccc70eab2fee8879'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -319,7 +319,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'da23117293a58028bfc0eec76b61b27c588efa7475022e232f33db51f9a15f27'
+            'de26ebfe8d9db3e190361b2ed7c5779a0ce19c51bbbd8c39cecd5b4922b5c959'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
