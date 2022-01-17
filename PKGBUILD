@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=230
+pkgrel=234
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '87df0bd8ca4766f4f7a12f1e3d538e5a46188ff0f5c140e7e11303beb870856c'
+            'c52f62cd4707eba85afa16c2a95d568d4277a4961c686da4de3fb75ee2bf4138'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -319,7 +319,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'bfdd891c3ea96366269bbeb8dd4ba1eea61f0f050f623305ed519170cea260a5'
+            '5b8fa846bd7e9f155917c75e2c3212c8a6eec87f754fcb9ce831638f3993a17d'
             'SKIP'
             'f2d15531096e97239a67f7642d85666a2f27c5e053b38ff9a2aa704dfc388f8a'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -637,7 +637,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            'ad0392a077fab3781cfa6084a84de35364068ae46f58e8463db7826933778260'
+            'dcd6c14eae29a175fe13bbfdaa9adee1ab1cfa374d7d789658c373c340b3201a'
             'SKIP'
             '6000b247aac5620ba08ec862353063f5f8806a33c4c8f55263843c8f47027e63'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -664,7 +664,7 @@ case $_basever in
 	516)
 	opt_ver="5.15%2B"
     source=("$kernel_site"
-        #"$patch_site"
+        "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15%2B.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
@@ -692,8 +692,8 @@ case $_basever in
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
-    sha256sums=('2fb1dca461e00412822fa8de089701e5ae1ef703e1a57e839f5fd1a194f33ecb'
-            #'42a0a582319be3cda01979970dbcd1c2cbe847d34b18f509bf4d27cc1a48dd34'
+    sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
+            '9ff97f3a01ec8744863ff611315c44c1f5d1ff551769f7d8359c85561dee1b1d'
             'SKIP'
             '0addf43dd8c58a7a30502058e254d4d3777abae7f66b2b6688ced6d86fd2caea'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
