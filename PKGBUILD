@@ -610,7 +610,7 @@ case $_basever in
         "$patch_site"
         "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15%2B.patch"
         'config.x86_64' # stock Arch config
-        #'config_hardened.x86_64' # hardened Arch config
+        'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
         cleanup
         # ARCH Patches
@@ -630,7 +630,7 @@ case $_basever in
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
         0009-prjc_v5.15-r1.patch
-        #0012-linux-hardened.patch
+        0012-linux-hardened.patch
         0012-misc-additions.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
@@ -640,6 +640,7 @@ case $_basever in
             'dcd6c14eae29a175fe13bbfdaa9adee1ab1cfa374d7d789658c373c340b3201a'
             'SKIP'
             '6000b247aac5620ba08ec862353063f5f8806a33c4c8f55263843c8f47027e63'
+            '5786bbcc3f655592958ba7011f9ce361d69211b0478c5b86bd3e600fee3ffd27'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -657,6 +658,7 @@ case $_basever in
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '978b197efa56781a1d5651a3649c3d8b926d55748b4b9063788dfe1a861fc1bc'
             '768239d739180c0199545b5c5cf2d78de6261aec769008e6a2b7e97c7477b756'
+            'c010206dc3278d2652afebaed9fac58e55e65f65deb0565687faa1dec577494b'
             '434e4707efc1bc3919597c87d44fa537f7563ae04236479bbf1adb5f410ab69d'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
