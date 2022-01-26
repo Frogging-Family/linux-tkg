@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=239
+pkgrel=240
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -915,14 +915,10 @@ hackheaders() {
   # add xfs and shmem for aufs building
   mkdir -p "$builddir"/{fs/xfs,mm}
 
-  # add resolve_btfids on 5.16
-  case $_basever in
-    516)
-        install -Dt "$builddir"/tools/bpf/resolve_btfids tools/bpf/resolve_btfids/resolve_btfids
-    ;;
-    *)
-    ;;
-  esac
+  # add resolve_btfids on 5.16+
+  if [ $_basever -ge 516 ]; then
+    install -Dt "$builddir"/tools/bpf/resolve_btfids tools/bpf/resolve_btfids/resolve_btfids
+  fi
 
   msg2 "Installing headers..."
   cp -t "$builddir" -a include
