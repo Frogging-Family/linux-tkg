@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            '8b704f72b25f3fe60612c7a53b87a21938365f26b03beb55bb674e4caf68b909'
+            'e0c634140150b552e904dd29af8b6ff5118960154e0c2d17860dc75478bd5bf7'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -749,7 +749,7 @@ case $_basever in
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
-    sha256sums=('9269b46a87c16941871f81057c8b82c913869eb86037b92c0bd4d5b9aa69dece'
+    sha256sums=('8dd4284d331e49123917b5d0252750d072ff401ea64d8de45109211e0431ea93'
             #'9ff97f3a01ec8744863ff611315c44c1f5d1ff551769f7d8359c85561dee1b1d'
             'SKIP'
             '4f82607cedd7bad81b7a23a7a2dee093bc009cafd6f6548b9003d28404a4ab81'
