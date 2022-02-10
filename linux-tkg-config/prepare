@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# Needed for prompting with the correct order
-_supported_kernels=("5.17" "5.16" "5.15" "5.14" "5.13" "5.12" "5.11" "5.10" "5.9" "5.8" "5.7" "5.4")
+# This list includes the currently maintained kernels upstream
+# and always ends with an entry that refers to end of life kernel versions
+_current_kernels=("5.17" "5.16" "5.15" "5.10" "5.4")
+
+# List of kernels that are no longer maintained upstream
+_eol_kernels=("5.14" "5.13" "5.12" "5.11" "5.9" "5.8" "5.7")
 
 typeset -Ag _kver_subver_map
 _kver_subver_map=(
@@ -111,16 +115,40 @@ _set_kernel_version() {
   if [ -z "$_version" ] || ! [[  "${!_kver_subver_map[*]}" =~ "$_version" ]]; then
     msg2 "Which kernel version do you want to install?"
 
-    # Create a list of kernels versions with their sub-version added and prompt from it
+    # Create a list of currently maintained kernels versions with their sub-version added
+
     _kernel_fullver_list=()
-    for _key in "${_supported_kernels[@]}"; do
+    for _key in "${_current_kernels[@]}"; do
       _kernel_fullver_list+=("${_key}.${_kver_subver_map[$_key]}")
     done
+    # Add the "Another" entry to enable building unmaintained kernel versions
+    _kernel_fullver_list+=("Another (no longer maintained upstream)")
 
-    #Default index corresponds to latest stable kernel
-    _default_index="1"
+    # Default index corresponds to latest stable kernel
+    # put default index to "1" when the most recent kernel is an rc one
+    _default_index="0"
+    if [[ "${_kver_subver_map[${_current_kernels[0]}]}" == rc* ]]; then
+      _default_index="1"
+    fi
+
     _prompt_from_array  "${_kernel_fullver_list[@]}"
-    _version=${_supported_kernels[$_selected_index]}
+
+    if [[ "${_selected_value}" == Another* ]]; then
+      msg2 "Which EOL kernel version do you want to install?"
+
+      _kernel_fullver_list=()
+      for _key in "${_eol_kernels[@]}"; do
+        _kernel_fullver_list+=("${_key}.${_kver_subver_map[$_key]}")
+      done
+
+      # Default index corresponds to latest unmaintained kernel
+      _default_index="0"
+      _prompt_from_array "${_eol_kernels[@]}"
+      _version=${_eol_kernels[$_selected_index]}
+    else
+      _version=${_current_kernels[$_selected_index]}
+    fi
+
   fi
 
   # Note: _basekernel and _version variables can be merged
