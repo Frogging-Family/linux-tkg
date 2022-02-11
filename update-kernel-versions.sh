@@ -120,10 +120,12 @@ for _key in "${_current_kernels[@]}"; do
   fi
 
   if [ -n "$new_kernel_shasum" ]; then
+    echo "Updating kernel shasum in PKGBUILD"
     sed -i "s|$old_kernel_shasum|$new_kernel_shasum|g" PKGBUILD
   fi
 
   if [ -n "$new_kernel_patch_shasum" ]; then
+    echo "Updating kernel patch shasum in PKGBUILD"
     sed -i "s|$old_kernel_patch_shasum|$new_kernel_patch_shasum|g" PKGBUILD
   fi
 
