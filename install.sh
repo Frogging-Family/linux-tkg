@@ -57,7 +57,7 @@ _linux_git_branch_checkout() {
 
   cd "$_where"
 
-  if [[ -z $_git_mirror || ! $_git_mirror =~ ^(kernel\.org|googlesource\.com)$ ]]; then
+  if [[ -z "$_git_mirror" || ! "$_git_mirror" =~ ^(kernel\.org|googlesource\.com)$ ]]; then
     while true; do
       echo "Which git repository would you like to clone the linux sources from ?"
       echo "   0) kernel.org (official)"
@@ -170,7 +170,7 @@ fi
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
-  if [ -z $_distro ] && [ "$1" = "install" ]; then
+  if [ -z "$_distro" ] && [ "$1" = "install" ]; then
     _distro_prompt
   fi
 
@@ -189,14 +189,14 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     fi
   fi
 
-  if [[ $1 = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Gentoo|Generic)$ ]]; then
+  if [[ "$1" = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Gentoo|Generic)$ ]]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" has been set to an unkown value. Prompting..."
     _distro_prompt
   fi
 
   # Install the needed dependencies if the user wants to install the kernel
   # Not needed if the user asks for install.sh config
-  if [ $1 == "install" ]; then
+  if [ "$1" == "install" ]; then
     _install_dependencies
   fi
 
@@ -270,7 +270,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
 
   # Uppercase characters are not allowed in source package name for debian based distros
-  if [ "$_distro" = "Debian" ] || [ "$_distro" = "Ubuntu" ] && [ "$_cpusched" = "MuQSS" ]; then
+  if [[ "$_distro" =~ ^(Debian|Ubuntu)$ && "$_cpusched" = "MuQSS" ]]; then
     _cpusched="muqss"
   fi
 
@@ -313,7 +313,7 @@ if [ "$1" = "install" ]; then
     msg2 'Enabled ccache'
   fi
 
-  if [ -z $_kernel_localversion ]; then
+  if [ -z "$_kernel_localversion" ]; then
     if [ "$_preempt_rt" = "1" ]; then
       _kernel_flavor="tkg-${_cpusched}-rt${_compiler_name}"
     else
@@ -335,7 +335,7 @@ if [ "$1" = "install" ]; then
     _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 "$@" 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( "$@" 2>&1 ) 3>&1 1>&2 2>&3 )
   }
 
-  if [ "$_distro" = "Ubuntu" ]  || [ "$_distro" = "Debian" ]; then
+  if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
     _timed_build make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
@@ -349,7 +349,7 @@ if [ "$1" = "install" ]; then
     mv "$_build_dir"/*.deb "$_where"/DEBS/
 
     read -p "Do you want to install the new Kernel ? Y/[n]: " _install
-    if [[ $_install =~ [yY] ]] || [ $_install = "yes" ] || [ $_install = "Yes" ]; then
+    if [[ "$_install" =~ ^(y|Y|yes|Yes)$ ]]; then
       cd "$_where"
       if [[ "$_sub" = rc* ]]; then
         _kernelname=$_basekernel.$_kernel_subver-$_sub-$_kernel_flavor
@@ -364,13 +364,13 @@ if [ "$1" = "install" ]; then
       sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
     fi
 
-  elif [[ "$_distro" = "Fedora" ||  "$_distro" = "Suse" ]]; then
+  elif [[ "$_distro" =~ ^(Fedora|Suse)$ ]]; then
 
     # Replace dashes with underscores, it seems that it's being done by binrpm-pkg
     # Se we can actually refer properly to the rpm files.
     _kernel_flavor=${_kernel_flavor//-/_}
 
-    if [[ "$_sub" = rc* ]]; then
+    if [[ "$_sub" == rc* ]]; then
       _extra_ver_str="_${_sub}_${_kernel_flavor}"
     else
       _extra_ver_str="_${_kernel_flavor}"
@@ -477,7 +477,7 @@ if [ "$1" = "install" ]; then
     msg2 "Note: Uninstalling requires manual intervention, use './install.sh uninstall-help' for more information."
     read -p "Continue ? Y/[n]: " _continue
 
-    if ! [[ $_continue =~ ^(Y|y|Yes|yes)$ ]];then
+    if ! [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
       exit 0
     fi
 
@@ -519,7 +519,7 @@ if [ "$1" = "install" ]; then
       fi
 
       read -p "Y/[n]: " _continue
-      if [[ $_continue =~ ^(Y|y|Yes|yes)$ ]];then
+      if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
         sudo emerge @module-rebuild --keep-going
       fi
 
