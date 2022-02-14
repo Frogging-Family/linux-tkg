@@ -210,36 +210,16 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   cd "$_where"
 
-  case "$_basever" in
-    "57")
+  if [ "$_basever" = "54" ]; then
+    opt_ver="4.19-5.4"
+  elif [ "$_basever" = "57" ]; then
     opt_ver="5.7"
     opt_alternative_url="true"
-    ;;
-    "58")
+  elif [[ "$_basever" =~ ^(58|59|510|511|512|513|514)$ ]]; then
     opt_ver="5.8-5.14"
-    ;;
-    "59")
-    opt_ver="5.8-5.14"
-    ;;
-    "510")
-    opt_ver="5.8-5.14"
-    ;;
-    "511")
-    opt_ver="5.8-5.14"
-    ;;
-    "512")
-    opt_ver="5.8-5.14"
-    ;;
-    "513")
-    opt_ver="5.8-5.14"
-    ;;
-    "514")
-    opt_ver="5.8-5.14"
-    ;;
-    "515")
+  else
     opt_ver="5.15+"
-    ;;
-  esac
+  fi
 
   if [ -n "$opt_ver" ]; then
     msg2 "Downloading Graysky2's CPU optimisations patch"
