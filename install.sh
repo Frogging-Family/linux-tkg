@@ -516,7 +516,7 @@ if [ "$1" = "uninstall-help" ]; then
 
   cd "$_where"
 
-  if [ "$_distro" = "Ubuntu" ]; then
+  if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
     msg2 "List of installed custom tkg kernels: "
     dpkg -l "*tkg*" | grep "linux.*tkg"
     dpkg -l "*linux-libc-dev*" | grep "linux.*tkg"
