@@ -102,7 +102,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'f2ed01b81a9b22d9f3d153e312e9ea0d75805d7120f13b5fb6f0a77f93a2fed7'
+            '18f54cb71b1ae1a397fed1e7a35897aa807feb2cb2c8e8c8a93e70fb451dce66'
             #'SKIP'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
@@ -319,7 +319,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'dad683e724875b964ffaae01876069a29e98081b3e5102ecf12cdbd18a2e93cd'
+            '42d8c1d48b0eb4dcfe8cd01e11b2e353516898dd53e3466afbc2b9ec0b9aad11'
             'SKIP'
             '13a39ab2be1301b60565cb6a4bedb2bca16b6b12427407c099a81169feb367d6'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
@@ -637,7 +637,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            'b6003a066e39b013336bc41b15a836c1beb08417849ce563830c125bcba0cc9b'
+            '5ceba1332b26e735342a76dd85a5b1b53cc4873e202e58b99a25da0cf6e20992'
             'SKIP'
             '24be2e8863e265195a24d7082804cd4328fd9f0a31b88672c884b9fd42469ed8'
             'e885f7b2c68d6d7ec9050a692aa044fecab3c1dda6908175a6d4e13bf8507ceb'
@@ -695,7 +695,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
-            'ef7b5e4f1b043a58fcece6e3f5d9e5425db7fb2a1abddc64c5094b93931bab37'
+            'a495f0e33a432485654495918940b25069def9886a391a853a88e576df864e91'
             'SKIP'
             '5b54e733edceca75df8d7c44aee4a811f3d058861ce54ab0839a7705d47e59df'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
