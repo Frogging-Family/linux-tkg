@@ -217,8 +217,10 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     opt_alternative_url="true"
   elif [[ "$_basever" =~ ^(58|59|510|511|512|513|514)$ ]]; then
     opt_ver="5.8-5.14"
+  elif [[ "$_basever" =~ ^(515|516)$ ]]; then
+    opt_ver="5.15-5.16"
   else
-    opt_ver="5.15+"
+    opt_ver="5.17+"
   fi
 
   if [ -n "$opt_ver" ]; then

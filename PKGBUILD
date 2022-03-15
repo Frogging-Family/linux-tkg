@@ -605,10 +605,10 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	515)
-	opt_ver="5.15%2B"
+	opt_ver="5.15-5.16"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15-5.16.patch"
         'config.x86_64' # stock Arch config
         'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -664,10 +664,10 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	516)
-	opt_ver="5.15%2B"
+	opt_ver="5.15-5.16"
     source=("$kernel_site"
         "$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15-5.16.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -719,10 +719,10 @@ case $_basever in
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
 	517)
-	opt_ver="5.15%2B"
+	opt_ver="5.17%2B"
     source=("$kernel_site"
         #"$patch_site"
-        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.15%2B.patch"
+        "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/more-uarches-for-kernel-5.17%2B.patch"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
