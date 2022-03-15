@@ -436,29 +436,27 @@ _tkg_srcprep() {
   if [ -z $_debug ]; then
 
   # graysky's cpu opts - https://github.com/graysky2/kernel_compiler_patch
-  if [ "$_basever" != "57" ]; then
-    # Newer version of the patches
-    if [ "${_distro}" = "Arch" ]; then
-      tkgpatch="$srcdir/more-uarches-for-kernel-${opt_ver}.patch"
-    elif [ "${_distro}" = "Void" ]; then
-      tkgpatch="${wrksrc}/more-uarches-for-kernel-${opt_ver}.patch"
-    else
-      tkgpatch="$srcdir/more-uarches-for-kernel-${opt_ver}.patch"
-    fi
-    _msg="Applying graysky's cpu opts patch" && _tkg_patcher
 
-  else
-    # Edge case for 5.7
-    if [ "${_distro}" = "Arch" ]; then
-      tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v${opt_ver}.patch"
-    elif [ "${_distro}" = "Void" ]; then
-      tkgpatch="${wrksrc}/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}.patch"
-    else
-      tkgpatch="$srcdir/enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v${opt_ver}+.patch"
-    fi
-    _msg="Applying graysky's cpu opts patch (legacy)" && _tkg_patcher
-
+  _patch_location="$srcdir"
+  if [ "${_distro}" = "Void" ]; then
+    _patch_location="${wrksrc}"
   fi
+
+  if [ "$_basever" = "54" ]; then
+    _patch_name="more-uarches-for-kernel-4.19-5.4"
+  elif [ "$_basever" = "57" ]; then
+    _patch_name="outdated_versions/enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7"
+  elif (( 58 <= "$_basever" &&  "$_basever" <= 514 )); then
+    _patch_name="more-uarches-for-kernel-5.8-5.14"
+  elif [[ "$_basever" =~ ^(515|516)$ ]]; then
+    _patch_name="more-uarches-for-kernel-5.15-5.16"
+  else
+    _patch_name="more-uarches-for-kernel-5.17%2B"
+  fi
+
+  wget -P "${_patch_location}" "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/${_patch_name}.patch"
+  tkgpatch="${_patch_location}/${_patch_name}.patch"
+  _msg="Applying graysky's cpu opts patch" && _tkg_patcher
 
   # PREEMPT_RT patch
   if [ "${_preempt_rt}" = "1" ]; then
@@ -731,57 +729,56 @@ _tkg_srcprep() {
   fi
 
   # cpu opt
-  if [ -n "$opt_ver" ]; then
-    _cpu_marchs=("native_amd" "native_intel" "generic_cpu" "generic_cpu2" "generic_cpu3" "generic_cpu4")
-    _cpu_marchs+=("k8" "k8sse3" "k10" "barcelona" "bobcat" "jaguar" "bulldozer" "piledriver")
-    _cpu_marchs+=("steamroller" "excavator" "zen" "zen2" "zen3" "mpsc" "atom" "core2" "nehalem" "westmere")
-    _cpu_marchs+=("bonnell" "silvermont" "sandybridge" "ivybridge" "haswell" "broadwell" "skylake")
-    _cpu_marchs+=("skylakex" "cannonlake" "icelake" "goldmont" "goldmontplus" "cascadelake")
-    _cpu_marchs+=("cooperlake" "tigerlake" "sapphirerapids" "rocketlake" "alderlake")
+  _cpu_marchs=("native_amd" "native_intel" "generic_cpu" "generic_cpu2" "generic_cpu3" "generic_cpu4")
+  _cpu_marchs+=("k8" "k8sse3" "k10" "barcelona" "bobcat" "jaguar" "bulldozer" "piledriver")
+  _cpu_marchs+=("steamroller" "excavator" "zen" "zen2" "zen3" "mpsc" "atom" "core2" "nehalem" "westmere")
+  _cpu_marchs+=("bonnell" "silvermont" "sandybridge" "ivybridge" "haswell" "broadwell" "skylake")
+  _cpu_marchs+=("skylakex" "cannonlake" "icelake" "goldmont" "goldmontplus" "cascadelake")
+  _cpu_marchs+=("cooperlake" "tigerlake" "sapphirerapids" "rocketlake" "alderlake")
 
-    typeset -A _generic_march_map
-    _generic_march_map=(
-      ["generic"]="generic_cpu"
-      ["generic_v2"]="generic_cpu2"
-      ["generic_v3"]="generic_cpu3"
-      ["generic_v4"]="generic_cpu4"
-    )
-    if [ -n "$_processor_opt" ]; then
-      # Replace customization.cfg convention with .config convention for generic
-      if [[ "${!_generic_march_map[@]}" =~ "$_processor_opt" ]]; then
-        _processor_opt="${_generic_march_map[$_processor_opt]}"
-      fi
-      if ! [[ "${_cpu_marchs[@]}" =~ "$_processor_opt" ]]; then
-        warning "the setup _processor_opt=\"${_processor_opt}\" not recognized. Prompting..."
-        _processor_opt=""
-      fi
+  typeset -A _generic_march_map
+  _generic_march_map=(
+    ["generic"]="generic_cpu"
+    ["generic_v2"]="generic_cpu2"
+    ["generic_v3"]="generic_cpu3"
+    ["generic_v4"]="generic_cpu4"
+  )
+  if [ -n "$_processor_opt" ]; then
+    # Replace customization.cfg convention with .config convention for generic
+    if [[ "${!_generic_march_map[@]}" =~ "$_processor_opt" ]]; then
+      _processor_opt="${_generic_march_map[$_processor_opt]}"
     fi
-
-    if [ -z "$_processor_opt" ]; then
-      msg2 "Please select the desired CPU micro-architecture"
-      _default_index="2"
-      _prompt_from_array "${_cpu_marchs[@]}"
-      _processor_opt="${_selected_value}"
+    if ! [[ "${_cpu_marchs[@]}" =~ "$_processor_opt" ]]; then
+      warning "the setup _processor_opt=\"${_processor_opt}\" not recognized. Prompting..."
+      _processor_opt=""
     fi
-
-    for _march in "${_cpu_marchs[@]}"
-    do
-      _march_upper=`echo "$_march" | tr '[a-z]' '[A-Z]'`
-      if [ "$_processor_opt" = "$_march" ]; then
-        if [[ "$_march" = "generic"* ]]; then
-          _enable "${_march_upper}"
-        else
-          _enable "M${_march_upper}"
-        fi
-      else
-        if [[ "$_march" = "generic"* ]]; then
-          _disable "${_march_upper}"
-        else
-          _disable "M${_march_upper}"
-        fi
-      fi
-    done
   fi
+
+  if [ -z "$_processor_opt" ]; then
+    msg2 "Please select the desired CPU micro-architecture"
+    _default_index="2"
+    _prompt_from_array "${_cpu_marchs[@]}"
+    _processor_opt="${_selected_value}"
+  fi
+
+  for _march in "${_cpu_marchs[@]}"
+  do
+    _march_upper=`echo "$_march" | tr '[a-z]' '[A-Z]'`
+    if [ "$_processor_opt" = "$_march" ]; then
+      if [[ "$_march" = "generic"* ]]; then
+        _enable "${_march_upper}"
+      else
+        _enable "M${_march_upper}"
+      fi
+    else
+      if [[ "$_march" = "generic"* ]]; then
+        _disable "${_march_upper}"
+      else
+        _disable "M${_march_upper}"
+      fi
+    fi
+  done
+
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then
