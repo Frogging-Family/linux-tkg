@@ -687,7 +687,7 @@ case $_basever in
 	;;
 	517)
     source=("$kernel_site"
-        "$patch_site"
+        #"$patch_site"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -715,7 +715,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('555fef61dddb591a83d62dd04e252792f9af4ba9ef14683f64840e46fa20b1b1'
-            'd58cbfc41bf8672b0ce9c9f129578c18bfecbdeb4684c581e191345cb2aa95f1'
+            #'d58cbfc41bf8672b0ce9c9f129578c18bfecbdeb4684c581e191345cb2aa95f1'
             '961c380f74b9e28a47a21001fc330460dcd639f7580b7a178472e40af8f4dcd4'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
