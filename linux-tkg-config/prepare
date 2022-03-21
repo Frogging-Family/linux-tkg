@@ -391,10 +391,6 @@ _tkg_patcher() {
 
 _tkg_srcprep() {
 
-  if [ "${_distro}" = "Void" ] && [ -e ${srcdir}/sum_failed ]; then
-    exit 1
-  fi
-
   msg2 "Setting version..."
   scripts/setlocalversion --save-scmversion
 
@@ -402,7 +398,6 @@ _tkg_srcprep() {
     echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
     echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/prepare.log
     echo "" > localversion.20-pkgname
-
     # add upstream patch
     if [ "$_sub" != "0" ] && [[ "$_sub" != rc* ]]; then
       if [ ! -e "$srcdir/patch-${pkgver}" ]; then
@@ -412,9 +407,14 @@ _tkg_srcprep() {
           ( cd "$_where" && xz -dk patch-${pkgver}.xz && mv "$_where"/patch-${pkgver} "$srcdir"/ )
         fi
       fi
-      tkgpatch="$srcdir/patch-${pkgver}"
-      _msg="Patching from $_basekernel to $pkgver" && _tkg_patcher
     fi
+  fi
+  if [ "${_distro}" = "Void" ]; then
+	  pkgver="${version}"
+  fi
+  if [ "${_distro}" = "Arch" ] || [ "${_distro}" = "Void" ]; then
+    tkgpatch="$srcdir/patch-${pkgver}"
+    _msg="Patching from $_basekernel to $pkgver" && _tkg_patcher
   fi
 
   # Hardened Patches
@@ -424,13 +424,6 @@ _tkg_srcprep() {
   else
     tkgpatch="$srcdir/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
     _msg="Using Arch patches" && _tkg_patcher
-  fi
-
-  # Void
-  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
-    cd ${wrksrc}/linux-${_rc_kern_ver}
-  elif [ "$_distro" = "Void" ]; then
-    cd ${wrksrc}/linux-${_kern_ver}
   fi
 
   if [ -z $_debug ]; then
@@ -616,13 +609,6 @@ _tkg_srcprep() {
 
   fi
 
-  if [ "$_distro" = "Void" ] && [[ "$_sub" = rc* ]]; then
-    cd ${wrksrc}/linux-${_rc_kern_ver}
-  elif [ "$_distro" = "Void" ] && [[ "$_sub" != rc* ]]; then
-    cd ${wrksrc}/linux-${_kern_ver}
-  fi
-
-
   if [ -z "${_configfile}" ]; then
     msg2 "Using archlinux's default config file for kernel ${_basekernel}"
     cat "${srcdir}"/config.x86_64 > ./.config
@@ -696,12 +682,6 @@ _tkg_srcprep() {
       _disable LTO_CLANG_THIN
       _enable LTO_NONE
     fi
-  fi
-  # Void uses LibreSSL
-  if [ "$_distro" = "Void" ]; then
-    _disable "MODULE_SIG_SHA512"
-    _enable "MODULE_SIG_SHA1"
-    scripts/config --set-str "MODULE_SIG_HASH" "sha1"
   fi
 
   # Prevent Debian and Ubuntu to sign stuff because it breaks stuff
@@ -1596,6 +1576,7 @@ exit_cleanup() {
     msg2 "compilation time : \n$_runtime"
   fi
 }
+# Void has its own clean function, this breaks it so ignore it
 if [ "$_distro" != "Void" ]; then
   trap exit_cleanup EXIT
 fi
