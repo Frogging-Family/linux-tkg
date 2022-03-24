@@ -24,7 +24,7 @@ for _key in "${_current_kernels[@]}"; do
       latest_subver="${latest_full_ver##*-rc}"
     else
       _from_rc_to_release="true"
-      if [ "$latest_full_ver" = "$_key "]; then
+      if [ "$latest_full_ver" = "$_key" ]; then
         # this is the first release after rc, so the kernel version will be 5.xx (and not 5.xx.0)
         latest_subver="0"
       else
