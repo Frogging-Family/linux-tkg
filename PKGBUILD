@@ -100,7 +100,7 @@ case $_basever in
         	0012-linux-hardened.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'cfeda97d7b73bed676794c0d1681ccfc0755b2fc899037542f1fa63f89e74fb7'
+            'cd978b0ca835f0c9fec86f70cdfcc8e103653868e4b44996dc02ab49d6783df0'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -305,7 +305,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '9be86704b6718cad866ce5dc275a22700e4e62ceb8e2913269afb0c68bec2879'
+            '293213d9a28a208606baee672a90d6e028220f61723d4360ad7e593072985ee1'
             '13a39ab2be1301b60565cb6a4bedb2bca16b6b12427407c099a81169feb367d6'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -608,7 +608,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            'ca7eb4581e0009e24f158c56ca98692f15a090fee6e3e645db906afe9301dd1b'
+            'eacc8609dfcecb637f813ef4d2e13f48bdeb6143be929358f3b3cb4254f9c563'
             '24be2e8863e265195a24d7082804cd4328fd9f0a31b88672c884b9fd42469ed8'
             '6e3ef6bc4779ae3b7154642147d5ab3ece6e38e3e08bdb30f86d89d2b4855fa9'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -663,7 +663,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
-            'e31bc94a75f9b8385bb3b3f48ddaeb830117ec875210819466ecbdf9502050fd'
+            '3bb88aa87c3f7788ad84ca5cbf3946ed9fbb3fddb9fca2458944fba5ebd2ab16'
             '5b54e733edceca75df8d7c44aee4a811f3d058861ce54ab0839a7705d47e59df'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -687,7 +687,7 @@ case $_basever in
 	;;
 	517)
     source=("$kernel_site"
-        #"$patch_site"
+        "$patch_site"
         'config.x86_64' # stock Arch config
         #'config_hardened.x86_64' # hardened Arch config
         90-cleanup.hook
@@ -715,7 +715,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('555fef61dddb591a83d62dd04e252792f9af4ba9ef14683f64840e46fa20b1b1'
-            #upcoming_kernel_patch_sha256
+            '24c982d6b7b704b31a6b4bc0a59cbf2135697a58d5d6030532ae07856da36944'
             'bd1e57c15d4eb62024d2ee935b54d36e74e73b22c3800b45ecf9233521a9f74b'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
