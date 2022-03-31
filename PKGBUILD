@@ -98,6 +98,7 @@ case $_basever in
         	0009-glitched-bmq.patch
         	0009-bmq_v5.4-r2.patch
         	0012-linux-hardened.patch
+        	0012-misc-additions.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
             'cd978b0ca835f0c9fec86f70cdfcc8e103653868e4b44996dc02ab49d6783df0'
@@ -120,7 +121,8 @@ case $_basever in
             '2d9260b80b43bbd605cf420d6bd53aa7262103dfd77196ba590ece5600b6dc0d'
             '3832f828a9f402b153fc9a6829c5a4eaf6091804bcda3a0423c8e1b57e26420d'
             'c98befca824f761260466410a1dd94d2b9be6f7211b5daefcfc0f3a102bbdc81'
-            'aeb31404c26ee898d007b1f66cb9572c9884ad8eca14edc4587d68f6cba6de46')
+            'aeb31404c26ee898d007b1f66cb9572c9884ad8eca14edc4587d68f6cba6de46'
+            '87f8ba249620628ad493ed5d65da9811bf635411a70aaa49ed1d97438ebf77be')
 	;;
 	57)
 	source=("$kernel_site"
