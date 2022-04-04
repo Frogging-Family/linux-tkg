@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=251
+pkgrel=252
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -733,7 +733,7 @@ case $_basever in
             'f91223f98f132602a4fa525917a1f27afe30bdb55a1ac863e739c536188417b3'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            'c62c73dac6bdb437b1b8e2153b10437fd6924bffca7cff2f8f3eb145e555d9d5'
+            '95fd78b725360742ead8c55eea7e3ff7ac8ae11ae1a21a0d881e168a841bc9b4'
             #'decd4a55c0d47b1eb808733490cdfea1207a2022d46f06d04a3cc60fdcb3f32c'
             '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
