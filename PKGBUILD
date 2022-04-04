@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=250
+pkgrel=251
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -657,7 +657,7 @@ case $_basever in
         #0008-5.14-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
-        0009-prjc_v5.16-r0.patch
+        0009-prjc_v5.16-r1.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
@@ -681,7 +681,7 @@ case $_basever in
             'f91223f98f132602a4fa525917a1f27afe30bdb55a1ac863e739c536188417b3'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            '7bd99d10ec9f834de95424d033f940f9531beb3a7b4d9711448f0ed66832c03d'
+            'ccf8d7dc78e92577f826f3e4d76453b1a873d41eb0df15528d117b25925b3f77'
             #'decd4a55c0d47b1eb808733490cdfea1207a2022d46f06d04a3cc60fdcb3f32c'
             '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
@@ -733,7 +733,7 @@ case $_basever in
             'f91223f98f132602a4fa525917a1f27afe30bdb55a1ac863e739c536188417b3'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-            '5d8aa3d707982e324d3ce8fcc5f832035d8155dc703f0125bbaa21cd87ce26f3'
+            'c62c73dac6bdb437b1b8e2153b10437fd6924bffca7cff2f8f3eb145e555d9d5'
             #'decd4a55c0d47b1eb808733490cdfea1207a2022d46f06d04a3cc60fdcb3f32c'
             '1aa0a172e1e27fb8171053f3047dcf4a61bd2eda5ea18f02b2bb391741a69887'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
