@@ -59,7 +59,7 @@ else
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
-pkgrel=254
+pkgrel=255
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="http://www.kernel.org/"
@@ -849,11 +849,11 @@ hackbase() {
               'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
               'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
               'update-grub: Simple wrapper around grub-mkconfig.')
-  if [ -e "${srcdir}/winesync.rules" ]; then
-    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE WINESYNC-MODULE winesync-header)
-  else
+  #if [ -e "${srcdir}/winesync.rules" ]; then
+  #  provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE WINESYNC-MODULE winesync-header)
+  #else
     provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
-  fi
+  #fi
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
   cd "${srcdir}/${_srcpath}"
@@ -885,22 +885,22 @@ hackbase() {
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 
   # workaround for missing header with winesync
-  if [ -e "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" ]; then
-    msg2 "Workaround missing winesync header"
-    install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
-  fi
+  #if [ -e "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" ]; then
+  #  msg2 "Workaround missing winesync header"
+  #  install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
+  #fi
 
   # load winesync module at boot
-  if [ -e "${srcdir}/winesync.conf" ]; then
-    msg2 "Set the winesync module to be loaded at boot through /etc/modules-load.d"
-    install -Dm644 "${srcdir}"/winesync.conf "${pkgdir}/etc/modules-load.d/winesync.conf"
-  fi
+  #if [ -e "${srcdir}/winesync.conf" ]; then
+  #  msg2 "Set the winesync module to be loaded at boot through /etc/modules-load.d"
+  #  install -Dm644 "${srcdir}"/winesync.conf "${pkgdir}/etc/modules-load.d/winesync.conf"
+  #fi
 
   # install udev rule for winesync
-  if [ -e "${srcdir}/winesync.rules" ]; then
-    msg2 "Installing udev rule for winesync"
-    install -Dm644 "${srcdir}"/winesync.rules "${pkgdir}/etc/udev/rules.d/winesync.rules"
-  fi
+  #if [ -e "${srcdir}/winesync.rules" ]; then
+  #  msg2 "Installing udev rule for winesync"
+  #  install -Dm644 "${srcdir}"/winesync.rules "${pkgdir}/etc/udev/rules.d/winesync.rules"
+  #fi
 }
 
 hackheaders() {
