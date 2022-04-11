@@ -119,6 +119,7 @@ cd void-packages
 ./xbps-src pkg -j$(nproc) linux-tkg
 ```
 If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
+
 #### Generic install
 The interactive `install.sh` script can be used to perform a "Generic" install by choosing `Generic` when prompted. It git clones the kernel tree in the `linux-src-git` folder, patches the code and edits a `.config` file in it. The commands to do are the following:
 ```shell
@@ -143,6 +144,7 @@ sudo grub-mkconfig -o /boot/grub/grub.cfg
 - `_dracut_options` is a variable that can be changed in `customization.cfg`.
 - The script uses Arch's `.config` file as a base. A custom one can be provided through `_configfile` in `customization.cfg`.
 - The installed files will not be tracked by your package manager and uninstalling requires manual intervention. `./install.sh uninstall-help` can help with useful information if your install procedure follows the `Generic` approach.
+
 #### Gentoo
 The interactive `install.sh` script supports Gentoo by following the same procedure as `Generic`, symlinks the sources folder in `/usr/src/` to `/usr/src/linux`, then offers to do an `emerge @module-rebuild` for convenience
 ```shell
@@ -152,6 +154,7 @@ cd linux-tkg
 ./install.sh install
 ```
 **Notes:**
+- If you're running openrc, you'll want to set `_configfile="running-kernel"` to use your current kernel's defconfig instead of Arch's. Else the resulting kernel won't boot.
 - The script will prompt for using `llvm-libunwind`, it can only work with the `llvm-libunwind` `USE` flag in `sys-devel/clang` but it is experimental:
   - Manual intervention is needed on the `net-fs/samba` EBUILD, see [here](https://bugs.gentoo.org/791349)
   - The `-unwind` `USE` flag is needed in `app-emulation/wine*` EBUILDs
