@@ -931,7 +931,7 @@ hackheaders() {
   mkdir -p "$builddir"/{fs/xfs,mm}
 
   # add resolve_btfids on 5.16+
-  if [ $_basever -ge 516 ] && [ -e "$builddir"/tools/bpf/resolve_btfids ]; then
+  if [ $_basever -ge 516 ]; then
     install -Dt "$builddir"/tools/bpf/resolve_btfids tools/bpf/resolve_btfids/resolve_btfids
   fi
 
