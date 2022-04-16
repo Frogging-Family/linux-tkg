@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# If current run is not using 'script' for logging, do it
+if [ -z "$SCRIPT" ]; then
+  export SCRIPT=1
+  /usr/bin/script -q -e -c "$0 $@" shell-output.log
+  exit_status="$?"
+  sed -i 's/\x1b\[[0-9;]*m//g' shell-output.log
+  sed -i 's/\x1b(B//g' shell-output.log
+  mv -f shell-output.log logs/shell-output.log.txt
+  exit $exit_status
+fi
+
 # Stop the script at any ecountered error
 set -e
 

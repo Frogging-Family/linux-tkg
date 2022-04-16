@@ -13,6 +13,7 @@ kernel_tags=$(git -c 'versionsort.suffix=-' \
     | cut --delimiter='/' --fields=3)
 
 source linux-tkg-config/prepare
+trap - EXIT
 
 updates=""
 for _key in "${_current_kernels[@]}"; do
