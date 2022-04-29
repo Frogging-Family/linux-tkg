@@ -300,6 +300,10 @@ _tkg_initscript() {
     _path="${_where}"
   fi
 
+  # Clean the logs folder
+  [ -e "${_where}/logs" ] && rm -rf "${_where}/logs"
+  mkdir -p "${_where}/logs"
+
   # Select Kernel version
   _set_kernel_version
 
@@ -331,7 +335,7 @@ user_patcher() {
       break
     done
 
-    echo -e "linux-tkg user patches, if any:\n" >> "$_where"/prepare.log
+    echo -e "linux-tkg user patches, if any:\n" >> "$_where"/logs/prepare.log.txt
 
 	# To patch the user because all your base are belong to us
 	local _patches=("$_where"/linux"$_basever"-tkg-userpatches/*."${_userpatch_ext}revert")
@@ -350,7 +354,7 @@ user_patcher() {
 	        msg2 ""
 	        msg2 "######################################################"
 	        patch -Np1 -R < "${_f}"
-	        echo "Reverted your own patch ${_f}" >> "$_where"/prepare.log
+	        echo "Reverted your own patch ${_f}" >> "$_where"/logs/prepare.log.txt
 	      fi
 	    done
 	  fi
@@ -372,7 +376,7 @@ user_patcher() {
 	        msg2 ""
 	        msg2 "######################################################"
 	        patch -Np1 < "${_f}"
-	        echo "Applied your own patch ${_f}" >> "$_where"/prepare.log
+	        echo "Applied your own patch ${_f}" >> "$_where"/logs/prepare.log.txt
 	      fi
 	    done
 	  fi
@@ -382,9 +386,9 @@ user_patcher() {
 _tkg_patcher() {
   if [ -e "$tkgpatch" ]; then
     msg2 "$_msg"
-    echo -e "### Applying ${tkgpatch##*/}... ###" >> "$_where"/prepare.log
-    patch -Np1 -i "$tkgpatch" >> "$_where"/prepare.log || error "An error was encountered applying patches. It was logged to the prepare.log file."
-    echo -e "\n" >> "$_where"/prepare.log
+    echo -e "### Applying ${tkgpatch##*/}... ###" >> "$_where"/logs/prepare.log.txt
+    patch -Np1 -i "$tkgpatch" >> "$_where"/logs/prepare.log.txt || error "An error was encountered applying patches. It was logged to the prepare.log.txt file."
+    echo -e "\n" >> "$_where"/logs/prepare.log.txt
   else
     msg2 "Skipping patch %s...\n         (unavailable for this kernel version)" "${tkgpatch##*/}" #"
   fi
@@ -397,7 +401,7 @@ _tkg_srcprep() {
 
   if [ "${_distro}" = "Arch" ]; then
     echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
-    echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/prepare.log
+    echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/logs/prepare.log.txt
     echo "" > localversion.20-pkgname
     # add upstream patch
     if [ "$_sub" != "0" ] && [[ "$_sub" != rc* ]]; then
@@ -1426,7 +1430,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
 
   # rewrite configuration
   msg2 "Setting config"
-  make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/prepare.log
+  make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
 
   # menuconfig / nconfig
   if [ -z "$_menunconfig" ] && [ "$_distro" != "Void" ]; then
@@ -1577,6 +1581,25 @@ exit_cleanup() {
   msg2 'exit cleanup done\n'
   if [ -n "$_runtime" ]; then
     msg2 "compilation time : \n$_runtime"
+  fi
+
+  # Copy over the customization.cfg file to the logs folder
+  cp -f "$_where"/customization.cfg "$_where"/logs/customization.cfg.txt
+
+  # Create logs/system-info.txt
+  cat /etc/os-release > "$_where"/logs/system-info.txt
+  if command -v clang &> /dev/null; then
+    echo "#################" >> "$_where"/logs/system-info.txt
+    clang -v >> "$_where"/logs/system-info.txt 2>&1
+  fi
+  echo "#################" >> "$_where"/logs/system-info.txt
+  gcc -v >> "$_where"/logs/system-info.txt 2>&1
+
+  # Arch: move shell-output.log to logs folder
+  if [[ "$_distro" = "Arch" && -f "$_where"/shell-output.log ]]; then
+    mv -f "$_where"/shell-output.log "$_where"/logs/shell-output.log.txt
+    sed -i 's/\x1b\[[0-9;]*m//g' "$_where"/logs/shell-output.log.txt
+    sed -i 's/\x1b(B//g' "$_where"/logs/shell-output.log.txt
   fi
 }
 # Void has its own clean function, this breaks it so ignore it
