@@ -327,7 +327,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             'f46ed0f026490b11b6a6cfb21e78cd253f0d7c308dc5a34e93971659a4eaa19e'
-            'c2c0c6423d09278e300c481d891b8072ec5fd89e49e75f36a698b610aa819e65'
+            'f408b327ff4e6f1ee2343cfe69430b1e0b6fb40e263f1ec8a3a1eab559e23175'
             '377d0eb1df251808b8280d1aec598b4a2986f7d167306cdec9048c337cdcf2e1'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -389,7 +389,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             '073e7b8ab48aa9abdb5cedb5c729a2f624275ebdbe1769476231c9e712145496'
-            'c2c0c6423d09278e300c481d891b8072ec5fd89e49e75f36a698b610aa819e65'
+            'f408b327ff4e6f1ee2343cfe69430b1e0b6fb40e263f1ec8a3a1eab559e23175'
             '6c831d7cdfe4897656b76c4ec60e0a18d6f3618f79c402ebc3bf4453a6616319'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -451,7 +451,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             'b302ba6c5bbe8ed19b20207505d513208fae1e678cf4d8e7ac0b154e5fe3f456'
             '540dda70cccc0cb23f0d0311f9947209cfe377070620e5fca69f66cc1efe817e'
-            '9b324790ecf0240cbb314b8e02a7dcbfb14e3408267b702ad96f40a2ce77fdc2'
+            '99f163ef979711ca1cda9c2c45a30b026c966b4d48d6ca307a0d537f28b740ac'
             'c6c5bcfac976c2304bdd13b80f8ad0329e5e53a6d9e9d130115204ea09fe2848'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -514,7 +514,7 @@ case $_basever in
             '9ec679871cba674cf876ba836cde969296ae5034bcc10e1ec39b372e6e07aab0'
             '0e3473c19e5513bee886f03cf2476f746d8b5b2fbc0841c9d60d609b16a97c14'
             'f5ed3062543074472172e30f3db4baa1e292b50e11c1c19e2511b71b28ac7e48'
-            '9b324790ecf0240cbb314b8e02a7dcbfb14e3408267b702ad96f40a2ce77fdc2'
+            '99f163ef979711ca1cda9c2c45a30b026c966b4d48d6ca307a0d537f28b740ac'
             'b0004bc559653fd8719b8adcfa1ead1075db3425d30d7d7adb8cbc6296386a8f'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -571,7 +571,7 @@ case $_basever in
             'efe5e21706fdf64559ead866c85a5d88c5c3f743d814410df3810ca61cc5b966'
             '5742277f41f22bf29fa9742562946b8a01377f8a22adb42ceed3607541c1d5b6'
             '5bd2e13d3c70abe4efefa1c4374a5d3801fece087f093ce6a8ca5b8466dc1f20'
-            '9b324790ecf0240cbb314b8e02a7dcbfb14e3408267b702ad96f40a2ce77fdc2'
+            '99f163ef979711ca1cda9c2c45a30b026c966b4d48d6ca307a0d537f28b740ac'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             '1565038792869f1e99dc321b57d00dbfa14ab824a995f39c4d3effceab0b5415'
@@ -625,7 +625,7 @@ case $_basever in
             '6c4f0099896f69e56ebd8c9eac266ac8ad993acecd50945e0e84ef6f95f9ddca'
             'c8f7c50d9b1418ba22b5ca735c47111a162be416109714d26a674162e5b2cb97'
             '63a2ddf7ca9d3922f4eac3ac66bc37ffb10ad8b18b3e596832d3faa66b93dfa6'
-            '751c4b010d3cef24586fa35498d19060691ad4def35066a0048275b2c371781f'
+            '671f48e40f2a99542860a48000f8b7bcc071aeebb488b5c412f2767d6ab3ab22'
             '68659b54bd0c0539c22869feea8017faf947af6883d75c00089f2bfd9f265f8e'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             '978b197efa56781a1d5651a3649c3d8b926d55748b4b9063788dfe1a861fc1bc'
@@ -677,7 +677,7 @@ case $_basever in
             'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
-            'f91223f98f132602a4fa525917a1f27afe30bdb55a1ac863e739c536188417b3'
+            'd2e22ac5884cebf8bec596c6fd4a66632d7f5463a06c7b265dae2684984ad536'
             '44a46815d26170e43dd5f21e352081c8e5a4816512abb86353a1d90311fffcde'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
@@ -730,7 +730,7 @@ case $_basever in
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             #'4503034f211de3013f8500106da753e5d1bcac14bc5576671cbe6f574805b3cd'
             '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
-            'f91223f98f132602a4fa525917a1f27afe30bdb55a1ac863e739c536188417b3'
+            'd2e22ac5884cebf8bec596c6fd4a66632d7f5463a06c7b265dae2684984ad536'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'ba65acd3f1168a7479e3665b5b13f7d1066e713eadb5a0e5110423ba97d7ccd3'
@@ -780,7 +780,7 @@ case $_basever in
             #'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
-            'f91223f98f132602a4fa525917a1f27afe30bdb55a1ac863e739c536188417b3'
+            'd20e3fc269c1cf74943281ce2c2c3af32ecd6468802a8d6dde1bafbcc82ca2b4'
             #'9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             #'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             #'95fd78b725360742ead8c55eea7e3ff7ac8ae11ae1a21a0d881e168a841bc9b4'
@@ -849,11 +849,11 @@ hackbase() {
               'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
               'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
               'update-grub: Simple wrapper around grub-mkconfig.')
-  #if [ -e "${srcdir}/winesync.rules" ]; then
-  #  provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE WINESYNC-MODULE winesync-header)
-  #else
+  if [ -e "${srcdir}/winesync.rules" ]; then
+    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE WINESYNC-MODULE winesync-header)
+  else
     provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
-  #fi
+  fi
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
   cd "${srcdir}/${_srcpath}"
@@ -885,22 +885,22 @@ hackbase() {
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 
   # workaround for missing header with winesync
-  #if [ -e "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" ]; then
-  #  msg2 "Workaround missing winesync header"
-  #  install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
-  #fi
+  if [ -e "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" ]; then
+    msg2 "Workaround missing winesync header"
+    install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
+  fi
 
   # load winesync module at boot
-  #if [ -e "${srcdir}/winesync.conf" ]; then
-  #  msg2 "Set the winesync module to be loaded at boot through /etc/modules-load.d"
-  #  install -Dm644 "${srcdir}"/winesync.conf "${pkgdir}/etc/modules-load.d/winesync.conf"
-  #fi
+  if [ -e "${srcdir}/winesync.conf" ]; then
+    msg2 "Set the winesync module to be loaded at boot through /etc/modules-load.d"
+    install -Dm644 "${srcdir}"/winesync.conf "${pkgdir}/etc/modules-load.d/winesync.conf"
+  fi
 
   # install udev rule for winesync
-  #if [ -e "${srcdir}/winesync.rules" ]; then
-  #  msg2 "Installing udev rule for winesync"
-  #  install -Dm644 "${srcdir}"/winesync.rules "${pkgdir}/etc/udev/rules.d/winesync.rules"
-  #fi
+  if [ -e "${srcdir}/winesync.rules" ]; then
+    msg2 "Installing udev rule for winesync"
+    install -Dm644 "${srcdir}"/winesync.rules "${pkgdir}/etc/udev/rules.d/winesync.rules"
+  fi
 }
 
 hackheaders() {
