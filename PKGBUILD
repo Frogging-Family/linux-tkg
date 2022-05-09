@@ -101,7 +101,7 @@ case $_basever in
         	0012-misc-additions.patch
 	)
 	sha256sums=('bf338980b1670bca287f9994b7441c2361907635879169c64ae78364efc5f491'
-            'dd3f79e829a958beb6cb48717be42e6aa7abdf61426a51c813bdddcdd4e491e8'
+            'd09af283cde63f48d7fbb27cc6f48591e23e1b110c11bc857a2df9ec0337003a'
             'b0c4c60669f47ba4d3d1388368a5f9790aa697af42c917ed2ef177f111336d8b'
             '1f4a20d6eaaa0d969af93152a65191492400c6aa838fc1c290b0dd29bb6019d8'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -307,7 +307,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            '8ae3386954a390e635d1711d33b25eec0ee2c64007784ff9f5e267c9a0e21594'
+            '631b0e373b480a6ac6de8510e3ef94aa64e99d0d43a3a4452a92830eae411822'
             '13a39ab2be1301b60565cb6a4bedb2bca16b6b12427407c099a81169feb367d6'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -610,7 +610,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            'f2b91961aa9134d0891b000606390bf83e96b2b58d57e8270283802281aea7c2'
+            'b62b570af247d884dd0232f509e4e33c5edf57240b1712733e61c37a1d4b4424'
             '5019607e781386636feefd075a50a496a08c9743e52ddcb87f73d0a283c6fcbc'
             '6e3ef6bc4779ae3b7154642147d5ab3ece6e38e3e08bdb30f86d89d2b4855fa9'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -717,7 +717,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('555fef61dddb591a83d62dd04e252792f9af4ba9ef14683f64840e46fa20b1b1'
-            '486bf7ca199a9b2ed1acbe47a0e000404e27228d4df14fb67ecbb229c9f7b965'
+            '59d429643f4874cd24ed71c7d32881e3b337264b8d486c866703b3e96f9ae4cc'
             'c0ef360e34fd21c23509224abae894b0d6d37256cccf82575062a05986ee5dba'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -767,7 +767,7 @@ case $_basever in
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
-    sha256sums=('cc889ad322e4776d2bab3b232218afaa2037c9e288c564625f962fb22ab62923'
+    sha256sums=('1ee5c56028c0a0cd566d0bf3e0e92b0d1693ae5460755729e3f683573d4e80f8'
             #upcoming_kernel_patch_sha256
             'c96860d65053cb5accdf1d4f94f4b7bbe46e90a3e869aa3b4cdebc48a68289c1'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
