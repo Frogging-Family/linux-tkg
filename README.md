@@ -28,7 +28,7 @@ These alternative schedulers can offer a better performance/latency ratio for ga
 - Scheduling tweaks
 - `CFS` tweaks
 - Using the ["Cake"](https://www.bufferbloat.net/projects/codel/wiki/CakeTechnical/) network queue management system
-- Using `vm.max_map_count=524288` by default
+- Using `vm.max_map_count=16777216` by default
 - Cherry-picked patches from [Clear Linux's patchset](https://github.com/clearlinux-pkgs/linux)
 
 #### Optional tweaks
