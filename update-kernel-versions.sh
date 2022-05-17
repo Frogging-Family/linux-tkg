@@ -15,9 +15,53 @@ kernel_tags=$(git -c 'versionsort.suffix=-' \
 source linux-tkg-config/prepare
 trap - EXIT
 
+# Start by making sure our GnuPG environment is sane
+if [[ ! -x /usr/bin/gpg ]]; then
+  echo "Could not find gpg"
+  exit 4
+fi
+
+## Generate the keyring
+if [ ! -s gnupg/keyring.gpg ]; then
+  if [[ ! -d gnupg ]]; then
+    echo "gnupg directory does not exist"
+    mkdir -p -m 0700 gnupg
+  fi
+  echo "Making sure we have all the necessary keys"
+  gpg --batch --quiet --homedir gnupg --auto-key-locate wkd --locate-keys torvalds@kernel.org gregkh@kernel.org autosigner@kernel.org
+  if [[ $? != "0" ]]; then
+    echo "FAILED to retrieve keys"
+    exit 3
+  fi
+  gpg --batch --homedir gnupg --export torvalds@kernel.org gregkh@kernel.org autosigner@kernel.org > gnupg/keyring.gpg
+fi
+
+# Cleanup
+rm -f v*.x.sha256sums{,.asc}
+
 updates=""
 for _key in "${_current_kernels[@]}"; do
   latest_full_ver=$(echo "$kernel_tags" | grep -F "v$_key" | tail -1 | cut -c2-)
+  kver_major="$(echo ${_key} | cut -d. -f1)"
+  kver_base="$(echo ${_key} | tr -d ".")"
+
+  ## Getting sha256sums by sha256sums.asc
+  if [ ! -s v${kver_major}.x.sha256sums ]; then
+    echo "Downloading the checksums file for linux-v${kver_major}.x"
+    curl -sL -o "v${kver_major}.x.sha256sums.asc" https://cdn.kernel.org/pub/linux/kernel/v${kver_major}.x/sha256sums.asc
+    if [[ $? != "0" ]]; then
+      echo "FAILED to download the v${kver_major}.x checksums file"
+      exit 3
+    fi
+    echo "Verifying the v${kver_major}.x checksums file"
+    count_gpg=$(gpg --homedir gnupg --keyring=gnupg/keyring.gpg --status-fd=1 v${kver_major}.x.sha256sums.asc | grep -c -E '^\[GNUPG:\] (GOODSIG|VALIDSIG)')
+    if [[ ${count_gpg} -lt 2 ]]; then
+      echo "FAILED to verify the v${kver_major}.x.sha256sums file."
+      rm -f "v${kver_major}.x.sha256sums"
+      exit 3
+    fi
+    rm -f "v${kver_major}.x.sha256sums.asc"
+  fi
 
   _from_rc_to_release="false"
   if [[ "${_kver_subver_map[$_key]}" == rc* ]]; then
@@ -68,14 +112,14 @@ for _key in "${_current_kernels[@]}"; do
 
     sed -i "/^_kver_subver_map=($/,/^)$/s|$_from|$_to|g" linux-tkg-config/prepare
 
-    old_kernel_shasum=$(curl -sL https://git.kernel.org/torvalds/t/linux-${_key}-rc${current_subver}.tar.gz | sha256sum | cut -d' ' -f1)
-    new_kernel_shasum=$(curl -sL https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${_key}.tar.xz | sha256sum | cut -d' ' -f1)
+    old_kernel_shasum=$(grep -A$(wc -l PKGBUILD | cut -d' ' -f1) "${kver_base})" PKGBUILD | grep sha256sums -m 1 - | cut -d \' -f2)
+    new_kernel_shasum=$(cat v${kver_major}.x.sha256sums | grep linux-${_key}.tar.xz | cut -d' ' -f1)
 
     if [ "$latest_subver" != "0" ]; then
       # we move from an rc release directly to a kernel with a subversion update
       sed -i "s|#\"\$patch_site\"|\"\$patch_site\"|g" PKGBUILD
       old_kernel_patch_shasum="#upcoming_kernel_patch_sha256"
-      new_kernel_patch_shasum="'$(curl -sL https://cdn.kernel.org/pub/linux/kernel/v5.x/patch-${_key}.${latest_subver}.xz | sha256sum | cut -d' ' -f1)'"
+      new_kernel_patch_shasum="'$(cat v${kver_major}.x.sha256sums | grep patch-${_key}.${latest_subver}.xz | cut -d' ' -f1)'"
     fi
   elif (( "$current_subver" < "$latest_subver" )); then
     # append kernel version update to updates
@@ -93,8 +137,17 @@ for _key in "${_current_kernels[@]}"; do
 
       sed -i "/^_kver_subver_map=($/,/^)$/s|$_from|$_to|g" linux-tkg-config/prepare
 
-      old_kernel_shasum=$(curl -sL https://git.kernel.org/torvalds/t/linux-${_key}-rc${current_subver}.tar.gz | sha256sum | cut -d' ' -f1)
-      new_kernel_shasum=$(curl -sL https://git.kernel.org/torvalds/t/linux-${_key}-rc${latest_subver}.tar.gz | sha256sum | cut -d' ' -f1)
+      old_kernel_shasum=$(grep -A$(wc -l PKGBUILD | cut -d' ' -f1) "${kver_base})" PKGBUILD | grep sha256sums -m 1 - | cut -d \' -f2)
+
+      # For RC we need download the original file
+      echo "Downloading the GZ tarball for linux-${_key}-rc${latest_subver}"
+      curl -sL -o "linux-${_key}-rc${latest_subver}.tar.gz" https://git.kernel.org/torvalds/t/linux-${_key}-rc${latest_subver}.tar.gz
+      if [[ $? != "0" ]]; then
+        echo "FAILED to download the linux-${_key}-rc${latest_subver}.tar.gz"
+        exit 3
+      fi
+
+      new_kernel_shasum=$(sha256sum linux-${_key}-rc${latest_subver}.tar.gz | cut -d' ' -f1)
     else
       echo "Updating kernel version in linux-tkg-config/prepare"
 
@@ -110,10 +163,10 @@ for _key in "${_current_kernels[@]}"; do
         # we move from an initial release to a kernel subversion update
         sed -i "s|#\"\$patch_site\"|\"\$patch_site\"|g" PKGBUILD
         old_kernel_patch_shasum="#upcoming_kernel_patch_sha256"
-        new_kernel_patch_shasum="'$(curl -sL https://cdn.kernel.org/pub/linux/kernel/v5.x/patch-${_key}.${latest_subver}.xz | sha256sum | cut -d' ' -f1)'"
+        new_kernel_patch_shasum="'$(cat v${kver_major}.x.sha256sums | grep patch-${_key}.${latest_subver}.xz | cut -d' ' -f1)'"
       else
-        old_kernel_patch_shasum="$(curl -sL https://cdn.kernel.org/pub/linux/kernel/v5.x/patch-${_key}.${current_subver}.xz | sha256sum | cut -d' ' -f1)"
-        new_kernel_patch_shasum="$(curl -sL https://cdn.kernel.org/pub/linux/kernel/v5.x/patch-${_key}.${latest_subver}.xz | sha256sum | cut -d' ' -f1)"
+        old_kernel_patch_shasum="$(cat v${kver_major}.x.sha256sums | grep patch-${_key}.${current_subver}.xz | cut -d' ' -f1)"
+        new_kernel_patch_shasum="$(cat v${kver_major}.x.sha256sums | grep patch-${_key}.${latest_subver}.xz | cut -d' ' -f1)"
       fi
     fi
   else
