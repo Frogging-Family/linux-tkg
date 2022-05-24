@@ -172,6 +172,7 @@ _set_cpu_scheduler() {
     ["muqss"]="MuQSS (Multiple Queue Skiplist Scheduler)"
     ["upds"]="Undead PDS (TkG)"
     ["cacule"]="CacULE"
+    ["tt"]="TT (TaskType)"
   )
 
   # CPU SCHED selector
@@ -192,11 +193,13 @@ _set_cpu_scheduler() {
   elif [ "$_basever" = "514" ]; then
     _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
   elif [ "$_basever" = "515" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
+    _avail_cpu_scheds=("pds" "bmq" "cacule" "tt" "cfs")
   elif [ "$_basever" = "516" ]; then
     _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
   elif [ "$_basever" = "517" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
+    _avail_cpu_scheds=("pds" "bmq" "cacule" "tt" "cfs")
+  elif [ "$_basever" = "518" ]; then
+    _avail_cpu_scheds=("tt" "cfs")
   else
     _avail_cpu_scheds=("cfs")
   fi
@@ -605,8 +608,27 @@ _tkg_srcprep() {
       tkgpatch="$srcdir/cacule-${_basekernel}.patch" && _tkg_patcher
       tkgpatch="$srcdir/0001-cacULE-${_basekernel}.patch" && _tkg_patcher
     fi
-    _msg="Applying Glitched CFS patch"
-    tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
+  elif [ "${_cpusched}" = "tt" ]; then
+    _msg="Applying TT patch"
+    if [ "${_distro}" = "Void" ]; then
+      if [[ $_basever = 515 ]]; then
+        curl --output-dir "$wrksrc" -o "tt.patch" "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/TT/0001-tt-r3.patch"
+      elif [[ $_basever = 517 ]]; then
+        curl --output-dir "$wrksrc" -o "tt.patch" "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt.patch"
+      else
+        curl --output-dir "$wrksrc" -o "tt.patch" "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt-${_basekernel}.patch"
+      fi
+      tkgpatch="$wrksrc/tt.patch" && _tkg_patcher
+    else
+      if [[ $_basever = 515 ]]; then
+         curl --output-dir "$srcdir" -o "tt.patch" "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/TT/0001-tt-r3.patch"
+      elif [[ $_basever = 517 ]]; then
+         curl --output-dir "$srcdir" -o "tt.patch" "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt.patch"
+      else
+         curl --output-dir "$srcdir" -o "tt.patch" "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt-${_basekernel}.patch"
+      fi
+      tkgpatch="$srcdir/tt.patch" && _tkg_patcher
+    fi
   elif [ "${_cpusched}" = "cfs" ]; then
     _msg="Applying Glitched CFS patch"
     tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
@@ -615,7 +637,7 @@ _tkg_srcprep() {
   fi
 
   fi
-
+  
   if [ -z "${_configfile}" ]; then
     msg2 "Using archlinux's default config file for kernel ${_basekernel}"
     cat "${srcdir}"/config.x86_64 > ./.config
@@ -815,6 +837,9 @@ _tkg_srcprep() {
       _enable "CACULE_RDB"
       scripts/config --set-val "RDB_INTERVAL" "$_cacule_rdb_interval"
     fi
+  elif [ "${_cpusched}" = "tt" ]; then
+    _enable "TT_SCHED"
+    _enable "TT_ACCOUNTING_STATS"
   elif [ "${_cpusched}" = "upds" ]; then
     # PDS default config
     _enable "SCHED_PDS"
@@ -1022,6 +1047,7 @@ _tkg_srcprep() {
     ["pds"]="3"
     ["muqss"]="1"
     ["cacule"]="5"
+    ["tt"]="5"
     ["upds"]="3"
     ["cfs"]="3"
     ["bmq"]="3"
