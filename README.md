@@ -94,6 +94,13 @@ The script will use a slightly modified Arch config from the `linux-tkg-config` 
 **Note:** the `base-devel` package group is expected to be installed, see [here](https://wiki.archlinux.org/title/Makepkg) for more information.
 
 #### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
+
+**Important notes:** 
+- Some issues have been reported by both Fedora (see #383) and Ubuntu (see #436) users where stock kernels cannot boot any longer, the whereabouts are still not entirely clear (it does not seem to affect every user)
+  - Ubuntu: appears to be an initramfs generation issue
+  - Fedora: needs disabling then re-enabling SELINUX so one can boot
+- Fedora + Nvidia users: Fedora's `akmod` nvidia packages do not work with `linux-tkg` (see #375). `linux-tkg` requires Nvidias official `.run` installer (that uses `dkms` instead of `akmod`) to properly work with Nvidia.
+
 The interactive `install.sh` script will create, depending on the selected distro, `.deb` or `.rpm` packages, move them in the the subfolder `DEBS` or `RPMS` then prompts to install them with the distro's package manager.
 ```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
