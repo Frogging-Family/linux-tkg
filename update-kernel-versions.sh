@@ -8,8 +8,8 @@ escape() {
   _escaped=$(printf '%s\n' "$1" | sed -e 's/[]\/$*.^[]/\\&/g')
 }
 
-kernel_git_tags=$(git -c 'versionsort.suffix=-' \
-    ls-remote --exit-code --refs --sort='version:refname' --tags https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git '*.*' \
+kernel_rc_tags=$(git -c 'versionsort.suffix=-' \
+    ls-remote --exit-code --refs --sort='version:refname' --tags https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git '*.*' \
     | cut --delimiter='/' --fields=3)
 
 source linux-tkg-config/prepare
@@ -28,7 +28,7 @@ if [ ! -s gnupg/keyring.gpg ]; then
     mkdir -p -m 0700 gnupg
   fi
   echo "Making sure we have all the necessary keys"
-  gpg --batch --quiet --homedir gnupg --auto-key-locate wkd --locate-keys torvalds@kernel.org gregkh@kernel.org autosigner@kernel.org
+  gpg --batch --quiet --homedir gnupg --auto-key-locate wkd --locate-keys autosigner@kernel.org
   if [[ $? != "0" ]]; then
     echo "FAILED to retrieve keys"
     exit 3
@@ -69,7 +69,7 @@ for _key in "${_current_kernels[@]}"; do
   if [[ "${_kver_subver_map[$_key]}" == rc* ]]; then
     # check if latest_full_ver is non-RC
     if [ ! -n "$latest_full_ver" ]; then
-      latest_full_ver=$(echo "$kernel_git_tags" | grep -F "v$_key-rc" | tail -1 | cut -c2-)
+      latest_full_ver=$(echo "$kernel_rc_tags" | grep -F "v$_key-rc" | tail -1 | cut -c2-)
     fi
     if [[ "$latest_full_ver" == *rc* ]]; then
       latest_subver="${latest_full_ver##*-rc}"
