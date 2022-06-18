@@ -706,7 +706,7 @@ case $_basever in
         #0007-v5.16-fsync.patch
         0007-v5.17-fsync1_via_futex_waitv.patch
         0007-v5.17-winesync.patch
-        #0008-5.14-bcachefs.patch
+        0008-5.17-bcachefs.patch
         0009-glitched-ondemand-bmq.patch
         0009-glitched-bmq.patch
         0009-prjc_v5.17-r0.patch
@@ -718,7 +718,7 @@ case $_basever in
     )
     sha256sums=('555fef61dddb591a83d62dd04e252792f9af4ba9ef14683f64840e46fa20b1b1'
             '2c249d6ecebe7aa2fd5ac8bde8a313a033659ad1fbeeab1d04659e4d814b7bb9'
-            '56a0ef6e05f59fbf45af0c01c506793aa7fae8d9b6d26d8fe3e8f7e95cf6f0cb'
+            '7ae1ad6d552290aec9701167e705417cebcc861a3de527b4c9f234ece248f334'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
@@ -731,6 +731,7 @@ case $_basever in
             #'4503034f211de3013f8500106da753e5d1bcac14bc5576671cbe6f574805b3cd'
             '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
             '4a52785cca539b37c1250e6e6776dda13dc43bb6ec8991b7c1ed3bff42e289d7'
+            'ea4902ab59798481dcf9ecb04570c347dd8eff1179105c45563649c7a901da3f'
             '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
             'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
             'ba65acd3f1168a7479e3665b5b13f7d1066e713eadb5a0e5110423ba97d7ccd3'
