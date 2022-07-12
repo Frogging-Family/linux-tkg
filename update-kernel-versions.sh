@@ -24,7 +24,7 @@ fi
 ## Generate the keyring
 if [ ! -s gnupg/keyring.gpg ]; then
   if [[ ! -d gnupg ]]; then
-    echo "gnupg directory does not exist"
+    #echo "gnupg directory does not exist"
     mkdir -p -m 0700 gnupg
   fi
   echo "Making sure we have all the necessary keys"
@@ -48,11 +48,14 @@ for _key in "${_current_kernels[@]}"; do
   ## Getting sha256sums by sha256sums.asc
   if [ ! -s v${kver_major}.x.sha256sums ]; then
     echo "Downloading the checksums file for linux-v${kver_major}.x"
-    curl -sL --retry 2 -o "v${kver_major}.x.sha256sums.asc" https://cdn.kernel.org/pub/linux/kernel/v${kver_major}.x/sha256sums.asc
+    curl -siL --retry 2 -o "v${kver_major}.x.sha256sums.asc" https://cdn.kernel.org/pub/linux/kernel/v${kver_major}.x/sha256sums.asc
     if [[ $? != "0" ]]; then
       echo "FAILED to download the v${kver_major}.x checksums file"
       exit 3
     fi
+    echo "Current time:    " `date +" %a, %d %b %Y %H:%M:%S %Z"`
+    echo "Remote timestamp:" `grep -i Last-Modified "v${kver_major}.x.sha256sums.asc" | cut -d':' -f2-`
+    echo "----------------------"
     echo "Verifying the v${kver_major}.x checksums file"
     count_gpg=$(gpg --homedir gnupg --keyring=gnupg/keyring.gpg --status-fd=1 v${kver_major}.x.sha256sums.asc | grep -c -E '^\[GNUPG:\] (GOODSIG|VALIDSIG)')
     if [[ ${count_gpg} -lt 2 ]]; then
