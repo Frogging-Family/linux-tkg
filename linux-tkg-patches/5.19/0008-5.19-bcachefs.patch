@@ -1,7 +1,7 @@
-From 98a9e9a069c0619986de099d587dae0158d82eac Mon Sep 17 00:00:00 2001
+From db2079ca2ce5000c3dfe3656c1c7f580b053a325 Mon Sep 17 00:00:00 2001
 From: Peter Jung <admin@ptr1337.dev>
-Date: Fri, 22 Jul 2022 14:22:01 +0200
-Subject: [PATCH] 5.18-bcachefs
+Date: Fri, 22 Jul 2022 14:23:53 +0200
+Subject: [PATCH] 5.19-bcachefs
 
 Signed-off-by: Peter Jung <admin@ptr1337.dev>
 ---
@@ -214,7 +214,7 @@ Signed-off-by: Peter Jung <admin@ptr1337.dev>
  kernel/locking/Makefile                       |    1 +
  kernel/locking/lockdep.c                      |   20 +
  kernel/locking/six.c                          |  759 ++++
- kernel/module.c                               |    4 +-
+ kernel/module/main.c                          |    4 +-
  kernel/stacktrace.c                           |    2 +
  kernel/trace/trace.c                          |   45 +-
  kernel/trace/trace_dynevent.c                 |   34 +-
@@ -524,19 +524,19 @@ index 5e89497ba314..4f4a35b3aadc 100644
  ======
  
 diff --git a/arch/powerpc/kernel/process.c b/arch/powerpc/kernel/process.c
-index 9be279469a85..4212864c81d5 100644
+index 0fbda89cd1bb..05654dbeb2c4 100644
 --- a/arch/powerpc/kernel/process.c
 +++ b/arch/powerpc/kernel/process.c
-@@ -39,7 +39,7 @@
+@@ -37,7 +37,7 @@
+ #include <linux/hw_breakpoint.h>
  #include <linux/uaccess.h>
- #include <linux/elf-randomize.h>
  #include <linux/pkeys.h>
 -#include <linux/seq_buf.h>
 +#include <linux/printbuf.h>
  
  #include <asm/interrupt.h>
  #include <asm/io.h>
-@@ -1399,32 +1399,30 @@ void show_user_instructions(struct pt_regs *regs)
+@@ -1396,32 +1396,30 @@ void show_user_instructions(struct pt_regs *regs)
  {
  	unsigned long pc;
  	int n = NR_INSN_TO_PRINT;
@@ -818,7 +818,7 @@ index 82cae08976bc..fe2b41858b5f 100644
  DEVICE_ATTR_RO(flags);
  
 diff --git a/arch/x86/kernel/cpu/resctrl/rdtgroup.c b/arch/x86/kernel/cpu/resctrl/rdtgroup.c
-index 83f901e2c2df..5b6720b6a417 100644
+index f276aff521e8..50c12711a249 100644
 --- a/arch/x86/kernel/cpu/resctrl/rdtgroup.c
 +++ b/arch/x86/kernel/cpu/resctrl/rdtgroup.c
 @@ -19,7 +19,7 @@
@@ -885,10 +885,10 @@ index 83f901e2c2df..5b6720b6a417 100644
  	ret = rdtgroup_setup_root();
  	if (ret)
 diff --git a/block/bio.c b/block/bio.c
-index d3ca79c3ebdf..8779a80f8156 100644
+index 51c99f2c5c90..2d0d7f13d59a 100644
 --- a/block/bio.c
 +++ b/block/bio.c
-@@ -553,15 +553,15 @@ struct bio *bio_kmalloc(gfp_t gfp_mask, unsigned short nr_iovecs)
+@@ -582,15 +582,15 @@ struct bio *bio_kmalloc(unsigned short nr_vecs, gfp_t gfp_mask)
  }
  EXPORT_SYMBOL(bio_kmalloc);
  
@@ -907,7 +907,7 @@ index d3ca79c3ebdf..8779a80f8156 100644
  
  /**
   * bio_truncate - truncate the bio to small size of @new_size
-@@ -1333,17 +1333,27 @@ EXPORT_SYMBOL(__bio_advance);
+@@ -1363,17 +1363,27 @@ EXPORT_SYMBOL(__bio_advance);
  void bio_copy_data_iter(struct bio *dst, struct bvec_iter *dst_iter,
  			struct bio *src, struct bvec_iter *src_iter)
  {
@@ -943,7 +943,7 @@ index d3ca79c3ebdf..8779a80f8156 100644
  
  		bio_advance_iter_single(src, src_iter, bytes);
  		bio_advance_iter_single(dst, dst_iter, bytes);
-@@ -1417,6 +1427,7 @@ void bio_set_pages_dirty(struct bio *bio)
+@@ -1447,6 +1457,7 @@ void bio_set_pages_dirty(struct bio *bio)
  			set_page_dirty_lock(bvec->bv_page);
  	}
  }
@@ -951,7 +951,7 @@ index d3ca79c3ebdf..8779a80f8156 100644
  
  /*
   * bio_check_pages_dirty() will check that all the BIO's pages are still dirty.
-@@ -1476,6 +1487,7 @@ void bio_check_pages_dirty(struct bio *bio)
+@@ -1506,6 +1517,7 @@ void bio_check_pages_dirty(struct bio *bio)
  	spin_unlock_irqrestore(&bio_dirty_lock, flags);
  	schedule_work(&bio_dirty_work);
  }
@@ -960,7 +960,7 @@ index d3ca79c3ebdf..8779a80f8156 100644
  static inline bool bio_remaining_done(struct bio *bio)
  {
 diff --git a/block/blk-core.c b/block/blk-core.c
-index a7329475aba2..a0929889cf27 100644
+index 27fb1357ad4b..7697abda9fad 100644
 --- a/block/blk-core.c
 +++ b/block/blk-core.c
 @@ -207,6 +207,7 @@ const char *blk_status_to_str(blk_status_t status)
@@ -972,7 +972,7 @@ index a7329475aba2..a0929889cf27 100644
  /**
   * blk_sync_queue - cancel any pending callbacks on a queue
 diff --git a/block/blk.h b/block/blk.h
-index 8ccbc6e07636..16067c4ac775 100644
+index 434017701403..066fd89c916b 100644
 --- a/block/blk.h
 +++ b/block/blk.h
 @@ -240,7 +240,6 @@ static inline void blk_integrity_del(struct gendisk *disk)
@@ -984,7 +984,7 @@ index 8ccbc6e07636..16067c4ac775 100644
  bool blk_attempt_plug_merge(struct request_queue *q, struct bio *bio,
  		unsigned int nr_segs);
 diff --git a/drivers/acpi/apei/erst-dbg.c b/drivers/acpi/apei/erst-dbg.c
-index c740f0faad39..90aa034dceb0 100644
+index 8bc71cdc2270..370993c9c381 100644
 --- a/drivers/acpi/apei/erst-dbg.c
 +++ b/drivers/acpi/apei/erst-dbg.c
 @@ -11,6 +11,7 @@
@@ -996,12 +996,12 @@ index c740f0faad39..90aa034dceb0 100644
  #include <linux/module.h>
  #include <linux/uaccess.h>
 diff --git a/drivers/block/loop.c b/drivers/block/loop.c
-index 4e1dce3beab0..0e822f3ef912 100644
+index 084f9b8a0ba3..7a420623ac38 100644
 --- a/drivers/block/loop.c
 +++ b/drivers/block/loop.c
-@@ -1153,8 +1153,6 @@ static void __loop_clr_fd(struct loop_device *lo, bool release)
- 	module_put(THIS_MODULE);
- 	blk_mq_unfreeze_queue(lo->lo_queue);
+@@ -1166,8 +1166,6 @@ static void __loop_clr_fd(struct loop_device *lo, bool release)
+ 	if (!release)
+ 		blk_mq_unfreeze_queue(lo->lo_queue);
  
 -	disk_force_media_change(lo->lo_disk, DISK_EVENT_MEDIA_CHANGE);
 -
@@ -1009,7 +1009,7 @@ index 4e1dce3beab0..0e822f3ef912 100644
  		int err;
  
 diff --git a/drivers/clk/tegra/clk-bpmp.c b/drivers/clk/tegra/clk-bpmp.c
-index 6ecf18f71c32..301551174c13 100644
+index 3748a39dae7c..7e3b48ed9d45 100644
 --- a/drivers/clk/tegra/clk-bpmp.c
 +++ b/drivers/clk/tegra/clk-bpmp.c
 @@ -5,7 +5,7 @@
@@ -1021,7 +1021,7 @@ index 6ecf18f71c32..301551174c13 100644
  #include <linux/slab.h>
  
  #include <soc/tegra/bpmp.h>
-@@ -360,39 +360,38 @@ static void tegra_bpmp_clk_info_dump(struct tegra_bpmp *bpmp,
+@@ -365,39 +365,38 @@ static void tegra_bpmp_clk_info_dump(struct tegra_bpmp *bpmp,
  				     const struct tegra_bpmp_clk_info *info)
  {
  	const char *prefix = "";
@@ -1159,7 +1159,7 @@ index 5b87e59676b8..054e8a33a7ab 100644
 +	journal.o movinggc.o request.o stats.o super.o sysfs.o trace.o\
  	util.o writeback.o features.o
 diff --git a/drivers/md/bcache/bcache.h b/drivers/md/bcache/bcache.h
-index 9ed9c955add7..dbb72beb036c 100644
+index 2acda9cea0f9..bf96b3e6b6eb 100644
 --- a/drivers/md/bcache/bcache.h
 +++ b/drivers/md/bcache/bcache.h
 @@ -179,6 +179,7 @@
@@ -1179,10 +1179,10 @@ index 9ed9c955add7..dbb72beb036c 100644
  struct bucket {
  	atomic_t	pin;
 diff --git a/drivers/md/bcache/super.c b/drivers/md/bcache/super.c
-index 2bb55278d22d..4a517301db08 100644
+index 3563d15dbaf2..9249aba333bc 100644
 --- a/drivers/md/bcache/super.c
 +++ b/drivers/md/bcache/super.c
-@@ -2914,7 +2914,6 @@ static int __init bcache_init(void)
+@@ -2913,7 +2913,6 @@ static int __init bcache_init(void)
  		goto err;
  
  	bch_debug_init();
@@ -1212,7 +1212,7 @@ index 6f3cb7c92130..f61ab1bada6c 100644
  
  #ifdef CONFIG_BCACHE_DEBUG
 diff --git a/drivers/pci/p2pdma.c b/drivers/pci/p2pdma.c
-index 30b1df3c9d2f..3b7a6ca44668 100644
+index 462b429ad243..f06328035b9c 100644
 --- a/drivers/pci/p2pdma.c
 +++ b/drivers/pci/p2pdma.c
 @@ -17,7 +17,7 @@
@@ -1239,7 +1239,7 @@ index 30b1df3c9d2f..3b7a6ca44668 100644
  }
  
  static bool cpu_supports_p2pdma(void)
-@@ -455,13 +452,11 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
+@@ -460,13 +457,11 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
  	struct pci_dev *a = provider, *b = client, *bb;
  	bool acs_redirects = false;
  	struct pci_p2pdma *p2pdma;
@@ -1254,7 +1254,7 @@ index 30b1df3c9d2f..3b7a6ca44668 100644
  
  	/*
  	 * Note, we don't need to take references to devices returned by
-@@ -472,7 +467,7 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
+@@ -477,7 +472,7 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
  		dist_b = 0;
  
  		if (pci_bridge_has_acs_redir(a)) {
@@ -1263,7 +1263,7 @@ index 30b1df3c9d2f..3b7a6ca44668 100644
  			acs_cnt++;
  		}
  
-@@ -501,7 +496,7 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
+@@ -506,7 +501,7 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
  			break;
  
  		if (pci_bridge_has_acs_redir(bb)) {
@@ -1272,7 +1272,7 @@ index 30b1df3c9d2f..3b7a6ca44668 100644
  			acs_cnt++;
  		}
  
-@@ -516,11 +511,11 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
+@@ -521,11 +516,11 @@ calc_map_type_and_dist(struct pci_dev *provider, struct pci_dev *client,
  	}
  
  	if (verbose) {
@@ -1287,7 +1287,7 @@ index 30b1df3c9d2f..3b7a6ca44668 100644
  	acs_redirects = true;
  
 diff --git a/fs/Kconfig b/fs/Kconfig
-index 30b751c7f11a..1160311af303 100644
+index 5976eb33535f..6d2c4231494a 100644
 --- a/fs/Kconfig
 +++ b/fs/Kconfig
 @@ -40,6 +40,7 @@ source "fs/ocfs2/Kconfig"
@@ -82286,10 +82286,10 @@ index bd4da9c5207e..ac0da28a1ac6 100644
  					14,
  					HASH_ZERO,
 diff --git a/include/linux/bio.h b/include/linux/bio.h
-index 00450fd86bb4..c11103a8720a 100644
+index 992ee987f273..6d5acc1b407f 100644
 --- a/include/linux/bio.h
 +++ b/include/linux/bio.h
-@@ -483,7 +483,12 @@ extern void bio_copy_data_iter(struct bio *dst, struct bvec_iter *dst_iter,
+@@ -480,7 +480,12 @@ extern void bio_copy_data_iter(struct bio *dst, struct bvec_iter *dst_iter,
  extern void bio_copy_data(struct bio *dst, struct bio *src);
  extern void bio_free_pages(struct bio *bio);
  void guard_bio_eod(struct bio *bio);
@@ -82304,10 +82304,10 @@ index 00450fd86bb4..c11103a8720a 100644
  static inline void bio_release_pages(struct bio *bio, bool mark_dirty)
  {
 diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
-index 108e3d114bfc..20f76bd27b9a 100644
+index 2f7b43444c5f..4ef515977abc 100644
 --- a/include/linux/blkdev.h
 +++ b/include/linux/blkdev.h
-@@ -873,6 +873,7 @@ extern const char *blk_op_str(unsigned int op);
+@@ -884,6 +884,7 @@ extern const char *blk_op_str(unsigned int op);
  
  int blk_status_to_errno(blk_status_t status);
  blk_status_t errno_to_blk_status(int errno);
@@ -82478,10 +82478,10 @@ index fe848901fcc3..5a3cc0e1da9b 100644
  	 * 128 bit child FID (struct lu_fid)
  	 * 128 bit parent FID (struct lu_fid)
 diff --git a/include/linux/fs.h b/include/linux/fs.h
-index bbde95387a23..98f62ebf9224 100644
+index 9ad5e3520fae..1f7671a674e3 100644
 --- a/include/linux/fs.h
 +++ b/include/linux/fs.h
-@@ -637,7 +637,8 @@ struct inode {
+@@ -630,7 +630,8 @@ struct inode {
  	unsigned long		dirtied_when;	/* jiffies of first dirtying */
  	unsigned long		dirtied_time_when;
  
@@ -82491,7 +82491,7 @@ index bbde95387a23..98f62ebf9224 100644
  	struct list_head	i_io_list;	/* backing dev IO list */
  #ifdef CONFIG_CGROUP_WRITEBACK
  	struct bdi_writeback	*i_wb;		/* the associated cgroup wb */
-@@ -703,7 +704,7 @@ static inline unsigned int i_blocksize(const struct inode *node)
+@@ -696,7 +697,7 @@ static inline unsigned int i_blocksize(const struct inode *node)
  
  static inline int inode_unhashed(struct inode *inode)
  {
@@ -82500,7 +82500,7 @@ index bbde95387a23..98f62ebf9224 100644
  }
  
  /*
-@@ -714,7 +715,7 @@ static inline int inode_unhashed(struct inode *inode)
+@@ -707,7 +708,7 @@ static inline int inode_unhashed(struct inode *inode)
   */
  static inline void inode_fake_hash(struct inode *inode)
  {
@@ -82509,7 +82509,7 @@ index bbde95387a23..98f62ebf9224 100644
  }
  
  /*
-@@ -2975,7 +2976,7 @@ static inline void insert_inode_hash(struct inode *inode)
+@@ -2974,7 +2975,7 @@ static inline void insert_inode_hash(struct inode *inode)
  extern void __remove_inode_hash(struct inode *);
  static inline void remove_inode_hash(struct inode *inode)
  {
@@ -82698,10 +82698,10 @@ index ae1b541446c9..8ee2bf5af131 100644
  {
  	bit_spin_lock(0, (unsigned long *)b);
 diff --git a/include/linux/lockdep.h b/include/linux/lockdep.h
-index 467b94257105..c46b0c76c064 100644
+index b6829b970093..5b90b2abd326 100644
 --- a/include/linux/lockdep.h
 +++ b/include/linux/lockdep.h
-@@ -336,6 +336,8 @@ extern void lock_unpin_lock(struct lockdep_map *lock, struct pin_cookie);
+@@ -335,6 +335,8 @@ extern void lock_unpin_lock(struct lockdep_map *lock, struct pin_cookie);
  #define lockdep_repin_lock(l,c)	lock_repin_lock(&(l)->dep_map, (c))
  #define lockdep_unpin_lock(l,c)	lock_unpin_lock(&(l)->dep_map, (c))
  
@@ -83025,10 +83025,10 @@ index 000000000000..861c5d75f852
 +
 +#endif /* _LINUX_PRINTBUF_H */
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index a8911b1f35aa..252bac976763 100644
+index c46f3a63b758..5038c87db740 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -859,6 +859,7 @@ struct task_struct {
+@@ -857,6 +857,7 @@ struct task_struct {
  
  	struct mm_struct		*mm;
  	struct mm_struct		*active_mm;
@@ -83456,7 +83456,7 @@ index 000000000000..477c33eb00d7
 +
 +#endif /* _LINUX_SIX_H */
 diff --git a/include/linux/string.h b/include/linux/string.h
-index b6572aeca2f5..0a737d5b9203 100644
+index 61ec7e4f6311..22a45d553fbc 100644
 --- a/include/linux/string.h
 +++ b/include/linux/string.h
 @@ -195,7 +195,12 @@ int __sysfs_match_string(const char * const *array, size_t n, const char *s);
@@ -83598,7 +83598,7 @@ index 5a2c650d9e1c..d2b51007b3b9 100644
  
  extern void trace_seq_bitmask(struct trace_seq *s, const unsigned long *maskp,
 diff --git a/include/linux/vmalloc.h b/include/linux/vmalloc.h
-index b159c2789961..0f4151e98331 100644
+index 096d48aa3437..8d11e2e4ddc8 100644
 --- a/include/linux/vmalloc.h
 +++ b/include/linux/vmalloc.h
 @@ -144,6 +144,7 @@ extern void *vzalloc(unsigned long size) __alloc_size(1);
@@ -84776,10 +84776,10 @@ index d51cabf28f38..cadbf6520c4b 100644
  obj-$(CONFIG_LOCK_EVENT_COUNTS) += lock_events.o
 +obj-$(CONFIG_SIXLOCKS) += six.o
 diff --git a/kernel/locking/lockdep.c b/kernel/locking/lockdep.c
-index c06cab6546ed..9426050d30d9 100644
+index f06b91ca6482..0b1a3a949b47 100644
 --- a/kernel/locking/lockdep.c
 +++ b/kernel/locking/lockdep.c
-@@ -6459,6 +6459,26 @@ void debug_check_no_locks_held(void)
+@@ -6483,6 +6483,26 @@ void debug_check_no_locks_held(void)
  }
  EXPORT_SYMBOL_GPL(debug_check_no_locks_held);
  
@@ -85571,11 +85571,11 @@ index 000000000000..fca1208720b6
 +#endif
 +}
 +EXPORT_SYMBOL_GPL(six_lock_pcpu_alloc);
-diff --git a/kernel/module.c b/kernel/module.c
-index 6529c84c536f..df4959bda595 100644
---- a/kernel/module.c
-+++ b/kernel/module.c
-@@ -2834,9 +2834,7 @@ static void dynamic_debug_remove(struct module *mod, struct _ddebug *debug)
+diff --git a/kernel/module/main.c b/kernel/module/main.c
+index 0548151dd933..55ba98a99387 100644
+--- a/kernel/module/main.c
++++ b/kernel/module/main.c
+@@ -1608,9 +1608,7 @@ static void dynamic_debug_remove(struct module *mod, struct _ddebug *debug)
  
  void * __weak module_alloc(unsigned long size)
  {
@@ -85607,10 +85607,10 @@ index 9ed5ce989415..3428568bb3f1 100644
  /**
   * stack_trace_save_regs - Save a stack trace based on pt_regs into a storage array
 diff --git a/kernel/trace/trace.c b/kernel/trace/trace.c
-index c0c98b0c86e7..9d91153228fd 100644
+index b8dd54627075..26cfe909f9af 100644
 --- a/kernel/trace/trace.c
 +++ b/kernel/trace/trace.c
-@@ -1672,15 +1672,15 @@ static ssize_t trace_seq_to_buffer(struct trace_seq *s, void *buf, size_t cnt)
+@@ -1673,15 +1673,15 @@ static ssize_t trace_seq_to_buffer(struct trace_seq *s, void *buf, size_t cnt)
  {
  	int len;
  
@@ -85630,7 +85630,7 @@ index c0c98b0c86e7..9d91153228fd 100644
  	return cnt;
  }
  
-@@ -3727,11 +3727,7 @@ static bool trace_safe_str(struct trace_iterator *iter, const char *str,
+@@ -3728,11 +3728,7 @@ static bool trace_safe_str(struct trace_iterator *iter, const char *str,
  
  static const char *show_buffer(struct trace_seq *s)
  {
@@ -85643,7 +85643,7 @@ index c0c98b0c86e7..9d91153228fd 100644
  }
  
  static DEFINE_STATIC_KEY_FALSE(trace_no_verify);
-@@ -6770,12 +6766,12 @@ tracing_read_pipe(struct file *filp, char __user *ubuf,
+@@ -6759,12 +6755,12 @@ tracing_read_pipe(struct file *filp, char __user *ubuf,
  	trace_access_lock(iter->cpu_file);
  	while (trace_find_next_entry_inc(iter) != NULL) {
  		enum print_line_t ret;
@@ -85658,7 +85658,7 @@ index c0c98b0c86e7..9d91153228fd 100644
  			break;
  		}
  		if (ret != TRACE_TYPE_NO_CONSUME)
-@@ -6797,7 +6793,7 @@ tracing_read_pipe(struct file *filp, char __user *ubuf,
+@@ -6786,7 +6782,7 @@ tracing_read_pipe(struct file *filp, char __user *ubuf,
  
  	/* Now copy what we have to the user */
  	sret = trace_seq_to_user(&iter->seq, ubuf, cnt);
@@ -85667,7 +85667,7 @@ index c0c98b0c86e7..9d91153228fd 100644
  		trace_seq_init(&iter->seq);
  
  	/*
-@@ -6823,16 +6819,15 @@ static size_t
+@@ -6812,16 +6808,15 @@ static size_t
  tracing_fill_pipe_page(size_t rem, struct trace_iterator *iter)
  {
  	size_t count;
@@ -85686,7 +85686,7 @@ index c0c98b0c86e7..9d91153228fd 100644
  			break;
  		}
  
-@@ -6842,14 +6837,14 @@ tracing_fill_pipe_page(size_t rem, struct trace_iterator *iter)
+@@ -6831,14 +6826,14 @@ tracing_fill_pipe_page(size_t rem, struct trace_iterator *iter)
  		 * anyway to be safe.
  		 */
  		if (ret == TRACE_TYPE_PARTIAL_LINE) {
@@ -85704,7 +85704,7 @@ index c0c98b0c86e7..9d91153228fd 100644
  			break;
  		}
  
-@@ -9826,20 +9821,8 @@ static struct notifier_block trace_die_notifier = {
+@@ -9827,20 +9822,8 @@ static struct notifier_block trace_die_notifier = {
  void
  trace_printk_seq(struct trace_seq *s)
  {
@@ -85727,10 +85727,10 @@ index c0c98b0c86e7..9d91153228fd 100644
  	printk(KERN_TRACE "%s", s->buffer);
  
 diff --git a/kernel/trace/trace_dynevent.c b/kernel/trace/trace_dynevent.c
-index e34e8182ee4b..eabeeb97b55e 100644
+index 076b447a1b88..30a106c16871 100644
 --- a/kernel/trace/trace_dynevent.c
 +++ b/kernel/trace/trace_dynevent.c
-@@ -295,21 +295,19 @@ int dynevent_arg_add(struct dynevent_cmd *cmd,
+@@ -290,21 +290,19 @@ int dynevent_arg_add(struct dynevent_cmd *cmd,
  		     struct dynevent_arg *arg,
  		     dynevent_check_arg_fn_t check_arg)
  {
@@ -85756,7 +85756,7 @@ index e34e8182ee4b..eabeeb97b55e 100644
  }
  
  /**
-@@ -340,25 +338,23 @@ int dynevent_arg_pair_add(struct dynevent_cmd *cmd,
+@@ -335,25 +333,23 @@ int dynevent_arg_pair_add(struct dynevent_cmd *cmd,
  			  struct dynevent_arg_pair *arg_pair,
  			  dynevent_check_arg_fn_t check_arg)
  {
@@ -85788,7 +85788,7 @@ index e34e8182ee4b..eabeeb97b55e 100644
  }
  
  /**
-@@ -373,15 +369,13 @@ int dynevent_arg_pair_add(struct dynevent_cmd *cmd,
+@@ -368,15 +364,13 @@ int dynevent_arg_pair_add(struct dynevent_cmd *cmd,
   */
  int dynevent_str_add(struct dynevent_cmd *cmd, const char *str)
  {
@@ -85807,7 +85807,7 @@ index e34e8182ee4b..eabeeb97b55e 100644
  }
  
  /**
-@@ -410,7 +404,7 @@ void dynevent_cmd_init(struct dynevent_cmd *cmd, char *buf, int maxlen,
+@@ -405,7 +399,7 @@ void dynevent_cmd_init(struct dynevent_cmd *cmd, char *buf, int maxlen,
  {
  	memset(cmd, '\0', sizeof(*cmd));
  
@@ -85817,7 +85817,7 @@ index e34e8182ee4b..eabeeb97b55e 100644
  	cmd->run_command = run_command;
  }
 diff --git a/kernel/trace/trace_events_filter.c b/kernel/trace/trace_events_filter.c
-index b458a9afa2c0..70cfd1241018 100644
+index 4b1057ab9d96..9d5137df1a15 100644
 --- a/kernel/trace/trace_events_filter.c
 +++ b/kernel/trace/trace_events_filter.c
 @@ -1059,7 +1059,7 @@ static void append_filter_err(struct trace_array *tr,
@@ -85928,7 +85928,7 @@ index 203204cadf92..9f270fdde99b 100644
  
  	trace_seq_puts(s, " */\n");
 diff --git a/kernel/trace/trace_kprobe.c b/kernel/trace/trace_kprobe.c
-index 13439743285c..6e4485b042d8 100644
+index a245ea673715..c9f03c2d7c91 100644
 --- a/kernel/trace/trace_kprobe.c
 +++ b/kernel/trace/trace_kprobe.c
 @@ -915,7 +915,7 @@ static int create_or_delete_trace_kprobe(const char *raw_command)
@@ -86220,7 +86220,7 @@ index 9c90b3a7dce2..48c08f29c342 100644
  		return 0;
  	}
 diff --git a/lib/Kconfig b/lib/Kconfig
-index 55f0bba8f8c0..9161ac314358 100644
+index eaaad4d85bf2..8eb7050fb422 100644
 --- a/lib/Kconfig
 +++ b/lib/Kconfig
 @@ -491,6 +491,9 @@ config ASSOCIATIVE_ARRAY
@@ -86234,10 +86234,10 @@ index 55f0bba8f8c0..9161ac314358 100644
  	bool
  	depends on !NO_IOMEM
 diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
-index 7e282970177a..2bef39841f8e 100644
+index 2e24db4bff19..1d4ed12a5355 100644
 --- a/lib/Kconfig.debug
 +++ b/lib/Kconfig.debug
-@@ -1723,6 +1723,15 @@ config DEBUG_CREDENTIALS
+@@ -1646,6 +1646,15 @@ config DEBUG_CREDENTIALS
  
  source "kernel/rcu/Kconfig.debug"
  
@@ -86254,7 +86254,7 @@ index 7e282970177a..2bef39841f8e 100644
  	bool "Force round-robin CPU selection for unbound work items"
  	depends on DEBUG_KERNEL
 diff --git a/lib/Makefile b/lib/Makefile
-index 60843ab661ba..d98f3c92badb 100644
+index f99bf61f8bbc..d24209a59df9 100644
 --- a/lib/Makefile
 +++ b/lib/Makefile
 @@ -30,11 +30,11 @@ endif
@@ -88026,7 +88026,7 @@ index 07309c45f327..ac5f9f0eb4e0 100644
  	kfree(alloced_buffer);
  }
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index 40d26a07a133..dfca8a7c93ed 100644
+index 3c1853a9d1c0..d92a212db2f5 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
 @@ -44,6 +44,7 @@
@@ -88561,7 +88561,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  }
  
  /* Make pointers available for printing early in the boot sequence. */
-@@ -825,8 +850,9 @@ int ptr_to_hashval(const void *ptr, unsigned long *hashval_out)
+@@ -801,8 +826,9 @@ int ptr_to_hashval(const void *ptr, unsigned long *hashval_out)
  	return __ptr_to_hashval(ptr, hashval_out);
  }
  
@@ -88573,7 +88573,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  	const char *str = sizeof(ptr) == 8 ? "(____ptrval____)" : "(ptrval)";
  	unsigned long hashval;
-@@ -837,47 +863,49 @@ static char *ptr_to_id(char *buf, char *end, const void *ptr,
+@@ -813,47 +839,49 @@ static char *ptr_to_id(char *buf, char *end, const void *ptr,
  	 * as they are not actual addresses.
  	 */
  	if (IS_ERR_OR_NULL(ptr))
@@ -88634,7 +88634,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	case 1: {
  		const struct cred *cred;
  
-@@ -888,7 +916,7 @@ char *restricted_pointer(char *buf, char *end, const void *ptr,
+@@ -864,7 +892,7 @@ char *restricted_pointer(char *buf, char *end, const void *ptr,
  		if (in_irq() || in_serving_softirq() || in_nmi()) {
  			if (spec.field_width == -1)
  				spec.field_width = 2 * sizeof(ptr);
@@ -88643,7 +88643,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  		}
  
  		/*
-@@ -914,17 +942,16 @@ char *restricted_pointer(char *buf, char *end, const void *ptr,
+@@ -890,17 +918,16 @@ char *restricted_pointer(char *buf, char *end, const void *ptr,
  		break;
  	}
  
@@ -88666,7 +88666,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	switch (fmt[1]) {
  		case '2': case '3': case '4':
-@@ -936,9 +963,9 @@ char *dentry_name(char *buf, char *end, const struct dentry *d, struct printf_sp
+@@ -912,9 +939,9 @@ char *dentry_name(char *buf, char *end, const struct dentry *d, struct printf_sp
  
  	rcu_read_lock();
  	for (i = 0; i < depth; i++, d = p) {
@@ -88678,7 +88678,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  		}
  
  		p = READ_ONCE(d->d_parent);
-@@ -950,58 +977,46 @@ char *dentry_name(char *buf, char *end, const struct dentry *d, struct printf_sp
+@@ -926,58 +953,46 @@ char *dentry_name(char *buf, char *end, const struct dentry *d, struct printf_sp
  			break;
  		}
  	}
@@ -88756,7 +88756,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  	unsigned long value;
  #ifdef CONFIG_KALLSYMS
-@@ -1024,17 +1039,12 @@ char *symbol_string(char *buf, char *end, void *ptr,
+@@ -1000,17 +1015,12 @@ char *symbol_string(char *buf, char *end, void *ptr,
  	else
  		sprint_symbol_no_offset(sym, value);
  
@@ -88776,7 +88776,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  static const struct printf_spec default_flag_spec = {
  	.base = 16,
  	.precision = -1,
-@@ -1046,23 +1056,9 @@ static const struct printf_spec default_dec_spec = {
+@@ -1022,23 +1032,9 @@ static const struct printf_spec default_dec_spec = {
  	.precision = -1,
  };
  
@@ -88802,7 +88802,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  #ifndef IO_RSRC_PRINTK_SIZE
  #define IO_RSRC_PRINTK_SIZE	6
-@@ -1101,80 +1097,79 @@ char *resource_string(char *buf, char *end, struct resource *res,
+@@ -1077,80 +1073,79 @@ char *resource_string(char *buf, char *end, struct resource *res,
  #define FLAG_BUF_SIZE		(2 * sizeof(res->flags))
  #define DECODED_BUF_SIZE	sizeof("[mem - 64bit pref window disabled]")
  #define RAW_BUF_SIZE		sizeof("[mem - flags 0x]")
@@ -88919,7 +88919,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	switch (fmt[1]) {
  	case 'C':
-@@ -1191,41 +1186,21 @@ char *hex_string(char *buf, char *end, u8 *addr, struct printf_spec spec,
+@@ -1167,41 +1162,21 @@ char *hex_string(char *buf, char *end, u8 *addr, struct printf_spec spec,
  		break;
  	}
  
@@ -88967,7 +88967,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	chunksz = nr_bits & (CHUNKSZ - 1);
  	if (chunksz == 0)
-@@ -1241,63 +1216,53 @@ char *bitmap_string(char *buf, char *end, unsigned long *bitmap,
+@@ -1217,63 +1192,53 @@ char *bitmap_string(char *buf, char *end, unsigned long *bitmap,
  		bit = i % BITS_PER_LONG;
  		val = (bitmap[word] >> bit) & chunkmask;
  
@@ -89049,7 +89049,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	switch (fmt[1]) {
  	case 'F':
-@@ -1315,25 +1280,23 @@ char *mac_address_string(char *buf, char *end, u8 *addr,
+@@ -1291,25 +1256,23 @@ char *mac_address_string(char *buf, char *end, u8 *addr,
  
  	for (i = 0; i < 6; i++) {
  		if (reversed)
@@ -89084,7 +89084,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	switch (fmt[2]) {
  	case 'h':
-@@ -1357,28 +1320,15 @@ char *ip4_string(char *p, const u8 *addr, const char *fmt)
+@@ -1333,28 +1296,15 @@ char *ip4_string(char *p, const u8 *addr, const char *fmt)
  		break;
  	}
  	for (i = 0; i < 4; i++) {
@@ -89117,7 +89117,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  	int i, j, range;
  	unsigned char zerolength[8];
-@@ -1422,14 +1372,14 @@ char *ip6_compressed_string(char *p, const char *addr)
+@@ -1398,14 +1348,14 @@ char *ip6_compressed_string(char *p, const char *addr)
  	for (i = 0; i < range; i++) {
  		if (i == colonpos) {
  			if (needcolon || i == 0)
@@ -89135,7 +89135,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  			needcolon = false;
  		}
  		/* hex u16 without leading 0s */
-@@ -1438,81 +1388,56 @@ char *ip6_compressed_string(char *p, const char *addr)
+@@ -1414,81 +1364,56 @@ char *ip6_compressed_string(char *p, const char *addr)
  		lo = word & 0xff;
  		if (hi) {
  			if (hi > 0x0f)
@@ -89235,7 +89235,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	fmt++;
  	while (isalpha(*++fmt)) {
-@@ -1532,44 +1457,36 @@ char *ip6_addr_string_sa(char *buf, char *end, const struct sockaddr_in6 *sa,
+@@ -1508,44 +1433,36 @@ char *ip6_addr_string_sa(char *buf, char *end, const struct sockaddr_in6 *sa,
  		}
  	}
  
@@ -89293,7 +89293,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	const u8 *addr = (const u8 *) &sa->sin_addr.s_addr;
  	char fmt4[3] = { fmt[0], '4', 0 };
  
-@@ -1588,30 +1505,27 @@ char *ip4_addr_string_sa(char *buf, char *end, const struct sockaddr_in *sa,
+@@ -1564,30 +1481,27 @@ char *ip4_addr_string_sa(char *buf, char *end, const struct sockaddr_in *sa,
  		}
  	}
  
@@ -89333,7 +89333,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	case 'S': {
  		const union {
  			struct sockaddr		raw;
-@@ -1621,21 +1535,21 @@ char *ip_addr_string(char *buf, char *end, const void *ptr,
+@@ -1597,21 +1511,21 @@ char *ip_addr_string(char *buf, char *end, const void *ptr,
  
  		switch (sa->raw.sa_family) {
  		case AF_INET:
@@ -89361,7 +89361,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  	bool found = true;
  	int count = 1;
-@@ -1643,10 +1557,10 @@ char *escaped_string(char *buf, char *end, u8 *addr, struct printf_spec spec,
+@@ -1619,10 +1533,10 @@ char *escaped_string(char *buf, char *end, u8 *addr, struct printf_spec spec,
  	int len;
  
  	if (spec.field_width == 0)
@@ -89375,7 +89375,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	do {
  		switch (fmt[count++]) {
-@@ -1681,44 +1595,32 @@ char *escaped_string(char *buf, char *end, u8 *addr, struct printf_spec spec,
+@@ -1657,44 +1571,32 @@ char *escaped_string(char *buf, char *end, u8 *addr, struct printf_spec spec,
  		flags = ESCAPE_ANY_NP;
  
  	len = spec.field_width < 0 ? 1 : spec.field_width;
@@ -89430,7 +89430,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	switch (*(++fmt)) {
  	case 'L':
-@@ -1734,60 +1636,54 @@ char *uuid_string(char *buf, char *end, const u8 *addr,
+@@ -1710,60 +1612,54 @@ char *uuid_string(char *buf, char *end, const u8 *addr,
  
  	for (i = 0; i < 16; i++) {
  		if (uc)
@@ -89506,7 +89506,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	orig = get_unaligned(fourcc);
  	val = orig & ~BIT(31);
-@@ -1796,31 +1692,27 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
+@@ -1772,31 +1668,27 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
  		unsigned char c = val >> (i * 8);
  
  		/* Print non-control ASCII characters as-is, dot otherwise */
@@ -89549,7 +89549,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	switch (fmt[1]) {
  	case 'd':
-@@ -1834,55 +1726,44 @@ char *address_val(char *buf, char *end, const void *addr,
+@@ -1810,55 +1702,44 @@ char *address_val(char *buf, char *end, const void *addr,
  		break;
  	}
  
@@ -89623,7 +89623,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	switch (fmt[count]) {
  	case 'd':
-@@ -1910,21 +1791,16 @@ char *rtc_str(char *buf, char *end, const struct rtc_time *tm,
+@@ -1886,21 +1767,16 @@ char *rtc_str(char *buf, char *end, const struct rtc_time *tm,
  	} while (found);
  
  	if (have_d)
@@ -89651,7 +89651,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  	struct rtc_time rtc_time;
  	struct tm tm;
-@@ -1942,47 +1818,47 @@ char *time64_str(char *buf, char *end, const time64_t time,
+@@ -1918,47 +1794,47 @@ char *time64_str(char *buf, char *end, const time64_t time,
  
  	rtc_time.tm_isdst = 0;
  
@@ -89714,7 +89714,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  	unsigned long mask;
  
-@@ -1991,20 +1867,15 @@ char *format_flags(char *buf, char *end, unsigned long flags,
+@@ -1967,20 +1843,15 @@ char *format_flags(char *buf, char *end, unsigned long flags,
  		if ((flags & mask) != mask)
  			continue;
  
@@ -89739,7 +89739,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  }
  
  struct page_flags_fields {
-@@ -2029,20 +1900,18 @@ static const struct page_flags_fields pff[] = {
+@@ -2005,20 +1876,18 @@ static const struct page_flags_fields pff[] = {
  };
  
  static
@@ -89764,7 +89764,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  		append = true;
  	}
  
-@@ -2053,41 +1922,31 @@ char *format_page_flags(char *buf, char *end, unsigned long flags)
+@@ -2029,41 +1898,31 @@ char *format_page_flags(char *buf, char *end, unsigned long flags)
  			continue;
  
  		/* Format: Flag Name + '=' (equals sign) + Number + '|' (separator) */
@@ -89817,7 +89817,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	case 'v':
  		flags = *(unsigned long *)flags_ptr;
  		names = vmaflag_names;
-@@ -2097,15 +1956,15 @@ char *flags_string(char *buf, char *end, void *flags_ptr,
+@@ -2073,15 +1932,15 @@ char *flags_string(char *buf, char *end, void *flags_ptr,
  		names = gfpflag_names;
  		break;
  	default:
@@ -89837,7 +89837,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  {
  	int depth;
  
-@@ -2114,39 +1973,30 @@ char *fwnode_full_name_string(struct fwnode_handle *fwnode, char *buf,
+@@ -2090,39 +1949,30 @@ char *fwnode_full_name_string(struct fwnode_handle *fwnode, char *buf,
  		struct fwnode_handle *__fwnode =
  			fwnode_get_nth_parent(fwnode, depth);
  
@@ -89885,7 +89885,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	/* simple case without anything any more format specifiers */
  	fmt++;
-@@ -2154,55 +2004,48 @@ char *device_node_string(char *buf, char *end, struct device_node *dn,
+@@ -2130,55 +1980,48 @@ char *device_node_string(char *buf, char *end, struct device_node *dn,
  		fmt = "f";
  
  	for (pass = false; strspn(fmt,"fnpPFcC"); fmt++, pass = true) {
@@ -89964,7 +89964,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  				has_mult = true;
  			}
-@@ -2211,38 +2054,30 @@ char *device_node_string(char *buf, char *end, struct device_node *dn,
+@@ -2187,38 +2030,30 @@ char *device_node_string(char *buf, char *end, struct device_node *dn,
  			break;
  		}
  	}
@@ -90011,7 +90011,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  }
  
  int __init no_hash_pointers_enable(char *str)
-@@ -2398,33 +2233,40 @@ early_param("no_hash_pointers", no_hash_pointers_enable);
+@@ -2374,33 +2209,40 @@ early_param("no_hash_pointers", no_hash_pointers_enable);
   * rendering it useful as a unique identifier.
   */
  static noinline_for_stack
@@ -90060,7 +90060,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	case 'I':			/* Formatted IP supported
  					 * 4:	1.2.3.4
  					 * 6:	0001:0203:...:0708
-@@ -2434,57 +2276,69 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
+@@ -2410,57 +2252,69 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
  					 * 4:	001.002.003.004
  					 * 6:   000102...0f
  					 */
@@ -90152,7 +90152,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	}
  }
  
-@@ -2623,8 +2477,14 @@ int format_decode(const char *fmt, struct printf_spec *spec)
+@@ -2599,8 +2453,14 @@ int format_decode(const char *fmt, struct printf_spec *spec)
  		return ++fmt - start;
  
  	case 'p':
@@ -90169,7 +90169,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	case '%':
  		spec->type = FORMAT_TYPE_PERCENT_CHAR;
-@@ -2705,53 +2565,89 @@ set_precision(struct printf_spec *spec, int prec)
+@@ -2681,53 +2541,89 @@ set_precision(struct printf_spec *spec, int prec)
  	}
  }
  
@@ -90293,7 +90293,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  	while (*fmt) {
  		const char *old_fmt = fmt;
-@@ -2760,16 +2656,9 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
+@@ -2736,16 +2632,9 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
  		fmt += read;
  
  		switch (spec.type) {
@@ -90312,7 +90312,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  		case FORMAT_TYPE_WIDTH:
  			set_field_width(&spec, va_arg(args, int));
-@@ -2779,44 +2668,60 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
+@@ -2755,44 +2644,60 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
  			set_precision(&spec, va_arg(args, int));
  			break;
  
@@ -90398,7 +90398,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  			break;
  
  		case FORMAT_TYPE_INVALID:
-@@ -2869,21 +2774,70 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
+@@ -2845,21 +2750,70 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
  				num = va_arg(args, unsigned int);
  			}
  
@@ -90479,7 +90479,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  }
  EXPORT_SYMBOL(vsnprintf);
  
-@@ -3021,53 +2975,46 @@ EXPORT_SYMBOL(sprintf);
+@@ -2997,53 +2951,46 @@ EXPORT_SYMBOL(sprintf);
   * bstr_printf() - Binary data to text string
   */
  
@@ -90550,7 +90550,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	value;								\
  })
  
-@@ -3098,16 +3045,12 @@ int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args)
+@@ -3074,16 +3021,12 @@ int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args)
  		case FORMAT_TYPE_STR: {
  			const char *save_str = va_arg(args, char *);
  			const char *err_msg;
@@ -90568,7 +90568,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  			break;
  		}
  
-@@ -3127,12 +3070,7 @@ int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args)
+@@ -3103,12 +3046,7 @@ int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args)
  					save_arg(void *);
  					break;
  				}
@@ -90582,7 +90582,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  			}
  			/* skip all alphanumeric pointer suffixes */
  			while (isalnum(*fmt))
-@@ -3170,15 +3108,15 @@ int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args)
+@@ -3146,15 +3084,15 @@ int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args)
  	}
  
  out:
@@ -90602,7 +90602,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
   * @fmt: The format string to use
   * @bin_buf: Binary arguments for the format string
   *
-@@ -3188,26 +3126,14 @@ EXPORT_SYMBOL_GPL(vbin_printf);
+@@ -3164,26 +3102,14 @@ EXPORT_SYMBOL_GPL(vbin_printf);
   *
   * The format follows C99 vsnprintf, but has some extensions:
   *  see vsnprintf comment for details.
@@ -90632,7 +90632,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  #define get_arg(type)							\
  ({									\
-@@ -3224,12 +3150,6 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
+@@ -3200,12 +3126,6 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
  	value;								\
  })
  
@@ -90645,7 +90645,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  	while (*fmt) {
  		const char *old_fmt = fmt;
  		int read = format_decode(fmt, &spec);
-@@ -3237,16 +3157,9 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
+@@ -3213,16 +3133,9 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
  		fmt += read;
  
  		switch (spec.type) {
@@ -90664,7 +90664,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  		case FORMAT_TYPE_WIDTH:
  			set_field_width(&spec, get_arg(int));
-@@ -3256,38 +3169,24 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
+@@ -3232,38 +3145,24 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
  			set_precision(&spec, get_arg(int));
  			break;
  
@@ -90711,7 +90711,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  			/* Non function dereferences were already done */
  			switch (*fmt) {
  			case 'S':
-@@ -3303,17 +3202,12 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
+@@ -3279,17 +3178,12 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
  					break;
  				}
  				/* Pointer dereference was already processed */
@@ -90733,7 +90733,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  
  			while (isalnum(*fmt))
  				fmt++;
-@@ -3321,9 +3215,7 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
+@@ -3297,9 +3191,7 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
  		}
  
  		case FORMAT_TYPE_PERCENT_CHAR:
@@ -90744,7 +90744,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  			break;
  
  		case FORMAT_TYPE_INVALID:
-@@ -3366,23 +3258,87 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
+@@ -3342,23 +3234,87 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
  				num = get_arg(int);
  			}
  
@@ -90843,7 +90843,7 @@ index 40d26a07a133..dfca8a7c93ed 100644
  EXPORT_SYMBOL_GPL(bstr_printf);
  
 diff --git a/mm/Makefile b/mm/Makefile
-index 4cc13f3179a5..7e852599b917 100644
+index 6f9ffa968a1a..9731f495bbce 100644
 --- a/mm/Makefile
 +++ b/mm/Makefile
 @@ -54,7 +54,7 @@ obj-y			:= filemap.o mempool.o oom_kill.o fadvise.o \
@@ -90856,7 +90856,7 @@ index 4cc13f3179a5..7e852599b917 100644
  # Give 'page_alloc' its own module-parameter namespace
  page-alloc-y := page_alloc.o
 diff --git a/mm/filemap.c b/mm/filemap.c
-index be1859a276e1..222bcfe7afa0 100644
+index ffdfbc8b0e3c..8b9e18f79f2b 100644
 --- a/mm/filemap.c
 +++ b/mm/filemap.c
 @@ -2223,6 +2223,7 @@ unsigned find_get_pages_range(struct address_space *mapping, pgoff_t *start,
@@ -90868,7 +90868,7 @@ index be1859a276e1..222bcfe7afa0 100644
  /**
   * find_get_pages_contig - gang contiguous pagecache lookup
 diff --git a/mm/memcontrol.c b/mm/memcontrol.c
-index 598fece89e2b..57861dc9fee5 100644
+index 618c366a2f07..660ddd48267d 100644
 --- a/mm/memcontrol.c
 +++ b/mm/memcontrol.c
 @@ -62,7 +62,7 @@
@@ -90880,7 +90880,7 @@ index 598fece89e2b..57861dc9fee5 100644
  #include "internal.h"
  #include <net/sock.h>
  #include <net/ip.h>
-@@ -1461,13 +1461,9 @@ static inline unsigned long memcg_page_state_output(struct mem_cgroup *memcg,
+@@ -1462,13 +1462,9 @@ static inline unsigned long memcg_page_state_output(struct mem_cgroup *memcg,
  
  static char *memory_stat_format(struct mem_cgroup *memcg)
  {
@@ -90895,7 +90895,7 @@ index 598fece89e2b..57861dc9fee5 100644
  	/*
  	 * Provide statistics on the state of the memory subsystem as
  	 * well as cumulative event counters that show past behavior.
-@@ -1484,49 +1480,51 @@ static char *memory_stat_format(struct mem_cgroup *memcg)
+@@ -1485,37 +1481,37 @@ static char *memory_stat_format(struct mem_cgroup *memcg)
  		u64 size;
  
  		size = memcg_page_state_output(memcg, memory_stats[i].idx);
@@ -90953,6 +90953,11 @@ index 598fece89e2b..57861dc9fee5 100644
 +	prt_printf(&buf, "%s %lu\n", vm_event_name(PGLAZYFREED),
 +	       memcg_events(memcg, PGLAZYFREED));
  
+ #if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_ZSWAP)
+ 	seq_buf_printf(&s, "%s %lu\n", vm_event_name(ZSWPIN),
+@@ -1525,16 +1521,18 @@ static char *memory_stat_format(struct mem_cgroup *memcg)
+ #endif
+ 
  #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 -	seq_buf_printf(&s, "%s %lu\n", vm_event_name(THP_FAULT_ALLOC),
 -		       memcg_events(memcg, THP_FAULT_ALLOC));
@@ -91006,7 +91011,7 @@ index 9d7afc2d959e..dd53020262d8 100644
   * vmalloc_32  -  allocate virtually contiguous memory (32bit addressable)
   *	@size:		allocation size
 diff --git a/mm/oom_kill.c b/mm/oom_kill.c
-index 49d7df39b02d..9c550a283037 100644
+index 3c6cf9e3cd66..e4dca11dc54a 100644
 --- a/mm/oom_kill.c
 +++ b/mm/oom_kill.c
 @@ -168,27 +168,6 @@ static bool oom_unkillable_task(struct task_struct *p)
@@ -91074,10 +91079,10 @@ index 1c26c14ffbb9..47225158ce49 100644
 +	printk("%pf()", CALL_PP(shrinkers_to_text));
  }
 diff --git a/mm/slab.h b/mm/slab.h
-index 95eb34174c1b..a91fc5aa1054 100644
+index db9fb5c8dae7..502616394f7f 100644
 --- a/mm/slab.h
 +++ b/mm/slab.h
-@@ -805,10 +805,12 @@ static inline struct kmem_cache_node *get_node(struct kmem_cache *s, int node)
+@@ -806,10 +806,12 @@ static inline struct kmem_cache_node *get_node(struct kmem_cache *s, int node)
  
  #endif
  
@@ -91093,18 +91098,18 @@ index 95eb34174c1b..a91fc5aa1054 100644
  }
  #endif
 diff --git a/mm/slab_common.c b/mm/slab_common.c
-index 2b3206a2c3b5..333f431e0708 100644
+index 77c3adf40e50..3be0d468a599 100644
 --- a/mm/slab_common.c
 +++ b/mm/slab_common.c
-@@ -24,6 +24,7 @@
- #include <asm/tlbflush.h>
+@@ -25,6 +25,7 @@
  #include <asm/page.h>
  #include <linux/memcontrol.h>
+ #include <linux/stackdepot.h>
 +#include <linux/printbuf.h>
  
  #define CREATE_TRACE_POINTS
  #include <trace/events/kmem.h>
-@@ -1093,10 +1094,15 @@ static int slab_show(struct seq_file *m, void *p)
+@@ -1085,10 +1086,15 @@ static int slab_show(struct seq_file *m, void *p)
  	return 0;
  }
  
@@ -91121,7 +91126,7 @@ index 2b3206a2c3b5..333f431e0708 100644
  
  	/*
  	 * Here acquiring slab_mutex is risky since we don't prefer to get
-@@ -1106,12 +1112,11 @@ void dump_unreclaimable_slab(void)
+@@ -1098,12 +1104,11 @@ void dump_unreclaimable_slab(void)
  	 * without acquiring the mutex.
  	 */
  	if (!mutex_trylock(&slab_mutex)) {
@@ -91136,7 +91141,7 @@ index 2b3206a2c3b5..333f431e0708 100644
  
  	list_for_each_entry(s, &slab_caches, list) {
  		if (s->flags & SLAB_RECLAIM_ACCOUNT)
-@@ -1119,11 +1124,43 @@ void dump_unreclaimable_slab(void)
+@@ -1111,11 +1116,43 @@ void dump_unreclaimable_slab(void)
  
  		get_slabinfo(s, &sinfo);
  
@@ -91185,10 +91190,10 @@ index 2b3206a2c3b5..333f431e0708 100644
  }
  
 diff --git a/mm/vmalloc.c b/mm/vmalloc.c
-index cadfbb5155ea..60456a184b6a 100644
+index effd1ff6a4b4..ea6375c960a2 100644
 --- a/mm/vmalloc.c
 +++ b/mm/vmalloc.c
-@@ -3363,6 +3363,27 @@ void *vzalloc_node(unsigned long size, int node)
+@@ -3361,6 +3361,27 @@ void *vzalloc_node(unsigned long size, int node)
  }
  EXPORT_SYMBOL(vzalloc_node);
  
@@ -91217,7 +91222,7 @@ index cadfbb5155ea..60456a184b6a 100644
  #define GFP_VMALLOC32 (GFP_DMA32 | GFP_KERNEL)
  #elif defined(CONFIG_64BIT) && defined(CONFIG_ZONE_DMA)
 diff --git a/mm/vmscan.c b/mm/vmscan.c
-index 1678802e03e7..d911c5e3304e 100644
+index f7d9a683e3a7..0ea3ce8e258f 100644
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
 @@ -50,6 +50,7 @@
@@ -91228,7 +91233,7 @@ index 1678802e03e7..d911c5e3304e 100644
  
  #include <asm/tlbflush.h>
  #include <asm/div64.h>
-@@ -703,6 +704,89 @@ void synchronize_shrinkers(void)
+@@ -699,6 +700,89 @@ void synchronize_shrinkers(void)
  }
  EXPORT_SYMBOL(synchronize_shrinkers);
  
@@ -91318,7 +91323,7 @@ index 1678802e03e7..d911c5e3304e 100644
  #define SHRINK_BATCH 128
  
  static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
-@@ -769,12 +853,16 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
+@@ -765,12 +849,16 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
  		unsigned long ret;
  		unsigned long nr_to_scan = min(batch_size, total_scan);
  
@@ -91645,7 +91650,7 @@ index b24a4fb0f0a2..147972bf2e79 100644
  	return err;
  }
 diff --git a/net/9p/trans_xen.c b/net/9p/trans_xen.c
-index 77883b6788cd..4cf0c78d4d22 100644
+index 833cd3792c51..227f89cc7237 100644
 --- a/net/9p/trans_xen.c
 +++ b/net/9p/trans_xen.c
 @@ -163,7 +163,7 @@ static int p9_xen_request(struct p9_client *client, struct p9_req_t *p9_req)
