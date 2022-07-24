@@ -804,14 +804,14 @@ case $_basever in
         0003-glitched-base.patch
         0003-glitched-cfs.patch
         0003-glitched-cfs-additions.patch
-         #0005-glitched-pds.patch
+        0005-glitched-pds.patch
         0006-add-acs-overrides_iommu.patch
         0007-v5.19-fsync1_via_futex_waitv.patch
         0007-v5.19-winesync.patch
         0008-5.19-bcachefs.patch
-         #0009-glitched-ondemand-bmq.patch
-         #0009-glitched-bmq.patch
-         #0009-prjc_v5.19-r0.patch
+        0009-glitched-ondemand-bmq.patch
+        0009-glitched-bmq.patch
+        0009-prjc_v5.19-r0.patch
         #0012-linux-hardened.patch
         0012-misc-additions.patch
         # MM Dirty Soft for WRITE_WATCH support in Wine
@@ -828,13 +828,14 @@ case $_basever in
             '391bf85333326c8c7052dcbcf9b247632b728572ce9cf9ef86ae8352dee7d3e2'
             '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
             'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
-             #'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
             '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
             '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
             '057631ecc148b41e0037d200a69cbbfbed8cdcf27eede3d8cd6936566b6ebc68'
             'ee9889e94dcb2cee098c39e76e27d714c6071c41a85f3d70361a9cf2c25e4cd3'
-             #'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
-             #'766658d5ec9cf204635f735a8927854991d0133b2e34bdcd9ca36d7e34817e27'
+            '9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            'b9822a7f912a46196facb9e70229b90357fbc7c7c1dfe23a407e1cb014add30d'
             '213ecf1ba59dc87ed1844c3473d575b85ffe3a567f86735e8c6239c92dbbb493'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
