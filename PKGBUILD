@@ -820,7 +820,7 @@ case $_basever in
     )
     sha256sums=('4cf0d0d0e46c31781a3f571845973b616c07af90d059922bdff3c6ff941bfda4'
             #upcoming_kernel_patch_sha256
-            'ee95b05689889df4f4e885681b29bd3d59277cf43327f2eb7cea14e82e5b15fe'
+            '324e0d43ea543a5e940681f14aab5216163ec0035dc1ff8f6e738d99fe89a56b'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
             'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
