@@ -51,6 +51,8 @@ To apply your own patch files using the provided scripts, you will need to put t
 
 #### Anbox usage
 
+**As of kernel 5.18, ashmem was dropped, breaking anbox. Their old Android 7 base doesn't allow moving to memfd so it might take a while to fix. The newer WayDroid alternative moved to using memfd thanks to an easier to work with Android 10 base. It still depends on binderfs, which is supported on 5.18+, but ashmem isn't a requirement for it anymore. An ashmem dkms driver can be used to circumvent the issue, but it currently is problematic on 5.19 and is likely to require active maintenance going forward. If you can, consider moving to WayDroid.**
+
 When enabling the anbox support option, the `binder` and `ashmem` modules are built-in. You don't have to load them. However you'll need to mount binderfs :
 ```shell
 sudo mkdir /dev/binderfs
