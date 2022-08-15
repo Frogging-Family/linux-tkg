@@ -844,6 +844,58 @@ case $_basever in
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
             'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
 	;;
+	60)
+    source=("$kernel_site"
+        #"$patch_site"
+        'config.x86_64' # stock Arch config
+        #'config_hardened.x86_64' # hardened Arch config
+        90-cleanup.hook
+        cleanup
+        # ARCH Patches
+        0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+        # TkG
+        0002-clear-patches.patch
+        0003-glitched-base.patch
+        0003-glitched-cfs.patch
+        0003-glitched-cfs-additions.patch
+        #0005-glitched-pds.patch
+        0006-add-acs-overrides_iommu.patch
+        0007-v6.0-fsync1_via_futex_waitv.patch
+        0007-v6.0-winesync.patch
+        #0008-6.0-bcachefs.patch
+        #0009-glitched-ondemand-bmq.patch
+        #0009-glitched-bmq.patch
+        #0009-prjc_v6.0-r0.patch
+        0010-lru_6.0.patch
+        #0012-linux-hardened.patch
+        0012-misc-additions.patch
+        # MM Dirty Soft for WRITE_WATCH support in Wine
+        0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
+        0002-mm-Support-soft-dirty-flag-read-with-reset.patch
+    )
+    sha256sums=('451787a0461abe26fce8af5740ac20b81610bf241ba1197be77ee9ebd3fc71ad'
+            #'e3b9167a3286441f843220bc3339f7bafc256ec4e7b5a080badca6ce8b6c7926'
+            '69cba79d1ba049459d4fb2e0494320fef82d4ecbaca2e0959d09d1e50e69f003'
+            '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
+            '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
+            'f6383abef027fd9a430fd33415355e0df492cdc3c90e9938bf2d98f4f63b32e6'
+            '35a7cde86fb94939c0f25a62b8c47f3de0dbd3c65f876f460b263181b3e92fc0'
+            '184eb7f886c38f1259dec62d4267a19f43d6b51165055743d3339348a7d9c58c'
+            '5efd40c392ece498d2d43d5443e6537c2d9ef7cf9820d5ce80b6577fc5d1a4b2'
+            'e5ea0bb25ee294c655ac3cc30e1eea497799826108fbfb4ef3258c676c1e8a12'
+            #'fca63d15ca4502aebd73e76d7499b243d2c03db71ff5ab0bf5cf268b2e576320'
+            '19661ec0d39f9663452b34433214c755179894528bf73a42f6ba52ccf572832a'
+            '9df628fd530950e37d31da854cb314d536f33c83935adf5c47e71266a55f7004'
+            'd2255d8f60d90d1c1d76ab7808d4a04844b6a1b3c83390ac44de0e4b721c3577'
+            #'829631f803f11579972aa19f3f7f2ae11b0e380c01745a05776dd02b8e6c8855'
+            #'9fad4a40449e09522899955762c8928ae17f4cdaa16e01239fd12592e9d58177'
+            #'a557b342111849a5f920bbe1c129f3ff1fc1eff62c6bd6685e0972fc88e39911'
+            #'b046cd6bff73c0210465f4ff0879d99c54fc1413f1c2e8e5298439e4067ac60a'
+            '2ab9ea2d3ef43cfb5cf680ee2262f5671fd5ea980921f33abf2208f9892e9009'
+            '213ecf1ba59dc87ed1844c3473d575b85ffe3a567f86735e8c6239c92dbbb493'
+            '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
+	;;
 esac
 
 export KBUILD_BUILD_HOST=archlinux
@@ -988,7 +1040,7 @@ hackheaders() {
   mkdir -p "$builddir"/{fs/xfs,mm}
 
   # add resolve_btfids on 5.16+
-  if [ $_basever -ge 516 ]; then
+  if [[ $_basever = 6* ]] || [ $_basever -ge 516 ]; then
     install -Dt "$builddir"/tools/bpf/resolve_btfids tools/bpf/resolve_btfids/resolve_btfids || ( warning "$builddir/tools/bpf/resolve_btfids was not found. This is undesirable and might break dkms modules !!! Please review your config changes and consider using the provided defconfig and tweaks without further modification." && read -rp "Press enter to continue anyway" )
   fi
 
