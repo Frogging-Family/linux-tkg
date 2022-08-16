@@ -43,16 +43,13 @@ rm -f v*.x.sha256sums{,.asc}
 updates=""
 for _key in "${_current_kernels[@]}"; do
   kver_major="$(echo ${_key} | cut -d. -f1)"
+  kver_minor="$(echo ${_key} | cut -d. -f2)"
   kver_base="$(echo ${_key} | tr -d ".")"
 
   ## Getting sha256sums by sha256sums.asc
-  if [ ! -s v${kver_major}.x.sha256sums ]; then
+  if [ ! -s v${kver_major}.x.sha256sums ] && ! ( [[ "$kver_minor" == "0" ]] && [[ "${_kver_subver_map[$_key]}" == rc* ]] ); then
     echo "Downloading the checksums file for linux-v${kver_major}.x"
     curl -siL --retry 2 -o "v${kver_major}.x.sha256sums.asc" https://cdn.kernel.org/pub/linux/kernel/v${kver_major}.x/sha256sums.asc
-    if [[ $? != "0" ]]; then
-      echo "FAILED to download the v${kver_major}.x checksums file"
-      exit 3
-    fi
     echo "Current time:    " `date +" %a, %d %b %Y %H:%M:%S %Z"`
     echo "Remote timestamp:" `grep -i Last-Modified "v${kver_major}.x.sha256sums.asc" | cut -d':' -f2-`
     echo "----------------------"
@@ -154,7 +151,7 @@ for _key in "${_current_kernels[@]}"; do
       # For RC we need download the original file
       echo "Downloading the GZ tarball for linux-${_key}-rc${latest_subver}"
       curl -sL --retry 2 -o "linux-${_key}-rc${latest_subver}.tar.gz" https://git.kernel.org/torvalds/t/linux-${_key}-rc${latest_subver}.tar.gz
-      if [[ $? != "0" ]]; then
+      if [ ! -s linux-${_key}-rc${latest_subver}.tar.gz ]; then
         echo "FAILED to download the linux-${_key}-rc${latest_subver}.tar.gz"
         exit 3
       fi
