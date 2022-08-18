@@ -9954,3 +9954,321 @@ index a2d301f58ced..2ccdede8585c 100644
  	};
  	struct wakeup_test_data *x = data;
  
+From 3728c383c5031dce5ae0f5ea53fc47afba71270f Mon Sep 17 00:00:00 2001
+From: Juuso Alasuutari <juuso.alasuutari@gmail.com>
+Date: Sun, 14 Aug 2022 18:19:09 +0300
+Subject: [PATCH 01/10] sched/alt: [Sync] sched/core: Always flush pending
+ blk_plug
+
+---
+ kernel/sched/alt_core.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 588c7b983e3ba..8a6aa5b7279d3 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -4663,8 +4663,12 @@ static inline void sched_submit_work(struct task_struct *tsk)
+ 			io_wq_worker_sleeping(tsk);
+ 	}
+
+-	if (tsk_is_pi_blocked(tsk))
+-		return;
++	/*
++	 * spinlock and rwlock must not flush block requests.  This will
++	 * deadlock if the callback attempts to acquire a lock which is
++	 * already acquired.
++	 */
++	SCHED_WARN_ON(current->__state & TASK_RTLOCK_WAIT);
+
+ 	/*
+ 	 * If we are going to sleep and we have plugged IO queued,
+
+From 379df22366dfa47d021a6bfe149c10a02d39a59e Mon Sep 17 00:00:00 2001
+From: Juuso Alasuutari <juuso.alasuutari@gmail.com>
+Date: Sun, 14 Aug 2022 18:19:09 +0300
+Subject: [PATCH 02/10] sched/alt: [Sync] io_uring: move to separate directory
+
+---
+ kernel/sched/alt_core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 8a6aa5b7279d3..200d12b0ba6a9 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -43,7 +43,7 @@
+
+ #include "pelt.h"
+
+-#include "../../fs/io-wq.h"
++#include "../../io_uring/io-wq.h"
+ #include "../smpboot.h"
+
+ /*
+
+From 289d4f9619656155c2d467f9ea9fa5258b4aacd0 Mon Sep 17 00:00:00 2001
+From: Juuso Alasuutari <juuso.alasuutari@gmail.com>
+Date: Sun, 14 Aug 2022 18:19:09 +0300
+Subject: [PATCH 03/10] sched/alt: [Sync] sched, cpuset: Fix dl_cpu_busy()
+ panic due to empty cs->cpus_allowed
+
+---
+ kernel/sched/alt_core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 200d12b0ba6a9..1aeb7a225d9bd 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -6737,7 +6737,7 @@ int cpuset_cpumask_can_shrink(const struct cpumask __maybe_unused *cur,
+ }
+
+ int task_can_attach(struct task_struct *p,
+-		    const struct cpumask *cs_cpus_allowed)
++		    const struct cpumask *cs_effective_cpus)
+ {
+ 	int ret = 0;
+
+
+From 95e712f92034119e23b4157aba72e8ffb2d74fed Mon Sep 17 00:00:00 2001
+From: Tor Vic <torvic9@mailbox.org>
+Date: Wed, 17 Aug 2022 21:44:18 +0200
+Subject: [PATCH 05/10] sched/alt: Transpose the sched_rq_watermark array
+
+This is not my work.
+All credits go to Torge Matthies as in below link.
+
+Link: https://gitlab.com/alfredchen/linux-prjc/-/merge_requests/11
+---
+ kernel/sched/alt_core.c | 124 +++++++++++++++++++++++++++++++++-------
+ 1 file changed, 104 insertions(+), 20 deletions(-)
+
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index cf71defb0e0be..7929b810ba74f 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -147,7 +147,87 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
+ #ifdef CONFIG_SCHED_SMT
+ static cpumask_t sched_sg_idle_mask ____cacheline_aligned_in_smp;
+ #endif
+-static cpumask_t sched_rq_watermark[SCHED_QUEUE_BITS] ____cacheline_aligned_in_smp;
++
++#define BITS_PER_ATOMIC_LONG_T BITS_PER_LONG
++typedef struct sched_bitmask {
++	atomic_long_t bits[DIV_ROUND_UP(SCHED_QUEUE_BITS, BITS_PER_ATOMIC_LONG_T)];
++} sched_bitmask_t;
++static sched_bitmask_t sched_rq_watermark[NR_CPUS] ____cacheline_aligned_in_smp;
++
++#define x(p, set, mask)                                \
++	do {                                           \
++		if (set)                               \
++			atomic_long_or((mask), (p));   \
++		else                                   \
++			atomic_long_and(~(mask), (p)); \
++	} while (0)
++
++static __always_inline void sched_rq_watermark_fill_downwards(int cpu, unsigned int end,
++		unsigned int start, bool set)
++{
++	unsigned int start_idx, start_bit;
++	unsigned int end_idx, end_bit;
++	atomic_long_t *p;
++
++	if (end == start) {
++		return;
++	}
++
++	start_idx = start / BITS_PER_ATOMIC_LONG_T;
++	start_bit = start % BITS_PER_ATOMIC_LONG_T;
++	end_idx = (end - 1) / BITS_PER_ATOMIC_LONG_T;
++	end_bit = (end - 1) % BITS_PER_ATOMIC_LONG_T;
++	p = &sched_rq_watermark[cpu].bits[end_idx];
++
++	if (end_idx == start_idx) {
++		x(p, set, (~0UL >> (BITS_PER_ATOMIC_LONG_T - 1 - end_bit)) & (~0UL << start_bit));
++		return;
++	}
++
++	if (end_bit != BITS_PER_ATOMIC_LONG_T - 1) {
++		x(p, set, (~0UL >> (BITS_PER_ATOMIC_LONG_T - 1 - end_bit)));
++		p -= 1;
++		end_idx -= 1;
++	}
++
++	while (end_idx != start_idx) {
++		atomic_long_set(p, set ? ~0UL : 0);
++		p -= 1;
++		end_idx -= 1;
++	}
++
++	x(p, set, ~0UL << start_bit);
++}
++
++#undef x
++
++static __always_inline bool sched_rq_watermark_and(cpumask_t *dstp, const cpumask_t *cpus, int prio, bool not)
++{
++	int cpu;
++	bool ret = false;
++	int idx = prio / BITS_PER_ATOMIC_LONG_T;
++	int bit = prio % BITS_PER_ATOMIC_LONG_T;
++
++	cpumask_clear(dstp);
++	for_each_cpu(cpu, cpus)
++		if (test_bit(bit, (long*)&sched_rq_watermark[cpu].bits[idx].counter) == !not) {
++			__cpumask_set_cpu(cpu, dstp);
++			ret = true;
++		}
++	return ret;
++}
++
++static __always_inline bool sched_rq_watermark_test(const cpumask_t *cpus, int prio, bool not)
++{
++	int cpu;
++	int idx = prio / BITS_PER_ATOMIC_LONG_T;
++	int bit = prio % BITS_PER_ATOMIC_LONG_T;
++
++	for_each_cpu(cpu, cpus)
++		if (test_bit(bit, (long*)&sched_rq_watermark[cpu].bits[idx].counter) == !not)
++			return true;
++	return false;
++}
+
+ /* sched_queue related functions */
+ static inline void sched_queue_init(struct sched_queue *q)
+@@ -176,7 +256,6 @@ static inline void update_sched_rq_watermark(struct rq *rq)
+ {
+ 	unsigned long watermark = find_first_bit(rq->queue.bitmap, SCHED_QUEUE_BITS);
+ 	unsigned long last_wm = rq->watermark;
+-	unsigned long i;
+ 	int cpu;
+
+ 	if (watermark == last_wm)
+@@ -185,28 +264,25 @@ static inline void update_sched_rq_watermark(struct rq *rq)
+ 	rq->watermark = watermark;
+ 	cpu = cpu_of(rq);
+ 	if (watermark < last_wm) {
+-		for (i = last_wm; i > watermark; i--)
+-			cpumask_clear_cpu(cpu, sched_rq_watermark + SCHED_QUEUE_BITS - i);
++		sched_rq_watermark_fill_downwards(cpu, SCHED_QUEUE_BITS - watermark, SCHED_QUEUE_BITS - last_wm, false);
+ #ifdef CONFIG_SCHED_SMT
+ 		if (static_branch_likely(&sched_smt_present) &&
+-		    IDLE_TASK_SCHED_PRIO == last_wm)
++		    unlikely(IDLE_TASK_SCHED_PRIO == last_wm))
+ 			cpumask_andnot(&sched_sg_idle_mask,
+ 				       &sched_sg_idle_mask, cpu_smt_mask(cpu));
+ #endif
+ 		return;
+ 	}
+ 	/* last_wm < watermark */
+-	for (i = watermark; i > last_wm; i--)
+-		cpumask_set_cpu(cpu, sched_rq_watermark + SCHED_QUEUE_BITS - i);
++	sched_rq_watermark_fill_downwards(cpu, SCHED_QUEUE_BITS - last_wm, SCHED_QUEUE_BITS - watermark, true);
+ #ifdef CONFIG_SCHED_SMT
+ 	if (static_branch_likely(&sched_smt_present) &&
+-	    IDLE_TASK_SCHED_PRIO == watermark) {
+-		cpumask_t tmp;
++	    unlikely(IDLE_TASK_SCHED_PRIO == watermark)) {
++		const cpumask_t *smt_mask = cpu_smt_mask(cpu);
+
+-		cpumask_and(&tmp, cpu_smt_mask(cpu), sched_rq_watermark);
+-		if (cpumask_equal(&tmp, cpu_smt_mask(cpu)))
++		if (!sched_rq_watermark_test(smt_mask, 0, true))
+ 			cpumask_or(&sched_sg_idle_mask,
+-				   &sched_sg_idle_mask, cpu_smt_mask(cpu));
++				   &sched_sg_idle_mask, smt_mask);
+ 	}
+ #endif
+ }
+@@ -1903,9 +1979,9 @@ static inline int select_task_rq(struct task_struct *p)
+ #ifdef CONFIG_SCHED_SMT
+ 	    cpumask_and(&tmp, &chk_mask, &sched_sg_idle_mask) ||
+ #endif
+-	    cpumask_and(&tmp, &chk_mask, sched_rq_watermark) ||
+-	    cpumask_and(&tmp, &chk_mask,
+-			sched_rq_watermark + SCHED_QUEUE_BITS - 1 - task_sched_prio(p)))
++	    sched_rq_watermark_and(&tmp, &chk_mask, 0, false) ||
++	    sched_rq_watermark_and(&tmp, &chk_mask,
++			SCHED_QUEUE_BITS - 1 - task_sched_prio(p), false))
+ 		return best_mask_cpu(task_cpu(p), &tmp);
+
+ 	return best_mask_cpu(task_cpu(p), &chk_mask);
+@@ -3977,7 +4053,7 @@ static inline void sg_balance(struct rq *rq)
+ 	 * find potential cpus which can migrate the current running task
+ 	 */
+ 	if (cpumask_test_cpu(cpu, &sched_sg_idle_mask) &&
+-	    cpumask_andnot(&chk, cpu_online_mask, sched_rq_watermark) &&
++	    sched_rq_watermark_and(&chk, cpu_online_mask, 0, true) &&
+ 	    cpumask_andnot(&chk, &chk, &sched_rq_pending_mask)) {
+ 		int i;
+
+@@ -4285,9 +4361,8 @@ static inline void schedule_debug(struct task_struct *prev, bool preempt)
+ #ifdef ALT_SCHED_DEBUG
+ void alt_sched_debug(void)
+ {
+-	printk(KERN_INFO "sched: pending: 0x%04lx, idle: 0x%04lx, sg_idle: 0x%04lx\n",
++	printk(KERN_INFO "sched: pending: 0x%04lx, sg_idle: 0x%04lx\n",
+ 	       sched_rq_pending_mask.bits[0],
+-	       sched_rq_watermark[0].bits[0],
+ 	       sched_sg_idle_mask.bits[0]);
+ }
+ #else
+@@ -7285,8 +7360,17 @@ void __init sched_init(void)
+ 	wait_bit_init();
+
+ #ifdef CONFIG_SMP
+-	for (i = 0; i < SCHED_QUEUE_BITS; i++)
+-		cpumask_copy(sched_rq_watermark + i, cpu_present_mask);
++	for (i = 0; i < nr_cpu_ids; i++) {
++		long val = cpumask_test_cpu(i, cpu_present_mask) ? -1L : 0;
++		int j;
++		for (j = 0; j < DIV_ROUND_UP(SCHED_QUEUE_BITS, BITS_PER_ATOMIC_LONG_T); j++)
++			atomic_long_set(&sched_rq_watermark[i].bits[j], val);
++	}
++	for (i = nr_cpu_ids; i < NR_CPUS; i++) {
++		int j;
++		for (j = 0; j < DIV_ROUND_UP(SCHED_QUEUE_BITS, BITS_PER_ATOMIC_LONG_T); j++)
++			atomic_long_set(&sched_rq_watermark[i].bits[j], 0);
++	}
+ #endif
+
+ #ifdef CONFIG_CGROUP_SCHED
+
+From 5b3b4b3d14c234196c807568905ee2e013565508 Mon Sep 17 00:00:00 2001
+From: Torge Matthies <openglfreak@googlemail.com>
+Date: Tue, 15 Mar 2022 23:08:54 +0100
+Subject: [PATCH 06/10] sched/alt: Add memory barriers around atomics.
+
+---
+ kernel/sched/alt_core.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 7929b810ba74f..b0cb6b772d5fa 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -156,10 +156,12 @@ static sched_bitmask_t sched_rq_watermark[NR_CPUS] ____cacheline_aligned_in_smp;
+
+ #define x(p, set, mask)                                \
+ 	do {                                           \
++		smp_mb__before_atomic();               \
+ 		if (set)                               \
+ 			atomic_long_or((mask), (p));   \
+ 		else                                   \
+ 			atomic_long_and(~(mask), (p)); \
++		smp_mb__after_atomic();                \
+ 	} while (0)
+
+ static __always_inline void sched_rq_watermark_fill_downwards(int cpu, unsigned int end,
+@@ -191,7 +193,9 @@ static __always_inline void sched_rq_watermark_fill_downwards(int cpu, unsigned
+ 	}
+
+ 	while (end_idx != start_idx) {
++		smp_mb__before_atomic();
+ 		atomic_long_set(p, set ? ~0UL : 0);
++		smp_mb__after_atomic();
+ 		p -= 1;
+ 		end_idx -= 1;
+ 	}
+
