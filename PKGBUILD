@@ -610,7 +610,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            'ebc9a8b999bad467b438208fd52b6033de7a90ee341e25415094c08e55b507cf'
+            'c2ad6439122a90369d27b761d01714423840558df9ec77b640ea272c6ea35d31'
             '308b9e8802e16a55e036a005ad1978c9f31f796f5dd6c086378f56b9f96d43ca'
             '6e3ef6bc4779ae3b7154642147d5ab3ece6e38e3e08bdb30f86d89d2b4855fa9'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -770,7 +770,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('51f3f1684a896e797182a0907299cc1f0ff5e5b51dd9a55478ae63a409855cee'
-            'd04aa4d01cb5051f7f1e619b6ca7c8e1da4f097334f3f43477848a1a1fd96a00'
+            '72b89560e0a8ce7962b780c99e3f38ef8114100755caca0ea62eb2b7c7eeea3a'
             '6f0fd44dd87dd0ad23f782a26752bb7200d0d163e3a50df6ad3cf5cec7fe948e'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -822,7 +822,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('ff240c579b9ee1affc318917de07394fc1c3bb49dac25ec1287370c2e15005a8'
-            'e3b9167a3286441f843220bc3339f7bafc256ec4e7b5a080badca6ce8b6c7926'
+            'f21999b35f7e2a4ce1e8dd86c3a21d1199532b7aa48526c5599b8c6e7a14aa47'
             'ea77dc152e52065bd760956800c9dffa5f4600429c7a94c3f12d73abd34aa408'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -874,7 +874,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('451787a0461abe26fce8af5740ac20b81610bf241ba1197be77ee9ebd3fc71ad'
-            #'e3b9167a3286441f843220bc3339f7bafc256ec4e7b5a080badca6ce8b6c7926'
+            #'f21999b35f7e2a4ce1e8dd86c3a21d1199532b7aa48526c5599b8c6e7a14aa47'
             '69cba79d1ba049459d4fb2e0494320fef82d4ecbaca2e0959d09d1e50e69f003'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
