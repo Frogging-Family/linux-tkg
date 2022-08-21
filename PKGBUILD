@@ -307,7 +307,7 @@ case $_basever in
         0012-misc-additions.patch
     )
     sha256sums=('dcdf99e43e98330d925016985bfbc7b83c66d367b714b2de0cbbfcbf83d8ca43'
-            'edbe63345082cb4042389acaef0c880b43c0c4dc8c8c8a281a34ae68c093571d'
+            '048ff86031eaeb8ca5aac02eba8d3237af72b2b23f992339a5d3c9b7262e954d'
             'd4de0b21bded28eba4826640397f5ef1d6d1c72c4671d9d0f6861ed6b8c6c026'
             'eb1da1a028a1c967222b5bdac1db2b2c4d8285bafd714892f6fc821c10416341'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -610,7 +610,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('57b2cf6991910e3b67a1b3490022e8a0674b6965c74c12da1e99d138d1991ee8'
-            'c2ad6439122a90369d27b761d01714423840558df9ec77b640ea272c6ea35d31'
+            '02add19d91fdaabeff8c2ea9079b18a4ff01325f7a2e382c5befe5afab357342'
             'd77f79b817bd0ac79bd2f5a929734236a4745534d7757ddf874719932bd24957'
             '6e3ef6bc4779ae3b7154642147d5ab3ece6e38e3e08bdb30f86d89d2b4855fa9'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
@@ -770,7 +770,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('51f3f1684a896e797182a0907299cc1f0ff5e5b51dd9a55478ae63a409855cee'
-            '72b89560e0a8ce7962b780c99e3f38ef8114100755caca0ea62eb2b7c7eeea3a'
+            'e158d40d8dbebc6bd11002122b8cd56e16576951ab0e0ef329994a378f63ad8a'
             '04a8186c95f5abc9febd168c68ff078907a24e9634c811319961c81cc8602c2c'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
@@ -822,7 +822,7 @@ case $_basever in
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
     sha256sums=('ff240c579b9ee1affc318917de07394fc1c3bb49dac25ec1287370c2e15005a8'
-            'f21999b35f7e2a4ce1e8dd86c3a21d1199532b7aa48526c5599b8c6e7a14aa47'
+            '1efe739578e5221a87cd17d0d40a5e073332cdc559e293fab030469d023d9a7c'
             'f170eda023a56db8cdcad4b83da5911b7b919bbd25084f729d37f1e6142557ca'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
             '66a03c246037451a77b4d448565b1d7e9368270c7d02872fbd0b5d024ed0a997'
