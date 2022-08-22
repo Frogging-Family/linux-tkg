@@ -873,7 +873,7 @@ case $_basever in
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
     )
-    sha256sums=('451787a0461abe26fce8af5740ac20b81610bf241ba1197be77ee9ebd3fc71ad'
+    sha256sums=('529d24f9bef65074ff1b6e8d703981b3dbc0c328b3ba3112abca55b4da27dd81'
             #upcoming_kernel_patch_sha256
             '69cba79d1ba049459d4fb2e0494320fef82d4ecbaca2e0959d09d1e50e69f003'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
