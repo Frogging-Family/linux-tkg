@@ -872,6 +872,8 @@ case $_basever in
         # MM Dirty Soft for WRITE_WATCH support in Wine
         0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch
         0002-mm-Support-soft-dirty-flag-read-with-reset.patch
+        # O3
+        0013-optimize_harder_O3.patch
     )
     sha256sums=('9fbca4f2bbea82311c877377497174b5521f33daf3b0e29cacec92601780e2b3'
             #upcoming_kernel_patch_sha256
@@ -894,7 +896,8 @@ case $_basever in
             '2ab9ea2d3ef43cfb5cf680ee2262f5671fd5ea980921f33abf2208f9892e9009'
             '213ecf1ba59dc87ed1844c3473d575b85ffe3a567f86735e8c6239c92dbbb493'
             '1b656ad96004f27e9dc63d7f430b50d5c48510d6d4cd595a81c24b21adb70313'
-            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6')
+            'b0319a7dff9c48b2f3e3d3597ee154bf92223149a633a8b7ce4026252db86da6'
+            '8c3875e4935ecf258131f8da4ac819e9fb57439efff31549c0f11693c3601544')
 	;;
 esac
 
