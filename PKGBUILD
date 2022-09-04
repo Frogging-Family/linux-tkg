@@ -875,7 +875,7 @@ case $_basever in
         # O3
         0013-optimize_harder_O3.patch
     )
-    sha256sums=('9fbca4f2bbea82311c877377497174b5521f33daf3b0e29cacec92601780e2b3'
+    sha256sums=('4b4d142d7c4307cc6ec17a984652b4e04c74dc4bccdd8adcb6c0572bce11ca48'
             #upcoming_kernel_patch_sha256
             '69cba79d1ba049459d4fb2e0494320fef82d4ecbaca2e0959d09d1e50e69f003'
             '1e15fc2ef3fa770217ecc63a220e5df2ddbcf3295eb4a021171e7edd4c6cc898'
