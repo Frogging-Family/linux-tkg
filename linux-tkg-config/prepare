@@ -350,7 +350,107 @@ _set_compiler(){
 }
 
 
+_linux_git_branch_checkout() {
+
+  if [ -z "$_kernel_git_tag" ]; then
+    warning "internal error: kernel version should be chosen before cloning kernel sources"
+    exit 1
+  fi
+
+  cd "$_where"
+
+  if [[ -z "$_git_mirror" || ! "$_git_mirror" =~ ^(kernel\.org|googlesource\.com|github\.com)$ ]]; then
+    _git_mirrors_array=( "kernel.org" "github.com" "kernel.org" )
+    _prompt_from_array  "${_git_mirrors_array[@]}"
+    _git_mirror="$_selected_value"
+  fi
+
+  if ! [ -d linux-src-git ]; then
+    msg2 "First initialization of the linux source code git folder"
+    mkdir linux-src-git
+    cd linux-src-git
+    git init
+
+    git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+    git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
+    git remote add github.com https://github.com/gregkh/linux.git
+  else
+    cd linux-src-git
+
+    # Remove "origin" remote if present
+    if git remote -v | grep -w "origin" ; then
+      git remote rm origin
+    fi
+
+    if ! git remote -v | grep -w "kernel.org" ; then
+      git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+    fi
+    if ! git remote -v | grep -w "googlesource.com" ; then
+      git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
+    fi
+    if ! git remote -v | grep -w "github.com" ; then
+      git remote add github.com https://github.com/gregkh/linux.git
+    fi
+
+    msg2 "Current branch: $(git branch | grep "\*")"
+    msg2 "Reseting files to their original state"
+
+    git reset --hard HEAD
+    git clean -f -d -x
+  fi
+
+  if [[ "$_sub" = rc* ]]; then
+    msg2 "Switching to master branch for RC Kernel"
+
+    if ! git branch --list | grep "master-${_git_mirror}" ; then
+      msg2 "master branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add kernel.org master
+      git remote set-branches --add googlesource.com master
+      git fetch --depth=1 $_git_mirror master
+      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
+      git checkout -b master-${_git_mirror} ${_git_mirror}/master
+    else
+      msg2 "master branch exists locally, updating..."
+      git checkout master-${_git_mirror}
+      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
+      git reset --hard ${_git_mirror}/master
+    fi
+    msg2 "Checking out latest RC tag: $_kernel_git_tag"
+    git checkout "$_kernel_git_tag"
+  else
+    msg2 "Switching to linux-${_basekernel}.y"
+    if ! git branch --list | grep -w "linux-${_basekernel}-${_git_mirror}" ; then
+      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add kernel.org linux-${_basekernel}.y
+      git remote set-branches --add googlesource.com linux-${_basekernel}.y
+      git fetch --depth=1 $_git_mirror linux-${_basekernel}.y
+      git fetch --depth=1 $_git_mirror tag "$_kernel_git_tag"
+      git checkout -b linux-${_basekernel}-${_git_mirror} ${_git_mirror}/linux-${_basekernel}.y
+    else
+      msg2 "${_basekernel}.y branch exists locally, updating..."
+      git checkout linux-${_basekernel}-${_git_mirror}
+      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
+      git reset --hard ${_git_mirror}/linux-${_basekernel}.y
+    fi
+    msg2 "Checking out latest release: $_kernel_git_tag"
+    git checkout "$_kernel_git_tag"
+  fi
+}
+
+
 _tkg_initscript() {
+
+  if ! whereis git > /dev/null 2>&1; then
+    warning "the 'git' command is not installed. Please install it then re-run the install script of linux-tkg."
+    exit 1
+  fi
+
+  if ! git status > /dev/null 2>&1; then
+    warning "linux-tkg needs to be git cloned"
+    msg2 "please delete the current linux-tkg folder and re-created it with"
+    msg2 "git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git"
+    exit 1
+  fi
 
   # Default to Arch
   if [ -z "$_distro" ] || [ "$_ispkgbuild" = "true" ]; then
@@ -389,6 +489,8 @@ _tkg_initscript() {
   if [ -n "$_custom_pkgbase" ]; then
     echo -e "_custom_pkgbase=\"$_custom_pkgbase\"" >> "$_where"/BIG_UGLY_FROGMINER
   fi
+
+  _linux_git_branch_checkout
 }
 
 user_patcher() {
@@ -468,16 +570,6 @@ _tkg_srcprep() {
     echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
     echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/logs/prepare.log.txt
     echo "" > localversion.20-pkgname
-    # add upstream patch
-    if [ "$_sub" != "0" ] && [[ "$_sub" != rc* ]]; then
-      if [ ! -e "$srcdir/patch-${pkgver}" ]; then
-        if [ -e "$srcdir/patch-${pkgver}.xz" ]; then
-          xz -dk "$(readlink -f "$srcdir/patch-${pkgver}.xz")" --stdout > "$srcdir/patch-${pkgver}"
-        else
-          ( cd "$_where" && xz -dk patch-${pkgver}.xz && mv "$_where"/patch-${pkgver} "$srcdir"/ )
-        fi
-      fi
-    fi
   fi
   if [ "${_distro}" = "Void" ]; then
 	  pkgver="${version}"

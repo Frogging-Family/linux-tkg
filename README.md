@@ -84,6 +84,8 @@ If you prefer automatic setup you can install `anbox-support` from AUR which wil
 
 ### Install procedure
 
+For all the supported linux distributions, `linux-tkg` has to be cloned with `git`. Since it keeps a clone of the kernel's sources within (`linux-src-git`, created during the first build after a fresh clone), it is recommended to keep the cloned `linux-tkg` folder and simply update it with `git pull`, the install script does the necessary cleanup at every run.
+
 #### Arch & derivatives
 ```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
@@ -97,7 +99,7 @@ The script will use a slightly modified Arch config from the `linux-tkg-config` 
 
 #### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 
-**Important notes:** 
+**Important notes:**
 - Some issues have been reported by both Fedora (see https://github.com/Frogging-Family/linux-tkg/issues/383) and Ubuntu (see https://github.com/Frogging-Family/linux-tkg/issues/436) users where stock kernels cannot boot any longer, the whereabouts are still not entirely clear (it does not seem to affect every user)
   - Ubuntu: appears to be an initramfs generation issue
   - Fedora: needs disabling then re-enabling SELINUX so one can boot
