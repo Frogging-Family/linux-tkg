@@ -26,7 +26,9 @@ if [ ! -x "$(command -v sudo)" ]; then
   fi
 fi
 
+declare -p -x > current_env
 source customization.cfg
+. current_env
 
 source linux-tkg-config/prepare
 

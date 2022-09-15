@@ -28,6 +28,8 @@ _where="$PWD" # track basedir as different Arch based distros are moving srcdir 
 _ispkgbuild="true"
 _distro="Arch"
 
+declare -p -x > current_env
+
 source "$_where"/customization.cfg # load default configuration from file
 source "$_where"/linux-tkg-config/prepare
 
@@ -35,6 +37,8 @@ if [ -e "$_EXT_CONFIG_PATH" ]; then
   msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
   source "$_EXT_CONFIG_PATH"
 fi
+
+source current_env
 
 # Make sure we're in a clean state
 if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
@@ -80,6 +84,8 @@ prepare() {
   ln -s "${_where}/linux-src-git" "${srcdir}" # workaround, this doesn't respect tmpfs choice
 
   cd "${srcdir}/${_srcpath}"
+
+  source "${_where}/current_env"
 
   _tkg_srcprep
 }
