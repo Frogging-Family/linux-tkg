@@ -26,12 +26,6 @@ if [ ! -x "$(command -v sudo)" ]; then
   fi
 fi
 
-declare -p -x > current_env
-source customization.cfg
-. current_env
-
-source linux-tkg-config/prepare
-
 msg2() {
  echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
 }
@@ -47,6 +41,12 @@ warning() {
 plain() {
  echo -e "$1" >&2
 }
+
+declare -p -x > current_env
+source customization.cfg
+. current_env
+
+source linux-tkg-config/prepare
 
 _distro_prompt() {
   echo "Which linux distribution are you running ?"

@@ -13,13 +13,24 @@ _kernel_git_remotes=(
   ["github.com"]="https://github.com/gregkh/linux.git"
 )
 
-typeset -Ag _kver_latest_tags_map
+_git_remote_names=( "${!_kernel_git_remotes[@]}" )
+
+if [[ ! "${_git_remote_names[@]}" =~ "$_git_mirror" ]]; then
+  warning "git mirror '$_git_mirror' not recognized"
+  _git_mirror=""
+fi
+
+if [[ -z "$_git_mirror" ]]; then
+  _git_mirror="${_git_remote_names[2]}"
+  echo "Defaulting to ${_git_mirror} git mirror"
+fi
 
 # Fillout the latest tags map/dictionary
 _kernel_tags=$(git -c 'versionsort.suffix=-' \
   ls-remote --exit-code --refs --sort='version:refname' --tags ${_kernel_git_remotes[$_git_mirror]} '*.*' \
   | cut --delimiter='/' --fields=3)
 
+typeset -Ag _kver_latest_tags_map
 for _key in "${_current_kernels[@]}" "${_eol_kernels[@]}"; do
   _kver_latest_tags_map[$_key]=$(echo "$_kernel_tags" | grep -F "v$_key" | tail -1 | cut -c1-)
 done
@@ -366,12 +377,6 @@ _linux_git_branch_checkout() {
   fi
 
   cd "$_where"
-
-  if [[ -z "$_git_mirror" || ! "$_git_mirror" =~ ^(kernel\.org|googlesource\.com|github\.com)$ ]]; then
-    _git_mirrors_array=( "kernel.org" "github.com" "kernel.org" )
-    _prompt_from_array  "${_git_mirrors_array[@]}"
-    _git_mirror="$_selected_value"
-  fi
 
   if ! [ -d linux-src-git ]; then
     msg2 "First initialization of the linux source code git folder"
