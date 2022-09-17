@@ -189,13 +189,26 @@ _set_kver_internal_vars() {
 
 _set_kernel_version() {
 
-  # if $_version is a valid version, define $_kernel_git_tag directly
-  # from $_kver_latest_tags_map. Otherwise, empty it so it gets prompted
-  if [[ -n "$_version" && -v _kver_latest_tags_map[$_version] ]]; then
-    _kernel_git_tag="${_kver_latest_tags_map[$_version]}"
-  else
-    [[ -n "$_version" ]] && echo "kernel version $_version not recognized, prompting..."
-    _version=""
+  # if $_version is a valid x.y version, define $_kernel_git_tag with latest x.y.z from $_kver_latest_tags_map
+  # if $_version is a valid x.y.z version, define $_kernel_git_tag directly
+  # Otherwise, empty it so it gets prompted
+
+  _searched_tag="$_version"
+  # prepend "v" if it's not there already
+  [[ "${_searched_tag:0:1}" != "v" ]] && _searched_tag="v$_searched_tag"
+  _version_search="$(echo "$_kernel_tags" | grep -F "$_searched_tag" | head -1)"
+
+  if [[ -n "$_version" ]]; then
+    if [[ -v _kver_latest_tags_map[$_version] ]]; then
+      msg2 "Checking out latest kernel version of $_version"
+      _kernel_git_tag="${_kver_latest_tags_map[$_version]}"
+    elif [[ "$_searched_tag" == "$_version_search" ]]; then
+      msg2 "Checking out user-defined kernel version : $_version"
+      _kernel_git_tag="$_searched_tag"
+    else
+      [[ -n "$_version" ]] && echo "kernel version $_version not recognized, prompting..."
+      _version=""
+    fi
   fi
 
   if [ -z "$_version" ]; then
