@@ -17,6 +17,14 @@ set -e
 _where=`pwd`
 srcdir="$_where"
 
+# Command used for superuser privileges (`sudo`, `doas`, `su`)
+if [ ! -x "$(command -v sudo)" ]; then
+	if [ -x "$(command -v doas)" ]; then sudo() { doas "$@"; }
+	elif [ -x "$(command -v su)" -a -x "$(command -v xargs)" ]; then
+		sudo() { echo "$@" | xargs -I {} su -c '{}'; }
+	fi
+fi
+
 source customization.cfg
 
 source linux-tkg-config/prepare
