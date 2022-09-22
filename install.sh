@@ -26,10 +26,6 @@ if [ ! -x "$(command -v sudo)" ]; then
   fi
 fi
 
-source customization.cfg
-
-source linux-tkg-config/prepare
-
 msg2() {
  echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
 }
@@ -45,6 +41,12 @@ warning() {
 plain() {
  echo -e "$1" >&2
 }
+
+declare -p -x > current_env
+source customization.cfg
+. current_env
+
+source linux-tkg-config/prepare
 
 _distro_prompt() {
   echo "Which linux distribution are you running ?"
@@ -70,103 +72,6 @@ _install_dependencies() {
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
     sudo zypper install -y bc bison ccache dwarves elfutils flex gcc-c++ git libXi-devel libelf-devel libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 make ncurses-devel openssl-devel patch pesign rpm-build rpmdevtools schedtool ${clang_deps}
-  fi
-}
-
-_linux_git_branch_checkout() {
-
-  cd "$_where"
-
-  if [[ -z "$_git_mirror" || ! "$_git_mirror" =~ ^(kernel\.org|googlesource\.com)$ ]]; then
-    while true; do
-      echo "Which git repository would you like to clone the linux sources from ?"
-      echo "   0) kernel.org (official)"
-      echo "   1) googlesource.com (faster mirror)"
-      read -p "[0-1]: " _git_repo_index
-
-      if [ "$_git_repo_index" = "0" ]; then
-        _git_mirror="kernel.org"
-        break
-      elif [ "$_git_repo_index" = "1" ]; then
-        _git_mirror="googlesource.com"
-        break
-      else
-        echo "Wrong index."
-      fi
-    done
-  fi
-
-  if ! [ -d linux-src-git ]; then
-    msg2 "First initialization of the linux source code git folder"
-    mkdir linux-src-git
-    cd linux-src-git
-    git init
-
-    git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
-    git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
-  else
-    cd linux-src-git
-
-    # Remove "origin" remote if present
-    if git remote -v | grep -w "origin" ; then
-      git remote rm origin
-    fi
-
-    if ! git remote -v | grep -w "kernel.org" ; then
-      git remote add kernel.org https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
-    fi
-    if ! git remote -v | grep -w "googlesource.com" ; then
-      git remote add googlesource.com https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable
-    fi
-
-    msg2 "Current branch: $(git branch | grep "\*")"
-    msg2 "Reseting files to their original state"
-
-    git reset --hard HEAD
-    git clean -f -d -x
-  fi
-
-  if [[ "$_sub" = rc* ]]; then
-    msg2 "Switching to master branch for RC Kernel"
-
-    if ! git branch --list | grep "master-${_git_mirror}" ; then
-      msg2 "master branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add kernel.org master
-      git remote set-branches --add googlesource.com master
-      git fetch --depth=1 $_git_mirror master
-      git fetch --depth 1 $_git_mirror tag "v${_basekernel}-${_sub}"
-      git checkout -b master-${_git_mirror} ${_git_mirror}/master
-    else
-      msg2 "master branch exists locally, updating..."
-      git checkout master-${_git_mirror}
-      git fetch --depth 1 $_git_mirror tag "v${_basekernel}-${_sub}"
-      git reset --hard ${_git_mirror}/master
-    fi
-    msg2 "Checking out latest RC tag: v${_basekernel}-${_sub}"
-    git checkout "v${_basekernel}-${_sub}"
-  else
-    # define kernel tag so we treat the 0 subver properly
-    _kernel_tag="v${_basekernel}.${_sub}"
-    if [ "$_sub" = "0" ];then
-      _kernel_tag="v${_basekernel}"
-    fi
-
-    msg2 "Switching to linux-${_basekernel}.y"
-    if ! git branch --list | grep -w "linux-${_basekernel}-${_git_mirror}" ; then
-      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add kernel.org linux-${_basekernel}.y
-      git remote set-branches --add googlesource.com linux-${_basekernel}.y
-      git fetch --depth=1 $_git_mirror linux-${_basekernel}.y
-      git fetch --depth=1 $_git_mirror tag "${_kernel_tag}"
-      git checkout -b linux-${_basekernel}-${_git_mirror} ${_git_mirror}/linux-${_basekernel}.y
-    else
-      msg2 "${_basekernel}.y branch exists locally, updating..."
-      git checkout linux-${_basekernel}-${_git_mirror}
-      git fetch --depth 1 $_git_mirror tag "${_kernel_tag}"
-      git reset --hard ${_git_mirror}/linux-${_basekernel}.y
-    fi
-    msg2 "Checking out latest release: ${_kernel_tag}"
-    git checkout "${_kernel_tag}"
   fi
 }
 
@@ -224,9 +129,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [ "$1" = "config" ]; then
     _distro=""
   fi
-
-  # Git clone (if necessary) and checkout the asked branch by the user
-  _linux_git_branch_checkout
 
   # cd into the linux-src folder is important before calling _tkg_srcprep
   cd "$_where/linux-src-git"

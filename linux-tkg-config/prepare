@@ -6,6 +6,36 @@ _current_kernels=("6.0" "5.19" "5.15" "5.10" "5.4")
 # List of kernels that are no longer maintained upstream
 _eol_kernels=("5.18" "5.17" "5.16" "5.14" "5.13" "5.12" "5.11" "5.9" "5.8" "5.7")
 
+typeset -Ag _kernel_git_remotes
+_kernel_git_remotes=(
+  ["kernel.org"]="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+  ["googlesource.com"]="https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable"
+  ["github.com"]="https://github.com/gregkh/linux.git"
+)
+
+_git_remote_names=( "${!_kernel_git_remotes[@]}" )
+
+if [[ ! "${_git_remote_names[@]}" =~ "$_git_mirror" ]]; then
+  warning "git mirror '$_git_mirror' not recognized"
+  _git_mirror=""
+fi
+
+if [[ -z "$_git_mirror" ]]; then
+  _git_mirror="${_git_remote_names[2]}"
+  echo "Defaulting to ${_git_mirror} git mirror"
+fi
+
+# Fillout the latest tags map/dictionary
+_kernel_tags=$(git -c 'versionsort.suffix=-' \
+  ls-remote --exit-code --refs --sort='version:refname' --tags ${_kernel_git_remotes[$_git_mirror]} '*.*' \
+  | cut --delimiter='/' --fields=3)
+
+typeset -Ag _kver_latest_tags_map
+for _key in "${_current_kernels[@]}" "${_eol_kernels[@]}"; do
+  _kver_latest_tags_map[$_key]=$(echo "$_kernel_tags" | grep -F "v$_key" | tail -1 | cut -c1-)
+done
+
+# only used by workflow trigger script
 typeset -Ag _kver_subver_map
 _kver_subver_map=(
   ["5.4"]="214"
@@ -24,6 +54,8 @@ _kver_subver_map=(
   ["5.19"]="10"
   ["6.0"]="rc6"
 )
+
+
 
 # PREEMPT_RT's supported kernel subversion
 typeset -Ag _rt_subver_map
@@ -116,16 +148,77 @@ _prompt_from_array() {
   unset _default_index
 }
 
+_set_kver_internal_vars() {
+  # Sets _basever and _basekernel from _kernel_git_tag
+
+  # Major Minor Sub/Patch
+  _kver_split=( "" "" "" )
+
+  _cur_index=0
+
+  _kernel_ver_str="$_kernel_git_tag"
+  [[ "${_kernel_git_tag:0:1}" == "v" ]] && _kernel_ver_str=$(echo "$_kernel_git_tag" | cut -c2-)
+
+  # we start from index 1 since index 0 is 'v'
+  for (( i=0; i<${#_kernel_ver_str}; i++ )); do
+    _cur_char="${_kernel_ver_str:$i:1}"
+    if [[ "$_cur_char" == "." || "$_cur_char" == "-" ]]; then
+      _cur_index=$((_cur_index + 1))
+    else
+      _kver_split[$_cur_index]+="$_cur_char"
+    fi
+  done
+
+  # examples: "6.0", "5.15", "5.4"
+  _basekernel="${_kver_split[0]}.${_kver_split[1]}"
+
+  # examples: "60", "515", "54"
+  _basever="${_kver_split[0]}${_kver_split[1]}"
+
+  # examples: "5", "rc2", "122"
+  _sub="${_kver_split[2]}"
+
+  # Append a zero to the minor if it has single digit
+  [[ ${#_kver_split[1]} == "1" ]] && _kver_split[1]="0${_kver_split[1]}"
+
+  # examples: "600", "515", "504" we use this variable to have proper comparisons
+  _kver="${_kver_split[0]}${_kver_split[1]}"
+
+  echo -e "_basekernel='$_basekernel'\n_basever='$_basever'\n_sub='$_sub'\n_kver='$_kver'" > "$_where"/BIG_UGLY_FROGMINER
+}
+
 _set_kernel_version() {
 
-  if [ -z "$_version" ] || ! [[  "${!_kver_subver_map[*]}" =~ "$_version" ]]; then
+  # if $_version is a valid x.y version, define $_kernel_git_tag with latest x.y.z from $_kver_latest_tags_map
+  # if $_version is a valid x.y.z version, define $_kernel_git_tag directly
+  # Otherwise, empty it so it gets prompted
+
+  _searched_tag="$_version"
+  # prepend "v" if it's not there already
+  [[ "${_searched_tag:0:1}" != "v" ]] && _searched_tag="v$_searched_tag"
+  _version_search="$(echo "$_kernel_tags" | grep -F "$_searched_tag" | head -1)"
+
+  if [[ -n "$_version" ]]; then
+    if [[ -v _kver_latest_tags_map[$_version] ]]; then
+      msg2 "Checking out latest kernel version of $_version"
+      _kernel_git_tag="${_kver_latest_tags_map[$_version]}"
+    elif [[ "$_searched_tag" == "$_version_search" ]]; then
+      msg2 "Checking out user-defined kernel version : $_version"
+      _kernel_git_tag="$_searched_tag"
+    else
+      [[ -n "$_version" ]] && echo "kernel version $_version not recognized, prompting..."
+      _version=""
+    fi
+  fi
+
+  if [ -z "$_version" ]; then
     msg2 "Which kernel version do you want to install?"
 
     # Create a list of currently maintained kernels versions with their sub-version added
 
     _kernel_fullver_list=()
     for _key in "${_current_kernels[@]}"; do
-      _kernel_fullver_list+=("${_key}.${_kver_subver_map[$_key]}")
+      _kernel_fullver_list+=("${_kver_latest_tags_map[$_key]}")
     done
     # Add the "Another" entry to enable building unmaintained kernel versions
     _kernel_fullver_list+=("Another (no longer maintained upstream)")
@@ -133,7 +226,7 @@ _set_kernel_version() {
     # Default index corresponds to latest stable kernel
     # put default index to "1" when the most recent kernel is an rc one
     _default_index="0"
-    if [[ "${_kver_subver_map[${_current_kernels[0]}]}" == rc* ]]; then
+    if [[ "${_kver_latest_tags_map[${_current_kernels[0]}]}" == *rc* ]]; then
       _default_index="1"
     fi
 
@@ -144,25 +237,19 @@ _set_kernel_version() {
 
       _kernel_fullver_list=()
       for _key in "${_eol_kernels[@]}"; do
-        _kernel_fullver_list+=("${_key}.${_kver_subver_map[$_key]}")
+        _kernel_fullver_list+=("${_kver_latest_tags_map[$_key]}")
       done
 
       # Default index corresponds to latest unmaintained kernel
       _default_index="0"
-      _prompt_from_array "${_eol_kernels[@]}"
-      _version=${_eol_kernels[$_selected_index]}
-    else
-      _version=${_current_kernels[$_selected_index]}
+      _prompt_from_array "${_kernel_fullver_list[@]}"
     fi
+
+    _kernel_git_tag="$_selected_value"
 
   fi
 
-  # Note: _basekernel and _version variables can be merged
-  _basekernel="$_version"
-  _basever=`echo $_version | tr -d "."`
-  _sub=${_kver_subver_map[$_version]}
-
-  echo -e "_basekernel='$_basekernel'\n_basever='$_basever'\n_sub='$_sub'" > "$_where"/BIG_UGLY_FROGMINER
+  _set_kver_internal_vars
 }
 
 _set_cpu_scheduler() {
@@ -179,33 +266,33 @@ _set_cpu_scheduler() {
   )
 
   # CPU SCHED selector
-  if [ "$_basever" = "54" ]; then
+  if [ "$_kver" = "504" ]; then
     _avail_cpu_scheds=("pds" "bmq" "muqss" "cacule" "cfs")
-  elif [ "$_basever" = "57" ]; then
+  elif [ "$_kver" = "507" ]; then
     _avail_cpu_scheds=("pds" "bmq" "muqss" "cfs")
-  elif [ "$_basever" = "58" ]; then
+  elif [ "$_kver" = "508" ]; then
     _avail_cpu_scheds=("upds" "pds" "bmq" "cfs")
-  elif [[ "$_basever" =~ ^(59|511)$ ]]; then
+  elif [[ "$_kver" =~ ^(509|511)$ ]]; then
     _avail_cpu_scheds=("upds" "pds" "bmq" "muqss" "cfs")
-  elif [ "$_basever" = "510" ]; then
+  elif [ "$_kver" = "510" ]; then
     _avail_cpu_scheds=("upds" "pds" "bmq" "muqss" "cacule" "cfs")
-  elif [ "$_basever" = "512" ]; then
+  elif [ "$_kver" = "512" ]; then
     _avail_cpu_scheds=("pds" "bmq" "muqss" "cacule" "cfs")
-  elif [ "$_basever" = "513" ]; then
+  elif [ "$_kver" = "513" ]; then
     _avail_cpu_scheds=("pds" "bmq" "muqss" "cacule" "cfs")
-  elif [ "$_basever" = "514" ]; then
+  elif [ "$_kver" = "514" ]; then
     _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
-  elif [ "$_basever" = "515" ]; then
+  elif [ "$_kver" = "515" ]; then
     _avail_cpu_scheds=("pds" "bmq" "cacule" "tt" "cfs")
-  elif [ "$_basever" = "516" ]; then
+  elif [ "$_kver" = "516" ]; then
     _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
-  elif [ "$_basever" = "517" ]; then
+  elif [ "$_kver" = "517" ]; then
     _avail_cpu_scheds=("pds" "bmq" "cacule" "tt" "cfs" "bore")
-  elif [ "$_basever" = "518" ]; then
+  elif [ "$_kver" = "518" ]; then
     _avail_cpu_scheds=("cfs" "pds" "bmq" "cacule" "tt" "bore")
-  elif [ "$_basever" = "519" ]; then
+  elif [ "$_kver" = "519" ]; then
     _avail_cpu_scheds=("cfs" "pds" "bmq" "cacule" "tt" "bore")
-  elif [ "$_basever" = "60" ]; then
+  elif [ "$_kver" = "600" ]; then
     _avail_cpu_scheds=("cfs" "bore")
   else
     _avail_cpu_scheds=("cfs")
@@ -264,7 +351,7 @@ _set_compiler(){
   if [ "$_compiler" = "llvm" ]; then
     _compiler_name="-llvm"
     llvm_opt="LLVM=1 LLVM_IAS=${_llvm_ias:-0}"
-    if [[ "$_basever" = 6* ]] || ( [[ "$_basever" = 5* ]] && [ $_basever -ge 512 ] ); then
+    if [ $_kver -ge 512 ]; then
       if [[ -z "$_lto_mode" || ! "$_lto_mode" =~ ^(no|thin|full)$ ]]; then
         plain "Would you like to enable Clang Link Time Optimizations (LTO) ? It may improve the performance of the kernel."
         warning "This is currently experimental and might result in an unbootable kernel - Not recommended"
@@ -295,7 +382,97 @@ _set_compiler(){
 }
 
 
+_linux_git_branch_checkout() {
+
+  if [ -z "$_kernel_git_tag" ]; then
+    warning "internal error: kernel version should be chosen before cloning kernel sources"
+    exit 1
+  fi
+
+  cd "$_where"
+
+  if ! [ -d linux-src-git ]; then
+    msg2 "First initialization of the linux source code git folder"
+    mkdir linux-src-git
+    cd linux-src-git
+    git init
+
+    for remote in "${!_kernel_git_remotes[@]}"; do
+      git remote add "$remote" "${_kernel_git_remotes[$remote]}"
+    done
+  else
+    cd linux-src-git
+
+    # Remove "origin" remote if present
+    if git remote -v | grep -w "origin" ; then
+      git remote rm origin
+    fi
+
+    for remote in "${!_kernel_git_remotes[@]}"; do
+      if ! git remote -v | grep -w "$remote" ; then
+        git remote add "$remote" "${_kernel_git_remotes[$remote]}"
+      fi
+    done
+
+    msg2 "Current branch: $(git branch | grep "\*")"
+    msg2 "Reseting files to their original state"
+
+    git reset --hard HEAD
+    git clean -f -d -x
+  fi
+
+  if [[ "$_sub" = rc* ]]; then
+    msg2 "Switching to master branch for RC Kernel"
+
+    if ! git branch --list | grep "master-${_git_mirror}" ; then
+      msg2 "master branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add kernel.org master
+      git remote set-branches --add googlesource.com master
+      git fetch --depth=1 $_git_mirror master
+      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
+      git checkout -b master-${_git_mirror} ${_git_mirror}/master
+    else
+      msg2 "master branch exists locally, updating..."
+      git checkout master-${_git_mirror}
+      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
+      git reset --hard ${_git_mirror}/master
+    fi
+    msg2 "Checking out latest RC tag: $_kernel_git_tag"
+    git checkout "$_kernel_git_tag"
+  else
+    msg2 "Switching to linux-${_basekernel}.y"
+    if ! git branch --list | grep -w "linux-${_basekernel}-${_git_mirror}" ; then
+      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
+      git remote set-branches --add kernel.org linux-${_basekernel}.y
+      git remote set-branches --add googlesource.com linux-${_basekernel}.y
+      git fetch --depth=1 $_git_mirror linux-${_basekernel}.y
+      git fetch --depth=1 $_git_mirror tag "$_kernel_git_tag"
+      git checkout -b linux-${_basekernel}-${_git_mirror} ${_git_mirror}/linux-${_basekernel}.y
+    else
+      msg2 "${_basekernel}.y branch exists locally, updating..."
+      git checkout linux-${_basekernel}-${_git_mirror}
+      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
+      git reset --hard ${_git_mirror}/linux-${_basekernel}.y
+    fi
+    msg2 "Checking out latest release: $_kernel_git_tag"
+    git checkout "$_kernel_git_tag"
+  fi
+}
+
+
 _tkg_initscript() {
+
+  if ! whereis git > /dev/null 2>&1; then
+    warning "the 'git' command is not installed. Please install it then re-run the install script of linux-tkg."
+    exit 1
+  fi
+
+  if ! git status > /dev/null 2>&1; then
+    warning "linux-tkg needs to be git cloned"
+    msg2 "please delete the current linux-tkg folder and re-created it with"
+    msg2 "git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git"
+    exit 1
+  fi
 
   # Default to Arch
   if [ -z "$_distro" ] || [ "$_ispkgbuild" = "true" ]; then
@@ -334,6 +511,8 @@ _tkg_initscript() {
   if [ -n "$_custom_pkgbase" ]; then
     echo -e "_custom_pkgbase=\"$_custom_pkgbase\"" >> "$_where"/BIG_UGLY_FROGMINER
   fi
+
+  _linux_git_branch_checkout
 }
 
 user_patcher() {
@@ -413,16 +592,6 @@ _tkg_srcprep() {
     echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
     echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/logs/prepare.log.txt
     echo "" > localversion.20-pkgname
-    # add upstream patch
-    if [ "$_sub" != "0" ] && [[ "$_sub" != rc* ]]; then
-      if [ ! -e "$srcdir/patch-${pkgver}" ]; then
-        if [ -e "$srcdir/patch-${pkgver}.xz" ]; then
-          xz -dk "$(readlink -f "$srcdir/patch-${pkgver}.xz")" --stdout > "$srcdir/patch-${pkgver}"
-        else
-          ( cd "$_where" && xz -dk patch-${pkgver}.xz && mv "$_where"/patch-${pkgver} "$srcdir"/ )
-        fi
-      fi
-    fi
   fi
   if [ "${_distro}" = "Void" ]; then
 	  pkgver="${version}"
@@ -450,14 +619,14 @@ _tkg_srcprep() {
     _patch_location="${wrksrc}"
   fi
 
-  if [ "$_basever" = "54" ]; then
+  if [ "$_kver" = "504" ]; then
     _patch_name="more-uarches-for-kernel-4.19-5.4"
-  elif [ "$_basever" = "57" ]; then
+  elif [ "$_kver" = "507" ]; then
     _outdated="outdated_versions/"
     _patch_name="enable_additional_cpu_optimizations_for_gcc_v10.1%2B_kernel_v5.7"
-  elif (( 58 <= "$_basever" &&  "$_basever" <= 514 )) && [[ "$_basever" != 6* ]]; then
+  elif (( 508 <= "$_kver" &&  "$_kver" <= 514 )); then
     _patch_name="more-uarches-for-kernel-5.8-5.14"
-  elif [[ "$_basever" =~ ^(515|516)$ ]]; then
+  elif [[ "$_kver" =~ ^(515|516)$ ]]; then
     _patch_name="more-uarches-for-kernel-5.15-5.16"
   else
     _patch_name="more-uarches-for-kernel-5.17%2B"
@@ -522,25 +691,25 @@ _tkg_srcprep() {
   tkgpatch="$srcdir/0002-mm-Support-soft-dirty-flag-read-with-reset.patch" && _tkg_patcher
 
   # prjc/bmq patch rev
-  if [ "$_basever" = "58" ] || [ "$_basever" = "57" ]; then
+  if [ "$_kver" = "508" ] || [ "$_kver" = "507" ]; then
     rev=3
-  elif [ "$_basever" = "59" ]; then
+  elif [ "$_kver" = "509" ]; then
     rev=3
-  elif [ "$_basever" = "510" ]; then
+  elif [ "$_kver" = "510" ]; then
     rev=3
-  elif [ "$_basever" = "511" ]; then
+  elif [ "$_kver" = "511" ]; then
     rev=3
-  elif [ "$_basever" = "512" ]; then
+  elif [ "$_kver" = "512" ]; then
     rev=1
-  elif [ "$_basever" = "513" ]; then
+  elif [ "$_kver" = "513" ]; then
     rev=3
-  elif [ "$_basever" = "514" ]; then
+  elif [ "$_kver" = "514" ]; then
     rev=3
-  elif [ "$_basever" = "515" ]; then
+  elif [ "$_kver" = "515" ]; then
     rev=1
-  elif [ "$_basever" = "516" ]; then
+  elif [ "$_kver" = "516" ]; then
     rev=1
-  elif [ "$_basever" = "518" ]; then
+  elif [ "$_kver" = "518" ]; then
     rev=2
   else
     rev=0
@@ -568,7 +737,7 @@ _tkg_srcprep() {
 
     # PDS-mq
     _msg="Applying PDS base patch"
-    if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
+    if [ "${_cpusched}" = "upds" ] || ( [ "$_kver" = "504" ] || [ "$_kver" = "507" ] && [ "${_cpusched}" = "pds" ] ); then
       tkgpatch="$srcdir/0005-v${_basekernel}_undead-pds099o.patch" && _tkg_patcher
       if [ "${_aggressive_ondemand}" = "true" ]; then
         _msg="Applying PDS agressive ondemand governor patch"
@@ -588,13 +757,13 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "bmq" ]; then
     # Project C / BMQ
     _msg="Applying Project C / BMQ base patch"
-    if [ "$_basever" != "54" ]; then
+    if [ "$_kver" != "504" ]; then
       tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
     else
       tkgpatch="$srcdir/0009-bmq_v5.4-r2.patch" && _tkg_patcher
     fi
 
-    if [ "${_aggressive_ondemand}" = "true" ] && [ "$_basever" != "54" ]; then
+    if [ "${_aggressive_ondemand}" = "true" ] && [ "$_kver" != "504" ]; then
       _msg="Applying BMQ agressive ondemand governor patch"
       tkgpatch="$srcdir/0009-glitched-ondemand-bmq.patch" && _tkg_patcher
     fi
@@ -604,18 +773,18 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "cacule" ]; then
     _msg="Applying cacule patch"
     if [ "${_distro}" = "Void" ]; then
-      if [[ $_basever -lt 515 ]]; then
+      if [[ $_kver -lt 515 ]]; then
         wget -P "$wrksrc" "https://raw.githubusercontent.com/hamadmarri/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-      elif [[ $_basever = 515 ]]; then
+      elif [[ $_kver = 515 ]]; then
         wget -P "$wrksrc" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
       else
         wget -P "$wrksrc" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/0001-cacULE-${_basekernel}.patch"
       fi
       tkgpatch="$wrksrc/cacule-${_basekernel}.patch" && _tkg_patcher
     else
-      if [[ $_basever -lt 515 ]]; then
+      if [[ $_kver -lt 515 ]]; then
         wget -P "$srcdir" "https://raw.githubusercontent.com/hamadmarri/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-      elif [[ $_basever = 515 ]]; then
+      elif [[ $_kver = 515 ]]; then
         wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
       else
         wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/0001-cacULE-${_basekernel}.patch"
@@ -626,25 +795,25 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "tt" ]; then
     _msg="Applying TT patch"
     if [ "${_distro}" = "Void" ]; then
-      if [[ $_basever = 515 ]]; then
+      if [[ $_kver = 515 ]]; then
         curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/TT/0001-tt-${_basekernel}.patch" > "$srcdir"/tt.patch
-      elif [[ $_basever = 517 ]] || [[ $_basever = 519 ]]; then
+      elif [[ $_kver = 517 ]] || [[ $_kver = 519 ]]; then
         curl "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt.patch" > "$wrksrc"/tt.patch
       else
         curl "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt-${_basekernel}.patch" > "$wrksrc"/tt.patch
       fi
       tkgpatch="$wrksrc/tt.patch" && _tkg_patcher
     else
-      if [[ $_basever = 515 ]]; then
+      if [[ $_kver = 515 ]]; then
          curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/TT/0001-tt-${_basekernel}.patch" > "$srcdir"/tt.patch
-      elif [[ $_basever = 517 ]] || [[ $_basever = 519 ]]; then
+      elif [[ $_kver = 517 ]] || [[ $_kver = 519 ]]; then
          curl "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt.patch" > "$srcdir"/tt.patch
       else
          curl "https://raw.githubusercontent.com/ptr1337/kernel-patches/master/${_basekernel}/sched/0001-tt-${_basekernel}.patch" > "$srcdir"/tt.patch
       fi
       tkgpatch="$srcdir/tt.patch" && _tkg_patcher
     fi
-    if [ "$_tt_high_hz" = "true" ] && [ $_basever = 515 ]; then
+    if [ "$_tt_high_hz" = "true" ] && [ $_kver = 515 ]; then
       _msg="Applying TT High HZ patch"
       if [ "${_distro}" = "Void" ]; then
         curl "https://raw.githubusercontent.com/hamadmarri/TT-CPU-Scheduler/master/patches/${_basekernel}/high-hz.patch" > "$wrksrc"/tt_high_hz.patch
@@ -656,7 +825,7 @@ _tkg_srcprep() {
     fi
   elif [ "${_cpusched}" = "bore" ]; then
     _msg="Applying BORE patch"
-    if [ "$_basever" = "518" ]; then
+    if [ "$_kver" = "518" ]; then
       _bore_suffix="-sched"
     fi
     if [ "${_distro}" = "Void" ]; then
@@ -674,7 +843,7 @@ _tkg_srcprep() {
   fi
 
   fi
-  
+
   if [ -z "${_configfile}" ]; then
     msg2 "Using archlinux's default config file for kernel ${_basekernel}"
     cat "${srcdir}"/config.x86_64 > ./.config
@@ -707,11 +876,11 @@ _tkg_srcprep() {
   # Set some -tkg defaults
   _disable "DYNAMIC_FAULT" "DEFAULT_FQ_CODEL"
   _enable "DEFAULT_CAKE"
-  if [ "$_basever" = "54" ]; then
+  if [ "$_kver" = "504" ]; then
     _module "TP_SMAPI"
     _enable "RAID6_USE_PREFER_GEN"
   fi
-  if [ "$_basever" = "54" ] || [ "$_basever" = "59" ]; then
+  if [ "$_kver" = "504" ] || [ "$_kver" = "509" ]; then
     scripts/config --set-val "RCU_BOOST_DELAY" "0"
   fi
   _disable "NTP_PPS" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF" "ZSWAP_COMPRESSOR_DEFAULT_LZO" "PROFILE_ALL_BRANCHES"
@@ -733,7 +902,7 @@ _tkg_srcprep() {
     fi
   fi
   # Clang LTO
-  if [ "$_compiler_name" = "-llvm" ] && ( [[ "$_basever" = 6* ]] || [ $_basever -ge 512 ] ); then
+  if [ "$_compiler_name" = "-llvm" ] && [ $_kver -ge 512 ]; then
     if [ "$_lto_mode" = "full" ]; then
       _enable LTO_CLANG_FULL
       _disable LTO_CLANG_THIN
@@ -761,7 +930,7 @@ _tkg_srcprep() {
 
   if [ "$_compiler_name" = "-llvm" ]; then
     _disable "KCSAN"
-    if [ "$_basever" != "54" ] && [ "$_basever" != "57" ] && [ "$_basever" != "58" ]; then
+    if [ "$_kver" != "504" ] && [ "$_kver" != "507" ] && [ "$_kver" != "508" ]; then
       _disable "INIT_STACK_ALL_PATTERN"
     else
       _disable "INIT_STACK_ALL"
@@ -893,7 +1062,7 @@ _tkg_srcprep() {
     _disable "CFS_BANDWIDTH"
 
     # for linux59-tkg _sched_yield_type is set to 0
-    if [ "$_basever" = "59" ]; then
+    if [ "$_kver" = "509" ]; then
       _sched_yield_type="0"
     fi
     # sched yield type
@@ -929,11 +1098,11 @@ _tkg_srcprep() {
       _prompt_from_array "${yield_type_array_text[@]}"
       _sched_yield_type="${_selected_index}"
     fi
-    if [ "${_cpusched}" = "upds" ] || ( [ "$_basever" = "54" ] || [ "$_basever" = "57" ] && [ "${_cpusched}" = "pds" ] ); then
+    if [ "${_cpusched}" = "upds" ] || ( [ "$_kver" = "504" ] || [ "$_kver" = "507" ] && [ "${_cpusched}" = "pds" ] ); then
       _sched="pds"
     elif [ "${_cpusched}" = "muqss" ]; then
       _sched="MuQSS"
-    elif ( [ "$_basever" != "54" ] && [ "$_cpusched" != "bmq" ] && [ "$_cpusched" != "pds" ] ) || ( [ "$_basever" = "54" ] && [ "$_cpusched" = "bmq" ] ); then
+    elif ( [ "$_kver" != "504" ] && [ "$_cpusched" != "bmq" ] && [ "$_cpusched" != "pds" ] ) || ( [ "$_kver" = "504" ] && [ "$_cpusched" = "bmq" ] ); then
       _sched="${_cpusched}"
     else
       _sched="alt_core"
@@ -982,7 +1151,7 @@ _tkg_srcprep() {
     fi
     msg2 "Using ${_rr_interval}ms round robin interval"
 
-    if [ "$_basever" != "54" ]; then
+    if [ "$_kver" != "504" ]; then
       if [ "${_cpusched}" = "muqss" ]; then
         sed -i -e "s/int rr_interval __read_mostly = 6;/int rr_interval __read_mostly = ${_rr_interval};/" ./kernel/sched/"${_sched}".c
       elif [ "${_cpusched}" = "upds" ]; then
@@ -1013,19 +1182,19 @@ _tkg_srcprep() {
 
   # compiler optimization level
   if [ "$_compileroptlevel" = "1" ]; then
-    if [ "$_basever" != "54" ]; then
+    if [ "$_kver" != "504" ]; then
       _disable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
     else
       _disable "CC_OPTIMIZE_HARDER"
     fi
   elif [ "$_compileroptlevel" = "2" ]; then
-    if [[ "$_basever" = 6* ]]; then
+    if [[ $_kver -ge 600 ]]; then
       tkgpatch="$srcdir/0013-optimize_harder_O3.patch"
       _msg="Patching O3 optimization"
       _tkg_patcher
     else
       _disable "CC_OPTIMIZE_FOR_PERFORMANCE"
-      if [ "$_basever" != "54" ]; then
+      if [ "$_kver" != "504" ]; then
         _enable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
       else
         _enable "CC_OPTIMIZE_HARDER"
@@ -1034,7 +1203,7 @@ _tkg_srcprep() {
   elif [ "$_compileroptlevel" = "3" ]; then
     _disable "CC_OPTIMIZE_FOR_PERFORMANCE"
     _enable "CC_OPTIMIZE_FOR_SIZE"
-    if [ "$_basever" != "54" ]; then
+    if [ "$_kver" != "504" ]; then
       _disable "CC_OPTIMIZE_FOR_PERFORMANCE_O3"
     else
       _disable "CC_OPTIMIZE_HARDER"
@@ -1201,7 +1370,7 @@ _tkg_srcprep() {
   # bcachefs
   tkgpatch="$srcdir/0008-${_basekernel}-bcachefs.patch"
   if [ -e "$tkgpatch" ]; then
-    if [ -z "$_bcachefs" ] && [ "$_basever" != "54" ]; then
+    if [ -z "$_bcachefs" ] && [ "$_kver" != "504" ]; then
        plain ""
        plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
        plain "https://bcachefs.org/"
@@ -1256,7 +1425,7 @@ _tkg_srcprep() {
   fi
 
   # fsync support
-  if [[ $_basever > 515 ]] || [[ "$CONDITION9" =~ [yY] ]] || [ "$_futex_waitv" = "true" ]; then
+  if [[ $_kver > 515 ]] || [[ "$CONDITION9" =~ [yY] ]] || [ "$_futex_waitv" = "true" ]; then
     tkgpatch="$srcdir/0007-v${_basekernel}-fsync1_via_futex_waitv.patch"
   else
     tkgpatch="$srcdir/0007-v${_basekernel}-fsync.patch"
@@ -1405,7 +1574,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
   unset _msg
 
   # Anbox modules
-  if [ "$_basever" != "54" ]; then
+  if [ "$_basever" != "504" ]; then
     if [ -z "$_anbox" ]; then
       plain ""
       plain "Enable android modules for use with Anbox?"
