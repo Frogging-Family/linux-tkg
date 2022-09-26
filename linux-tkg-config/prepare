@@ -462,16 +462,36 @@ _linux_git_branch_checkout() {
 
 _tkg_initscript() {
 
-  if ! whereis git > /dev/null 2>&1; then
+  if [[ ! -x "$(command -v git)" ]]; then
     warning "the 'git' command is not installed. Please install it then re-run the install script of linux-tkg."
     exit 1
   fi
 
-  if ! git status > /dev/null 2>&1; then
-    warning "linux-tkg needs to be git cloned"
-    msg2 "please delete the current linux-tkg folder and re-created it with"
-    msg2 "git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git"
+  if ! git status &>/dev/null; then
+    warning "Please make sure you use git to clone the repository."
+    msg2 "Try deleting '$PWD' and cloning the repo with git."
+    msg2 "Example: 'git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git'"
     exit 1
+  fi
+
+  if [[ -x "$(command -v schedtool)" ]]; then
+    _use_schedtool="true"
+    if [[ "$_nice_level" -gt "8" ]]; then
+      _nice_level="8"
+    elif [[ "$_nice_level" -lt "-8" ]]; then
+      _nice_level="-8"
+    elif [[ -z "$_nice_level" ]]; then
+      _nice_level="1"
+    fi
+    if [[ "$_ionice_level" -gt "7" ]]; then
+      _ionice_level="7"
+    elif [[ "$_ionice_level" -lt "0" ]]; then
+      _ionice_level="0"
+    elif [[ -z "$_ionice_level" ]]; then
+      _ionice_level="1"
+    fi
+  else
+    _use_schedtool="false"
   fi
 
   # Default to Arch
@@ -631,7 +651,6 @@ _tkg_srcprep() {
   else
     _patch_name="more-uarches-for-kernel-5.17%2B"
   fi
-
 
   wget -O "${_patch_location}/${_patch_name}.patch" "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/${_outdated}${_patch_name}.patch" || true
   tkgpatch="${_patch_location}/${_patch_name}.patch"

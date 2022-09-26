@@ -212,7 +212,11 @@ if [ "$1" = "install" ]; then
   fi
 
   _timed_build() {
-    _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 "$@" 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( "$@" 2>&1 ) 3>&1 1>&2 2>&3 )
+    if [[ "$_use_schedtool" = "true" ]]; then
+      _runtime=$( time ( schedtool -B -n "$_nice_level" -e ionice -n "$_ionice_level" "$@" 2>&1 ) 3>&1 1>&2 2>&3 )
+    else
+      _runtime=$( time ( "$@" 2>&1 ) 3>&1 1>&2 2>&3 )
+    fi
   }
 
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
