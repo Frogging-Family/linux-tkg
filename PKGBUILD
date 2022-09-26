@@ -117,9 +117,14 @@ build() {
   # document the TkG variables, excluding "_", "_EXT_CONFIG_PATH", "_where", and "_path".
   declare -p | cut -d ' ' -f 3 | grep -P '^_(?!=|EXT_CONFIG_PATH|where|path)' > "${srcdir}/customization-full.cfg"
 
-  # remove -O2 flag and place user optimization flag
-  CFLAGS=${CFLAGS/-O2/}
-  CFLAGS+=" ${_compileropt}"
+  # remove -O flags and place user optimization flag
+  LDFLAGS=${LDFLAGS//-O[0-9]/$_compileropt}
+  LDFLAGS=${LDFLAGS//-Os/$_compileropt}
+  LDFLAGS=${LDFLAGS//-Og/$_compileropt}
+
+  CFLAGS=${CFLAGS//-O[0-9]/$_compileropt}
+  CFLAGS=${CFLAGS//-Os/$_compileropt}
+  CFLAGS=${CFLAGS//-Og/$_compileropt}
 
   # build!
   if [[ "$_use_schedtool" = "true" ]]; then
