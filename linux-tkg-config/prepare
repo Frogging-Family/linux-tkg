@@ -1800,6 +1800,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
 
   # generate keys for use later in build
   if [[ "$_distro" = "Arch" && "$_sign_modules" = "true" ]]; then
+    local _mod_hash; local _mod_key
     _enable "MODULE_SIG"
     _enable "MODULE_SIG_ALL"
     if [[ "$_force_signed_modules" = "true" ]]; then
@@ -1808,28 +1809,28 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
       _disable "MODULE_SIG_FORCE"
     fi
     _disable "MODULE_ALLOW_MISSING_NAMESPACE_IMPORTS"
-    case "$_modules_key_hash" in
-      sha1|SHA1)
+    case "${_modules_key_hash,,}" in
+      sha1)
         _disable "MODULE_SIG_SHA224" "MODULE_SIG_SHA256" "MODULE_SIG_SHA384" "MODULE_SIG_SHA512"
         _enable "MODULE_SIG_SHA1"
         scripts/config --set-str "MODULE_SIG_HASH" "sha1"
         _mod_hash="sha1";;
-      sha224|SHA224)
+      sha224)
         _disable "MODULE_SIG_SHA1" "MODULE_SIG_SHA256" "MODULE_SIG_SHA384" "MODULE_SIG_SHA512"
         _enable "MODULE_SIG_SHA224"
         scripts/config --set-str "MODULE_SIG_HASH" "sha224"
         _mod_hash="sha224";;
-      sha256|SHA256)
+      sha256)
         _disable "MODULE_SIG_SHA1" "MODULE_SIG_SHA224" "MODULE_SIG_SHA384" "MODULE_SIG_SHA512"
         _enable "MODULE_SIG_SHA256"
         scripts/config --set-str "MODULE_SIG_HASH" "sha256"
         _mod_hash="sha256";;
-      sha384|SHA384)
+      sha384)
         _disable "MODULE_SIG_SHA1" "MODULE_SIG_SHA224" "MODULE_SIG_SHA256" "MODULE_SIG_SHA512"
         _enable "MODULE_SIG_SHA384"
         scripts/config --set-str "MODULE_SIG_HASH" "sha384"
         _mod_hash="sha384";;
-      sha512|SHA512)
+      sha512)
         _disable "MODULE_SIG_SHA1" "MODULE_SIG_SHA224" "MODULE_SIG_SHA256" "MODULE_SIG_SHA384"
         _enable "MODULE_SIG_SHA512"
         scripts/config --set-str "MODULE_SIG_HASH" "sha512"
@@ -1840,7 +1841,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
         scripts/config --set-str "MODULE_SIG_HASH" "sha512"
         _mod_hash="sha512";;
     esac
-    if [[ "$_modules_key_type" = "RSA" || "$_modules_key_type" = "rsa" ]]; then
+    if [[ "${_modules_key_type,,}" = "rsa" ]]; then
       _disable "MODULE_SIG_KEY_TYPE_ECDSA"
       _enable "MODULE_SIG_KEY_TYPE_RSA"
       _mod_key="rsa"
@@ -1851,16 +1852,38 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     fi
     if [[ -d "/usr/src/certs-local" ]]; then
       cp -rf /usr/src/certs-local ./
-      ./certs-local/genkeys.py -kh "$_mod_hash" -kt "$_mod_key" -r "$_key_refresh" -c ".config"
+      ./certs-local/genkeys.py -kh "$_mod_hash" -kt "$_mod_key" -r "$_modules_key_refresh" -c ".config"
     else
       git clone --depth 1 https://github.com/itoffshore/Arch-SKM.git -q
       cp -rf Arch-SKM/certs-local ./; rm -rf Arch-SKM
-      ./certs-local/genkeys.py -kh "$_mod_hash" -kt "$_mod_key" -r "$_key_refresh" -c ".config"
+      ./certs-local/genkeys.py -kh "$_mod_hash" -kt "$_mod_key" -r "$_modules_key_refresh" -c ".config"
     fi
     msg2 "Updated config to use locally generated keys."
-    msg2 "Key Refresh Period: '$_key_refresh'"
-    msg2 "Key Hash: '$_mod_hash'"
-    msg2 "Key Type: '$_mod_key'"
+    if [[ "$_modules_key_refresh" = "always" ]]; then
+      msg2 "Key Refresh Period: 'always'"
+    else
+      local _refresh_time; local _refresh_suffix
+      _refresh_suffix="$(grep -o '[smhdw]' <<< "${_modules_key_refresh,,}")"
+      _refresh_time="$(grep -oP '\d+' <<< "${_modules_key_refresh,,}")"
+      case "$_refresh_suffix" in
+        s)
+          msg2 "Key Refresh Period: '$_refresh_time seconds'";;
+        m)
+          msg2 "Key Refresh Period: '$_refresh_time minutes'";;
+        h)
+          msg2 "Key Refresh Period: '$_refresh_time hours'";;
+        d)
+          msg2 "Key Refresh Period: '$_refresh_time days'";;
+        w)
+          msg2 "Key Refresh Period: '$_refresh_time weeks'";;
+      esac
+    fi
+    msg2 "Key Hash: '${_mod_hash,,}'"
+    if [[ "${_modules_key_type,,}" = "rsa" ]]; then
+      msg2 "Key Type: 'rsa'"
+    else
+      msg2 "Key Type: 'ecdsa'"
+    fi
   fi
 
   if [ "$_distro" = "Arch" ]; then

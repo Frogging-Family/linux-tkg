@@ -219,20 +219,22 @@ hackmodsigs() {
   _keys_src="${srcdir}/${_srcpath}/certs-local"
   _keys_build="${builddir}/certs-local"
 
-  mapfile -t _dkms_mods < <(dkms status | cut -f-1 -d '/' | sort -u)
-  _dkms_build="${pkgdir}/etc/dkms"
-  _dkms_src="${_keys_src}/dkms"
-
   "${_keys_src}/install-certs.py" "$_keys_build"
 
-  # Add a symbolic link from kernel-sign.conf to "module_name".conf for dkms
-  # to use when signing modules.
-  for _mod in "${_dkms_mods[@]}"; do
-    ln -sr "${_dkms_src}/kernel-sign.conf" "${_dkms_src}/${_mod}.conf"
-  done
+  if [[ ! -e "/etc/dkms/kernel-sign.conf" && ! -e "/etc/dkms/kernel-sign.sh" ]]; then
+    mapfile -t _dkms_mods < <(dkms status | cut -f-1 -d '/' | sort -u)
+    _dkms_build="${pkgdir}/etc/dkms"
+    _dkms_src="${_keys_src}/dkms"
 
-  mkdir -p "$_dkms_build"
-  rsync -Elaz "${_dkms_src}/" "${_dkms_build}/"
+    # Add a symbolic link from kernel-sign.conf to "module_name".conf for dkms
+    # to use when signing modules.
+    for _mod in "${_dkms_mods[@]}"; do
+      ln -sr "${_dkms_src}/kernel-sign.conf" "${_dkms_src}/${_mod}.conf"
+    done
+
+    mkdir -p "$_dkms_build"
+    rsync -Elaz "${_dkms_src}/" "${_dkms_build}/"
+  fi
 }
 
 hackheaders() {
