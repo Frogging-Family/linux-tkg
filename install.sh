@@ -186,7 +186,7 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [[ "$_noccache" != "true" && -x "$(command -v ccache)" ]]; then
-    if [[ "$PATH" != *"ccache"* && "$PATH" != *"/usr/lib/ccache/bin"* ]]; then
+    if [[ "$PATH" != *"ccache"* ]]; then
       export PATH="/usr/lib/ccache/bin:$PATH"
       if [[ "$_ccache_file_clone" = "true" && -z "$CCACHE_FILECLONE" && -z "$CCACHE_NOFILECLONE" ]]; then
         export CCACHE_FILECLONE="true"
