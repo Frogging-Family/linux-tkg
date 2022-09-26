@@ -140,9 +140,9 @@ build() {
 
   # build!
   if [[ "$_use_schedtool" = "true" ]]; then
-    _runtime=$( time ( schedtool -B -n "$_nice_level" -e ionice -n "$_ionice_level" make "${_force_all_threads}" LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+    _runtime=$( time ( schedtool -B -n "$_nice_level" -e ionice -n "$_ionice_level" make ${_force_all_threads} ${llvm_opt}  LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
   else
-    _runtime=$( time ( make "${_force_all_threads}" LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+    _runtime=$( time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
   fi
 }
 
@@ -211,6 +211,30 @@ hackbase() {
   fi
 }
 
+hackmodsigs() {
+  local builddir; local _keys_src; local _keys_build
+  local _dkms_mods; local _dkms_build; local _dkms_src
+
+  builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
+  _keys_src="${srcdir}/${_srcpath}/certs-local"
+  _keys_build="${builddir}/certs-local"
+
+  mapfile -t _dkms_mods < <(dkms status | cut -f-1 -d '/' | sort -u)
+  _dkms_build="${pkgdir}/etc/dkms"
+  _dkms_src="${_keys_src}/dkms"
+
+  "${_keys_src}/install-certs.py" "$_keys_build"
+
+  # Add a symbolic link from kernel-sign.conf to "module_name".conf for dkms
+  # to use when signing modules.
+  for _mod in "${_dkms_mods[@]}"; do
+    ln -sr "${_dkms_src}/kernel-sign.conf" "${_dkms_src}/${_mod}.conf"
+  done
+
+  mkdir -p "$_dkms_build"
+  rsync -Elaz "${_dkms_src}/" "${_dkms_build}/"
+}
+
 hackheaders() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
@@ -261,6 +285,11 @@ hackheaders() {
 
   msg2 "Installing KConfig files..."
   find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
+
+  if [ "$_sign_modules" = "true" ]; then
+    msg2 "Installing locally generated keys for DKMS..."
+    hackmodsigs
+  fi
 
   msg2 "Removing unneeded architectures..."
   local arch
