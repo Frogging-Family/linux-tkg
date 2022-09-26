@@ -185,12 +185,23 @@ if [ "$1" = "install" ]; then
   fi
 
   # ccache
-  if [ "$_noccache" != "true" ]; then
-    export PATH="/usr/lib64/ccache/:/usr/lib/ccache/bin/:$PATH"
-
-    export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
-    export CCACHE_NOHASHDIR="true"
-    msg2 'Enabled ccache'
+  if [[ "$_noccache" != "true" && -x "$(command -v ccache)" ]]; then
+    if [[ "$PATH" != *"ccache"* && "$PATH" != *"/usr/lib/ccache/bin"* ]]; then
+      export PATH="/usr/lib/ccache/bin:$PATH"
+      if [[ "$_ccache_file_clone" = "true" && -z "$CCACHE_FILECLONE" && -z "$CCACHE_NOFILECLONE" ]]; then
+        export CCACHE_FILECLONE="true"
+      fi
+      if [[ "$_ccache_inode_cache" = "true" && -z "$CCACHE_INODECACHE" && -z "$CCACHE_NOINODECACHE" ]]; then
+        export CCACHE_INODECACHE="true"
+      fi
+      if [[ -z "$CCACHE_SLOPPINESS" ]]; then
+        export CCACHE_SLOPPINESS="locale,time_macros,file_stat_matches"
+      fi
+      if [[ -z "$CCACHE_HASHDIR" && -z "$CCACHE_NOHASHDIR" ]]; then
+        export CCACHE_NOHASHDIR="true"
+      fi
+    fi
+    msg2 'Ccache was found and will be used.'
   fi
 
   if [ -z "$_kernel_localversion" ]; then

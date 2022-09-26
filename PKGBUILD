@@ -107,11 +107,23 @@ build() {
   fi
 
   # ccache
-  if [ "$_noccache" != "true" ] && pacman -Qq ccache &> /dev/null; then
-    export PATH="/usr/lib/ccache/bin/:$PATH"
-    export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
-    export CCACHE_NOHASHDIR="true"
-    msg2 'ccache was found and will be used'
+  if [[ "$_noccache" != "true" && -x "$(command -v ccache)" ]]; then
+    if [[ "$PATH" != *"ccache"* && "$PATH" != *"/usr/lib/ccache/bin"* ]]; then
+      export PATH="/usr/lib/ccache/bin:$PATH"
+      if [[ "$_ccache_file_clone" = "true" && -z "$CCACHE_FILECLONE" && -z "$CCACHE_NOFILECLONE" ]]; then
+        export CCACHE_FILECLONE="true"
+      fi
+      if [[ "$_ccache_inode_cache" = "true" && -z "$CCACHE_INODECACHE" && -z "$CCACHE_NOINODECACHE" ]]; then
+        export CCACHE_INODECACHE="true"
+      fi
+      if [[ -z "$CCACHE_SLOPPINESS" ]]; then
+        export CCACHE_SLOPPINESS="locale,time_macros,file_stat_matches"
+      fi
+      if [[ -z "$CCACHE_HASHDIR" && -z "$CCACHE_NOHASHDIR" ]]; then
+        export CCACHE_NOHASHDIR="true"
+      fi
+    fi
+    msg2 'Ccache was found and will be used.'
   fi
 
   # document the TkG variables, excluding "_", "_EXT_CONFIG_PATH", "_where", and "_path".
