@@ -224,7 +224,7 @@ if [ "$1" = "install" ]; then
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
-    _timed_build make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
+    _timed_build make ${llvm_opt} ${CUSTOM_KFLAGS} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
     msg2 "Building successfully finished!"
 
     # Create DEBS folder if it doesn't exist
@@ -268,7 +268,7 @@ if [ "$1" = "install" ]; then
     fi
 
     msg2 "Building kernel RPM packages"
-    RPMOPTS="--define '_topdir ${_fedora_work_dir}'" _timed_build make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
+    RPMOPTS="--define '_topdir ${_fedora_work_dir}'" _timed_build make ${llvm_opt} ${CUSTOM_KFLAGS} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
     msg2 "Building successfully finished!"
 
     # Create RPMS folder if it doesn't exist
@@ -314,7 +314,7 @@ if [ "$1" = "install" ]; then
     fi
 
     msg2 "Building kernel"
-    _timed_build make ${llvm_opt} -j ${_thread_num}
+    _timed_build make ${llvm_opt} ${CUSTOM_KFLAGS} -j ${_thread_num}
     msg2 "Build successful"
 
     if [ "$_STRIP" = "true" ]; then
