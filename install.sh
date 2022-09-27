@@ -186,21 +186,12 @@ if [ "$1" = "install" ]; then
 
   # ccache
   if [[ "$_noccache" != "true" && -x "$(command -v ccache)" ]]; then
-    if [[ "$PATH" != *"ccache"* ]]; then
-      export PATH="/usr/lib/ccache/bin:$PATH"
-      if [[ "$_ccache_file_clone" = "true" && -z "$CCACHE_FILECLONE" && -z "$CCACHE_NOFILECLONE" ]]; then
-        export CCACHE_FILECLONE="true"
-      fi
-      if [[ "$_ccache_inode_cache" = "true" && -z "$CCACHE_INODECACHE" && -z "$CCACHE_NOINODECACHE" ]]; then
-        export CCACHE_INODECACHE="true"
-      fi
-      if [[ -z "$CCACHE_SLOPPINESS" ]]; then
-        export CCACHE_SLOPPINESS="locale,time_macros,file_stat_matches"
-      fi
-      if [[ -z "$CCACHE_HASHDIR" && -z "$CCACHE_NOHASHDIR" ]]; then
-        export CCACHE_NOHASHDIR="true"
-      fi
-    fi
+    [[ "$PATH" != *"ccache"* ]] && export PATH="/usr/lib/ccache/bin:$PATH"
+    [[ -z "$CCACHE_LOGFILE" ]] && export CCACHE_LOGFILE="${_where}/logs/ccache.log"
+    [[ "$_ccache_file_clone" = "true" && -z "$CCACHE_FILECLONE" && -z "$CCACHE_NOFILECLONE" ]] && export CCACHE_FILECLONE="true"
+    [[ "$_ccache_inode_cache" = "true" && -z "$CCACHE_INODECACHE" && -z "$CCACHE_NOINODECACHE" ]] && export CCACHE_INODECACHE="true"
+    [[ -z "$CCACHE_SLOPPINESS" ]] && export CCACHE_SLOPPINESS="locale,time_macros,file_stat_matches"
+    [[ -z "$CCACHE_HASHDIR" && -z "$CCACHE_NOHASHDIR" ]] && export CCACHE_NOHASHDIR="true"
     msg2 'Ccache was found and will be used.'
   fi
 
