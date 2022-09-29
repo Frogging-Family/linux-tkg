@@ -84,8 +84,6 @@ If you prefer automatic setup you can install `anbox-support` from AUR which wil
 
 ### Install procedure
 
-For all the supported linux distributions, `linux-tkg` has to be cloned with `git`. Since it keeps a clone of the kernel's sources within (`linux-src-git`, created during the first build after a fresh clone), it is recommended to keep the cloned `linux-tkg` folder and simply update it with `git pull`, the install script does the necessary cleanup at every run.
-
 #### Arch & derivatives
 ```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
@@ -132,7 +130,8 @@ cd void-packages
 If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
 
 #### Generic install
-The interactive `install.sh` script can be used to perform a "Generic" install by choosing `Generic` when prompted. It git clones the kernel tree in the `linux-src-git` folder, patches the code and edits a `.config` file in it. The commands to do are the following:
+The interactive `install.sh` script can be used to perform a "Generic" install by choosing `Generic` when prompted. It will clone or download the kernel
+tree into the `linux-tkg-src` folder, patches the code and edits a `.config` file in it. The commands to do are the following:
 ```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
 cd linux-tkg
@@ -150,7 +149,7 @@ sudo grub-mkconfig -o /boot/grub/grub.cfg
 ```
 **Notes:**
 - All the needed dependencies to patch, configure, compile or install the kernel are expected to be installed by the user beforehand.
-- If you only want the script to patch the sources in `linux-src-git`, you can use `./install.sh config`
+- If you only want the script to patch the sources in `linux-tkg-src`, you can use `./install.sh config`
 - `${kernel_flavor}` is a default naming scheme but can be customized with the variable `_kernel_localversion` in `customization.cfg`.
 - `_dracut_options` is a variable that can be changed in `customization.cfg`.
 - The script uses Arch's `.config` file as a base. A custom one can be provided through `_configfile` in `customization.cfg`.

@@ -29,16 +29,15 @@ _ispkgbuild="true"
 _distro="Arch"
 
 declare -p -x > current_env
-
-source "$_where"/customization.cfg # load default configuration from file
-source "$_where"/linux-tkg-config/prepare
-
+source customization.cfg
+# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
 if [ -e "$_EXT_CONFIG_PATH" ]; then
   msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
   source "$_EXT_CONFIG_PATH"
 fi
+. current_env
 
-source current_env
+source linux-tkg-config/prepare
 
 # Make sure we're in a clean state
 if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
@@ -47,13 +46,12 @@ fi
 
 source "$_where"/BIG_UGLY_FROGMINER
 
-_srcpath="linux-src-git"
-
 if [ -n "$_custom_pkgbase" ]; then
   pkgbase="${_custom_pkgbase}"
 else
   pkgbase=linux"${_basever}"-tkg-"${_cpusched}"${_compiler_name}
 fi
+_srcpath="$pkgbase"
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
 pkgrel=269
@@ -67,25 +65,61 @@ if [ "$_compiler_name" = "-llvm" ]; then
 fi
 optdepends=('schedtool')
 options=('!strip' 'docs')
+validpgpkeys=(
+  "B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1" # Kernel.org checksum autosigner <autosigner@kernel.org>
+  "647F28654894E3BD457199BE38DBBDC86092693E" # Greg Kroah-Hartman <gregkh@kernel.org>
+  "ABAF11C65A2970B130ABE3C479BE3E4300411886" # Linus Torvalds <torvalds@kernel.org>
+)
+_major="$(cut -c-1 <<< "$pkgver")"
 
-for f in $_where/linux-tkg-config/$_basekernel/* $_where/linux-tkg-patches/$_basekernel/*; do
+_sources=(
+  "${_where}/linux-tkg-patches/${_basekernel}/"*
+  "${_where}/linux-tkg-config/${_basekernel}/"*
+)
+
+for f in "${_sources[@]}"; do
   source+=( "$f" )
   sha256sums+=( "SKIP" )
 done
+
+if [[ "$_release_tarball" = "true" ]]; then
+  if [[ "$_sub" = *"rc"* ]]; then
+    source+=("${pkgbase}.tar.gz::https://git.kernel.org/torvalds/t/linux-${pkgver}.tar.gz")
+    sha256sums+=("SKIP")
+  else
+    _linux_sha256sums="${_where}/sha256sums-linux.asc"
+    if [[ ! -e "$_linux_sha256sums" ]]; then
+      wget -O "$_linux_sha256sums" "https://mirrors.edge.kernel.org/pub/linux/kernel/v${_major}.x/sha256sums.asc"
+    fi
+    source+=(
+      "${pkgbase}.tar.xz::https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.xz"
+      "${pkgbase}.tar.sign::https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.sign"
+      "https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/patch-${pkgver}.xz"
+      "${_where}/customization.cfg"
+    )
+    sha256sums+=("$(grep -w "linux-${_basekernel}.tar.xz" "$_linux_sha256sums" | grep -oP '([^\s]+)(?=[^\w.\w-])')")
+    sha256sums+=("SKIP")
+    sha256sums+=("$(grep -w "patch-${pkgver}.xz" "$_linux_sha256sums" | grep -oP '([^\s]+)(?=[^\w.\w-])')")
+    sha256sums+=("SKIP")
+  fi
+else
+  source+=("${pkgbase}::git+${_kernel_git_remotes[$_git_mirror]}?signed#tag=$_kernel_git_tag")
+  sha256sums+=("SKIP")
+fi
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
 export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
 
 prepare() {
-  rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
+  rm -rf "${pkgdir:?}" # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
-  ln -s "${_where}/customization.cfg" "${srcdir}" # workaround
-  ln -s "${_where}/linux-src-git" "${srcdir}" # workaround, this doesn't respect tmpfs choice
-
-  cd "${srcdir}/${_srcpath}"
+  [[ "$_release_tarball" = "true" && ! -d "$_srcpath" ]] && mv -f "${srcdir}/linux-${_basekernel}" "${srcdir}/${_srcpath}"
+  [[ ! -L "${srcdir}/customization.cfg" ]] && ln -s "${_where}/customization.cfg" "$srcdir" # workaround
 
   source "${_where}/current_env"
+
+  cd "${srcdir}/${_srcpath}"
 
   _tkg_srcprep
 }
@@ -187,7 +221,7 @@ hackbase() {
   # workaround for missing header with winesync
   if [ -e "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" ]; then
     msg2 "Workaround missing winesync header"
-    install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
+    install -Dm644 "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" "${pkgdir}/usr/include/linux/winesync.h"
   fi
 
   # load winesync module at boot

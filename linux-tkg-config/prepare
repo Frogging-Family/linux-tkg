@@ -23,6 +23,8 @@ fi
 if [[ -z "$_git_mirror" ]]; then
   _git_mirror="${_git_remote_names[2]}"
   echo "Defaulting to ${_git_mirror} git mirror"
+elif [[ -z "$_git_mirror" && "$_release_tarball" = "true" ]]; then
+  _git_mirror="${_git_remote_names[2]}"
 fi
 
 # Fillout the latest tags map/dictionary
@@ -54,8 +56,6 @@ _kver_subver_map=(
   ["5.19"]="10"
   ["6.0"]="rc6"
 )
-
-
 
 # PREEMPT_RT's supported kernel subversion
 typeset -Ag _rt_subver_map
@@ -381,8 +381,8 @@ _set_compiler(){
   echo -e "_compiler_name='$_compiler_name'\nllvm_opt='$llvm_opt'" >> "$_where"/BIG_UGLY_FROGMINER
 }
 
-
 _linux_git_branch_checkout() {
+  _abort() { error "There was an error verifying the signatures for '$_kernel_git_tag', Aborting..."; exit 1; }
 
   if [ -z "$_kernel_git_tag" ]; then
     warning "internal error: kernel version should be chosen before cloning kernel sources"
@@ -391,17 +391,17 @@ _linux_git_branch_checkout() {
 
   cd "$_where"
 
-  if ! [ -d linux-src-git ]; then
+  if [[ ! -d linux-tkg-src ]]; then
     msg2 "First initialization of the linux source code git folder"
-    mkdir linux-src-git
-    cd linux-src-git
+    mkdir linux-tkg-src
+    cd linux-tkg-src
     git init
 
     for remote in "${!_kernel_git_remotes[@]}"; do
       git remote add "$remote" "${_kernel_git_remotes[$remote]}"
     done
   else
-    cd linux-src-git
+    cd linux-tkg-src
 
     # Remove "origin" remote if present
     if git remote -v | grep -w "origin" ; then
@@ -415,10 +415,12 @@ _linux_git_branch_checkout() {
     done
 
     msg2 "Current branch: $(git branch | grep "\*")"
-    msg2 "Reseting files to their original state"
+    if [[ "$_NUKR" = "true" ]]; then
+      msg2 "Resetting files to their original state..."
 
-    git reset --hard HEAD
-    git clean -f -d -x
+      git reset --hard HEAD
+      git clean -f -d -x
+    fi
   fi
 
   if [[ "$_sub" = rc* ]]; then
@@ -428,50 +430,176 @@ _linux_git_branch_checkout() {
       msg2 "master branch doesn't locally exist, shallow cloning..."
       git remote set-branches --add kernel.org master
       git remote set-branches --add googlesource.com master
-      git fetch --depth=1 $_git_mirror master
-      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
-      git checkout -b master-${_git_mirror} ${_git_mirror}/master
+      git fetch --depth 1 "$_git_mirror" master
+      git fetch --depth 1 "$_git_mirror" tag "$_kernel_git_tag"
+      git checkout -b "master-${_git_mirror}" "${_git_mirror}/master"
     else
       msg2 "master branch exists locally, updating..."
-      git checkout master-${_git_mirror}
-      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
-      git reset --hard ${_git_mirror}/master
+      git checkout "master-${_git_mirror}"
+      git fetch --depth 1 "$_git_mirror" tag "$_kernel_git_tag"
+      git reset --hard "${_git_mirror}/master"
     fi
-    msg2 "Checking out latest RC tag: $_kernel_git_tag"
+
+    if [[ "$_verify_signatures" = "true" ]]; then
+      local _kernel_tag_sha; _kernel_tag_sha="$(git rev-parse "$_kernel_git_tag")"
+      msg2 "Verifying latest RC tag: '$_kernel_git_tag'"
+      git verify-tag -v "$_kernel_tag_sha" || _abort
+    fi
+
+    msg2 "Checking out latest RC tag: '$_kernel_git_tag'"
     git checkout "$_kernel_git_tag"
   else
     msg2 "Switching to linux-${_basekernel}.y"
+
     if ! git branch --list | grep -w "linux-${_basekernel}-${_git_mirror}" ; then
       msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add kernel.org linux-${_basekernel}.y
-      git remote set-branches --add googlesource.com linux-${_basekernel}.y
-      git fetch --depth=1 $_git_mirror linux-${_basekernel}.y
-      git fetch --depth=1 $_git_mirror tag "$_kernel_git_tag"
-      git checkout -b linux-${_basekernel}-${_git_mirror} ${_git_mirror}/linux-${_basekernel}.y
+      git remote set-branches --add kernel.org "linux-${_basekernel}.y"
+      git remote set-branches --add googlesource.com "linux-${_basekernel}.y"
+      git fetch --depth 1 "$_git_mirror" "linux-${_basekernel}.y"
+      git fetch --depth 1 "$_git_mirror" tag "$_kernel_git_tag"
+      git checkout -b "linux-${_basekernel}-${_git_mirror}" "${_git_mirror}/linux-${_basekernel}.y"
     else
       msg2 "${_basekernel}.y branch exists locally, updating..."
-      git checkout linux-${_basekernel}-${_git_mirror}
-      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
-      git reset --hard ${_git_mirror}/linux-${_basekernel}.y
+      git checkout "linux-${_basekernel}-${_git_mirror}"
+      git fetch --depth 1 "$_git_mirror" tag "$_kernel_git_tag"
+      git reset --hard "${_git_mirror}/linux-${_basekernel}.y"
     fi
-    msg2 "Checking out latest release: $_kernel_git_tag"
+
+    if [[ "$_verify_signatures" = "true" ]]; then
+      local _kernel_tag_sha; _kernel_tag_sha="$(git rev-parse "$_kernel_git_tag")"
+      msg2 "Verifying latest release: '$_kernel_git_tag'"
+      git verify-tag -v "$_kernel_tag_sha" || _abort
+    fi
+
+    msg2 "Checking out latest release: '$_kernel_git_tag'"
     git checkout "$_kernel_git_tag"
   fi
 }
 
+_linux_release_tarball() {
+  _abort() { rm -rf "${_tmp_dir:?}"; error "There was an error verifying the signatures or checksums for 'linux-${_basekernel}', or 'patch-${pkgver}', Aborting..."; exit 1; }
+
+  local _major; _major="$(cut -c-1 <<< "$_basever")"
+
+  cd "$_where"
+
+  if [[ ! -d "linux-tkg-src" ]]; then
+    if [[ "$_sub" = *"rc"* ]]; then
+      if [[ ! -e "linux-${pkgver}.tar.gz" ]]; then
+        msg2 "Downloading 'linux-${pkgver}.tar.gz'..."
+        curl -sLOC - "https://git.kernel.org/torvalds/t/linux-${pkgver}.tar.gz"
+      fi
+
+      msg2 "Extracting 'linux-${pkgver}.tar.gz' with bsdtar..."
+      bsdtar -xf "linux-${pkgver}.tar.gz"
+      mv -f "linux-${pkgver}" "linux-tkg-src"
+    elif [[ "$_verify_signatures" = "true" ]]; then
+      local _tmp_dir; local _keyring_all; local _keyring_devs; local _keyring_auto; local _sha256sums
+      local _autosign_key=("autosigner@kernel.org" # Kernel.org checksum autosigner
+                           "B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1")
+      local   _gregkh_key=("gregkh@kernel.org" # Greg Kroah-Hartman <gregkh@kernel.org>
+                           "647F28654894E3BD457199BE38DBBDC86092693E")
+      local _torvalds_key=("torvalds@kernel.org" # Linus Torvalds <torvalds@kernel.org>
+                           "ABAF11C65A2970B130ABE3C479BE3E4300411886")
+
+      _tmp_dir="$(mktemp -d "${_where}/.XXXXXXXXXXX")"
+      _keyring_all="$(mktemp "${_tmp_dir}/.keyring.XXXXXX.gpg")"
+      _keyring_auto="$(mktemp "${_tmp_dir}/.auto-keyring.XXXXXX.gpg")"
+      _keyring_devs="$(mktemp "${_tmp_dir}/.dev-keyring.XXXXXX.gpg")"
+
+      if [[ -d "${HOME}/.gnupg" ]]; then
+        export GNUPGHOME="${HOME}/.gnupg"
+      else
+        GNUPGHOME="$(mktemp -d "${_tmp_dir}/.gnupg.XXXXXX")"
+        export GNUPGHOME
+      fi
+
+      find "$_tmp_dir" -type d -exec chmod 0700 {} \;
+      find "$_tmp_dir" -type f -exec chmod 0600 {} \;
+
+      cd "$_tmp_dir" || _abort
+
+      msg2 "Checking for autosigner and developer keys..."
+      gpg -q --batch --homedir="$GNUPGHOME" --auto-key-locate="wkd" --locate-keys "${_autosign_key[0]}" |& head -n3 || _abort
+      gpg -q --batch --homedir="$GNUPGHOME" --auto-key-locate="wkd" --locate-keys "${_gregkh_key[0]}" |& head -n3 || _abort
+      gpg -q --batch --homedir="$GNUPGHOME" --auto-key-locate="wkd" --locate-keys "${_torvalds_key[0]}" |& head -n3 || _abort
+
+      gpg --batch --export "${_autosign_key[1]}" "${_gregkh_key[1]}" "${_torvalds_key[1]}" > "$_keyring_all"
+      gpg --batch --no-default-keyring --keyring="${_keyring_all}" --export "${_autosign_key[1]}" > "${_keyring_auto}"
+      gpg --batch --no-default-keyring --keyring="${_keyring_all}" --export "${_gregkh_key[1]}" "${_torvalds_key[1]}" > "${_keyring_devs}"
+
+      _sha256sums="${_tmp_dir}/sha256sums.asc"
+      msg2 "Downloading 'sha256sums.asc'..."
+      curl -sLOC - "https://mirrors.edge.kernel.org/pub/linux/kernel/v${_major}.x/sha256sums.asc" || _abort
+
+      msg2 "Verifying signatures for 'sha256sums.asc'..."
+      gpgv -q --keyring="$_keyring_auto" "$_sha256sums" || _abort
+
+      msg2 "Downloading 'linux-${_basekernel}.tar.xz'..."
+      curl -sLOC - "https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.xz" || _abort
+      msg2 "Downloading 'linux-${_basekernel}.tar.sign'..."
+      curl -sLOC - "https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.sign" || _abort
+      msg2 "Downloading 'patch-${pkgver}.xz'..."
+      curl -sLOC - "https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/patch-${pkgver}.xz" || _abort
+
+      msg2 "Verifying checksums for 'linux-${_basekernel}.tar.xz'..."
+      grep -w "linux-${_basekernel}.tar.xz" "$_sha256sums" | sha256sum --strict -w -c || _abort
+      msg2 "Verifying checksums for 'patch-${pkgver}.xz'..."
+      grep -w "patch-${pkgver}.xz" "$_sha256sums" | sha256sum --strict -w -c || _abort
+
+      msg2 "Verifying signatures for 'linux-${_basekernel}.tar.xz'..."
+      xz -cdk "linux-${_basekernel}.tar.xz" | gpgv -q --keyring="$_keyring_devs" "linux-${_basekernel}.tar.sign" - || _abort
+
+      cd "${_where}"
+      mv -f "${_tmp_dir}/linux-${_basekernel}.tar.xz" .
+      mv -f "${_tmp_dir}/patch-${pkgver}.xz" .
+      rm -rf "${_tmp_dir:?}"
+
+      msg2 "Extracting 'linux-${_basekernel}.tar.xz' with bsdtar..."
+      bsdtar -xf "linux-${_basekernel}.tar.xz"
+      msg2 "Extracting 'patch-${pkgver}.xz' with xz..."
+      xz -dk "patch-${pkgver}.xz"
+      mv -f "linux-${_basekernel}" "linux-tkg-src"
+    else
+      msg2 "Downloading 'linux-${_basekernel}.tar.xz'..."
+      curl -sLOC - "https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.xz"
+      msg2 "Downloading 'patch-${pkgver}.xz'..."
+      curl -sLOC - "https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/patch-${pkgver}.xz"
+
+      msg2 "Extracting 'linux-${_basekernel}.tar.xz' with bsdtar..."
+      bsdtar -xf "linux-${_basekernel}.tar.xz"
+      msg2 "Extracting 'patch-${pkgver}.xz' with xz..."
+      xz -dk "patch-${pkgver}.xz"
+      mv -f "linux-${_basekernel}" "linux-tkg-src"
+    fi
+  elif [[ -d "linux-tkg-src" && "$_NUKR" = "true" ]]; then
+    msg2 "Resetting files to their original state..."
+    if [[ "$_sub" = *"rc"* ]]; then
+      bsdtar -xf "linux-${_basekernel}-${_sub}.tar.gz"
+      rm -rfv "linux-tkg-src"
+      mv -f "linux-${_basekernel}-${_sub}" "linux-tkg-src"
+    else
+      bsdtar -xf "linux-${_basekernel}.tar.xz"
+      rm -rfv "linux-tkg-src"
+      mv -f "linux-${_basekernel}" "linux-tkg-src"
+    fi
+  fi
+}
 
 _tkg_initscript() {
 
-  if [[ ! -x "$(command -v git)" ]]; then
-    warning "the 'git' command is not installed. Please install it then re-run the install script of linux-tkg."
-    exit 1
-  fi
+  if [[ "$_release_tarball" != "true" ]]; then
+    if [[ ! -x "$(command -v git)" ]]; then
+      warning "the 'git' command is not installed. Please install it then re-run the install script of linux-tkg."
+      exit 1
+    fi
 
-  if ! git status &>/dev/null; then
-    warning "Please make sure you use git to clone the repository."
-    msg2 "Try deleting '$PWD' and cloning the repo with git."
-    msg2 "Example: 'git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git'"
-    exit 1
+    if ! git status &>/dev/null; then
+      warning "Please make sure you use git to clone the repository."
+      msg2 "Try deleting '$_where' and cloning the repo with git."
+      msg2 "Example: 'git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git'"
+      exit 1
+    fi
   fi
 
   if [[ -x "$(command -v schedtool)" ]]; then
@@ -496,7 +624,7 @@ _tkg_initscript() {
 
   # Default to Arch
   if [ -z "$_distro" ] || [ "$_ispkgbuild" = "true" ]; then
-    msg2 "Defaulting to Archlinux target\n"
+    msg2 "Defaulting to Archlinux target"
     _distro="Arch"
   fi
 
@@ -537,8 +665,6 @@ _tkg_initscript() {
   if [ -n "$_custom_pkgbase" ]; then
     echo -e "_custom_pkgbase=\"$_custom_pkgbase\"" >> "$_where"/BIG_UGLY_FROGMINER
   fi
-
-  _linux_git_branch_checkout
 }
 
 user_patcher() {
@@ -620,11 +746,11 @@ _tkg_srcprep() {
     echo "" > localversion.20-pkgname
   fi
   if [ "${_distro}" = "Void" ]; then
-	  pkgver="${version}"
+	  pkgver="${_version}"
   fi
-  if [ "${_distro}" = "Arch" ] || [ "${_distro}" = "Void" ]; then
+  if [[ "$_release_tarball" = "true" ]]; then
     tkgpatch="$srcdir/patch-${pkgver}"
-    _msg="Patching from $_basekernel to $pkgver" && _tkg_patcher
+    _msg="Patching from '$_basekernel' to '$pkgver'" && _tkg_patcher
   fi
 
   # Hardened Patches
@@ -876,12 +1002,12 @@ _tkg_srcprep() {
     msg2 "Using archlinux's hardened config file for kernel ${_basekernel}"
     cat "${srcdir}"/config_hardened.x86_64 > ./.config
   elif [ "${_configfile}" = "running-kernel" ]; then
-    if [ -f /boot/config-`uname -r` ];then
-      msg2 "Using /boot/config-`uname -r` as config file"
-      cp /boot/config-`uname -r` .config
-    elif [ -f /proc/config.gz ];then
-      msg2 "Using /proc/config.gz as config file"
-      zcat --verbose /proc/config.gz > .config
+    if [[ -e "/boot/config-$(uname -r)" ]];then
+      msg2 "Using '/boot/config-$(uname -r)' as config file"
+      cp "/boot/config-$(uname -r)" ".config"
+    elif [[ -e /proc/config.gz ]];then
+      msg2 "Using '/proc/config.gz' as config file"
+      zcat -vf "/proc/config.gz" > ".config"
     else
       warning "Cannot get config file of running kernel"
       exit 1
@@ -1899,6 +2025,7 @@ exit_cleanup() {
 
   # Remove temporarily copied files
   rm -rf "$_where"/*.patch
+  rm -rf "$_where"/patch*
   rm -rf "$_where"/*-profile.cfg
   rm -f "$_where"/config*
   rm -f "$_where"/*.hook
@@ -1927,6 +2054,7 @@ exit_cleanup() {
     # Double tap
     rm -rf "$srcdir"/linux-*
     rm -rf "$srcdir"/*.xz
+    rm -rf "$srcdir"/patch*
     rm -rf "$srcdir"/*.patch
     rm -rf "$srcdir"/*-profile.cfg
     rm -rf "$srcdir"/*.rules
