@@ -14,20 +14,6 @@ fi
 # Stop the script at any ecountered error
 set -e
 
-_where=`pwd`
-srcdir="$_where"
-_srcpath="linux-tkg-src"
-pkgver="${_basekernel}.${_sub}"
-
-# Command used for superuser privileges (`sudo`, `doas`, `su`)
-if [ ! -x "$(command -v sudo)" ]; then
-  if [ -x "$(command -v doas)" ]; then
-    sudo() { doas "$@"; }
-  elif [ -x "$(command -v su)" -a -x "$(command -v xargs)" ]; then
-    sudo() { echo "$@" | xargs -I {} su -c '{}'; }
-  fi
-fi
-
 msg2() {
  echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
 }
@@ -43,6 +29,39 @@ warning() {
 plain() {
  echo -e "$1" >&2
 }
+
+plain '       .---.`               `.---.'
+plain '    `/syhhhyso-           -osyhhhys/`'
+plain '   .syNMdhNNhss/``.---.``/sshNNhdMNys.'
+plain '   +sdMh.`+MNsssssssssssssssNM+`.hMds+'
+plain '   :syNNdhNNhssssssssssssssshNNhdNNys:'
+plain '    /ssyhhhysssssssssssssssssyhhhyss/'
+plain '    .ossssssssssssssssssssssssssssso.'
+plain '   :sssssssssssssssssssssssssssssssss:'
+plain '  /sssssssssssssssssssssssssssssssssss/   Linux-tkg'
+plain ' :sssssssssssssoosssssssoosssssssssssss:        kernels'
+plain ' osssssssssssssoosssssssoossssssssssssso'
+plain ' osssssssssssyyyyhhhhhhhyyyyssssssssssso'
+plain ' /yyyyyyhhdmmmmNNNNNNNNNNNmmmmdhhyyyyyy/'
+plain '  smmmNNNNNNNNNNNNNNNNNNNNNNNNNNNNNmmms'
+plain '   /dNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNd/'
+plain '    `:sdNNNNNNNNNNNNNNNNNNNNNNNNNds:`'
+plain '       `-+shdNNNNNNNNNNNNNNNdhs+-`'
+plain '             `.-:///////:-.`'
+
+_where=`pwd`
+srcdir="$_where"
+_srcpath="linux-tkg-src"
+pkgver="${_basekernel}.${_sub}"
+
+# Command used for superuser privileges (`sudo`, `doas`, `su`)
+if [ ! -x "$(command -v sudo)" ]; then
+  if [ -x "$(command -v doas)" ]; then
+    sudo() { doas "$@"; }
+  elif [ -x "$(command -v su)" -a -x "$(command -v xargs)" ]; then
+    sudo() { echo "$@" | xargs -I {} su -c '{}'; }
+  fi
+fi
 
 declare -p -x > current_env
 source customization.cfg
