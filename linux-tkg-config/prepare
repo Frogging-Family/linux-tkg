@@ -389,19 +389,19 @@ _linux_git_branch_checkout() {
     exit 1
   fi
 
-  cd "$_where"
+  cd "$srcdir"
 
-  if [[ ! -d linux-tkg-src ]]; then
+  if [[ ! -d "$_srcpath" ]]; then
     msg2 "First initialization of the linux source code git folder"
-    mkdir linux-tkg-src
-    cd linux-tkg-src
+    mkdir "$_srcpath"
+    cd "$_srcpath"
     git init
 
     for remote in "${!_kernel_git_remotes[@]}"; do
       git remote add "$remote" "${_kernel_git_remotes[$remote]}"
     done
   else
-    cd linux-tkg-src
+    cd "$_srcpath"
 
     # Remove "origin" remote if present
     if git remote -v | grep -w "origin" ; then
@@ -481,9 +481,9 @@ _linux_release_tarball() {
 
   local _major; _major="$(cut -c-1 <<< "$_basever")"
 
-  cd "$_where"
+  cd "$srcdir"
 
-  if [[ ! -d "linux-tkg-src" ]]; then
+  if [[ ! -d "$_srcpath" ]]; then
     if [[ "$_sub" = *"rc"* ]]; then
       if [[ ! -e "linux-${pkgver}.tar.gz" ]]; then
         msg2 "Downloading 'linux-${pkgver}.tar.gz'..."
@@ -502,7 +502,7 @@ _linux_release_tarball() {
       local _torvalds_key=("torvalds@kernel.org" # Linus Torvalds <torvalds@kernel.org>
                            "ABAF11C65A2970B130ABE3C479BE3E4300411886")
 
-      _tmp_dir="$(mktemp -d "${_where}/.XXXXXXXXXXX")"
+      _tmp_dir="$(mktemp -d "${srcdir}/.XXXXXXXXXXX")"
       _keyring_all="$(mktemp "${_tmp_dir}/.keyring.XXXXXX.gpg")"
       _keyring_auto="$(mktemp "${_tmp_dir}/.auto-keyring.XXXXXX.gpg")"
       _keyring_devs="$(mktemp "${_tmp_dir}/.dev-keyring.XXXXXX.gpg")"
@@ -550,7 +550,7 @@ _linux_release_tarball() {
       msg2 "Verifying signatures for 'linux-${_basekernel}.tar.xz'..."
       xz -cdk "linux-${_basekernel}.tar.xz" | gpgv -q --keyring="$_keyring_devs" "linux-${_basekernel}.tar.sign" - || _abort
 
-      cd "${_where}"
+      cd "$srcdir"
       mv -f "${_tmp_dir}/linux-${_basekernel}.tar.xz" .
       mv -f "${_tmp_dir}/patch-${pkgver}.xz" .
       rm -rf "${_tmp_dir:?}"
@@ -572,16 +572,16 @@ _linux_release_tarball() {
       xz -dk "patch-${pkgver}.xz"
       mv -f "linux-${_basekernel}" "linux-tkg-src"
     fi
-  elif [[ -d "linux-tkg-src" && "$_NUKR" = "true" ]]; then
+  elif [[ -d "$_srcpath" && "$_NUKR" = "true" ]]; then
     msg2 "Resetting files to their original state..."
     if [[ "$_sub" = *"rc"* ]]; then
       bsdtar -xf "linux-${_basekernel}-${_sub}.tar.gz"
-      rm -rfv "linux-tkg-src"
-      mv -f "linux-${_basekernel}-${_sub}" "linux-tkg-src"
+      rm -rfv "$_srcpath"
+      mv -f "linux-${_basekernel}-${_sub}" "$_srcpath"
     else
       bsdtar -xf "linux-${_basekernel}.tar.xz"
-      rm -rfv "linux-tkg-src"
-      mv -f "linux-${_basekernel}" "linux-tkg-src"
+      rm -rfv "$_srcpath"
+      mv -f "linux-${_basekernel}" "$_srcpath"
     fi
   fi
 }
@@ -650,14 +650,6 @@ _tkg_initscript() {
 
   # Select CPU scheduler
   _set_cpu_scheduler
-
-  if [ "$_distro" != "Void" ]; then
-    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-  else
-    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_path"
-    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_path"
-  fi
 
   # Set compiler
   _set_compiler
@@ -736,6 +728,14 @@ _tkg_patcher() {
 }
 
 _tkg_srcprep() {
+
+  if [ "$_distro" != "Void" ]; then
+    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$srcdir"
+    cp "$_where"/linux-tkg-config/${_basekernel}/* "$srcdir"
+  else
+    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_path"
+    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_path"
+  fi
 
   msg2 "Setting version..."
   scripts/setlocalversion --save-scmversion
@@ -2038,10 +2038,8 @@ exit_cleanup() {
   # Remove winesync rules file
   rm -f "$_where"/winesync.rules
 
-  # Remove RPM temporary files left
-  rm -rf ${HOME}/.cache/linux-tkg-rpmbuild
-  if [ "$_distro" != "Arch" ] && [ "$_use_tmpfs" = "true" ]; then
-    rm -rf "$_tmpfs_path/linux-tkg"
+  if [[ "$_distro" != "Arch" && "$_NUKR" = "true" ]]; then
+    rm -rf "${_build_dir:?}"
   fi
 
   # Community patches removal in case of failure
@@ -2058,6 +2056,8 @@ exit_cleanup() {
     rm -rf "$srcdir"/*.patch
     rm -rf "$srcdir"/*-profile.cfg
     rm -rf "$srcdir"/*.rules
+    rm -f "$srcdir"/*.hook
+    rm -f "$srcdir"/cleanup
     rm -f "$srcdir"/config.x86_64
     rm -f "$srcdir"/customization.cfg
 

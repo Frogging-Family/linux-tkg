@@ -11,6 +11,8 @@ if [ -z "$SCRIPT" ]; then
   exit $exit_status
 fi
 
+_where="$(pwd)"
+
 # Stop the script at any ecountered error
 set -e
 
@@ -48,11 +50,6 @@ plain '   /dNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNd/'
 plain '    `:sdNNNNNNNNNNNNNNNNNNNNNNNNNds:`'
 plain '       `-+shdNNNNNNNNNNNNNNNdhs+-`'
 plain '             `.-:///////:-.`'
-
-_where=`pwd`
-srcdir="$_where"
-_srcpath="linux-tkg-src"
-pkgver="${_basekernel}.${_sub}"
 
 # Command used for superuser privileges (`sudo`, `doas`, `su`)
 if [ ! -x "$(command -v sudo)" ]; then
@@ -126,6 +123,16 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
+  if [[ "$_use_tmpfs" = "true" && -n "$_tmpfs_path" ]]; then
+    [[ ! -d "${_tmpfs_path}/linux-tkg" ]] && mkdir -p "${_tmpfs_path}/linux-tkg"
+    srcdir="${_tmpfs_path}/linux-tkg"
+  else
+    srcdir="$_where"
+  fi
+  _srcpath="linux-tkg-src"
+  pkgver="${_basekernel}.${_sub}"
+  _build_dir="${srcdir}/${_srcpath}"
+
   if [[ "$_release_tarball" = "true" ]]; then
     _linux_release_tarball
   else
@@ -157,23 +164,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   fi
 
   # cd into the linux-tkg-src folder is important before calling _tkg_srcprep
-  cd "${srcdir}/${_srcpath}"
-  _tkg_srcprep
-
-  _build_dir="$_where"
-  if [ "$_use_tmpfs" = "true" ]; then
-    if [ -d "$_tmpfs_path/linux-tkg" ]; then
-      msg2 "Nuking linux-tkg tmpfs folder $_tmpfs_path/linux-tkg"
-      rm -rf "$_tmpfs_path/linux-tkg"
-    fi
-    mkdir "$_tmpfs_path/linux-tkg"
-    cp -r "${srcdir}/${_srcpath}" "$_tmpfs_path/linux-tkg/linux-tkg-src"
-
-    # cd into the linux-tkg-src folder is important before calling _tkg_srcprep
-    _build_dir="$_tmpfs_path/linux-tkg"
-    cd "$_tmpfs_path/linux-tkg/linux-tkg-src"
-  fi
-
+  cd "$_build_dir" && _tkg_srcprep
 
   # Uppercase characters are not allowed in source package name for debian based distros
   if [[ "$_distro" =~ ^(Debian|Ubuntu)$ && "$_cpusched" = "MuQSS" ]]; then
@@ -288,13 +279,8 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    _fedora_work_dir="${HOME}/.cache/linux-tkg-rpmbuild"
-    if [ "$_use_tmpfs" = "true" ]; then
-      _fedora_work_dir="$_tmpfs_path/linux-tkg/linux-tkg-rpmbuild"
-    fi
-
     msg2 "Building kernel RPM packages"
-    RPMOPTS="--define '_topdir ${_fedora_work_dir}'" _timed_build make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
+    RPMOPTS="--define '_topdir ${_build_dir}'" _timed_build make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
     msg2 "Building successfully finished!"
 
     # Create RPMS folder if it doesn't exist
@@ -302,7 +288,7 @@ if [ "$1" = "install" ]; then
     mkdir -p RPMS
 
     # Move rpm files to RPMS folder inside the linux-tkg folder
-    mv ${_fedora_work_dir}/RPMS/x86_64/*tkg* "$_where"/RPMS/
+    mv "${_build_dir}/RPMS/x86_64/"*tkg* "${_where}/RPMS/"
 
     read -p "Do you want to install the new Kernel ? Y/[n]: " _install
     if [[ "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
