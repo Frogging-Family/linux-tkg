@@ -126,7 +126,7 @@ build() {
 }
 
 hackbase() {
-  pkgdesc="The $pkgdesc kernel and modules"
+  pkgdesc="The $pkgdesc kernel and modules - https://github.com/Frogging-Family/linux-tkg"
   depends=('coreutils' 'kmod' 'initramfs')
   optdepends=('linux-docs: Kernel hackers manual - HTML documentation that comes with the Linux kernel.'
               'crda: to set the correct wireless channels of your country.'
@@ -191,7 +191,7 @@ hackbase() {
 }
 
 hackheaders() {
-  pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
+  pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel - https://github.com/Frogging-Family/linux-tkg"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
   case $_basever in
     54|57|58|59|510)
