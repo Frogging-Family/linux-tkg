@@ -103,7 +103,6 @@ The script will use a slightly modified Arch config from the `linux-tkg-config` 
 - Some issues have been reported by both Fedora (see https://github.com/Frogging-Family/linux-tkg/issues/383) and Ubuntu (see https://github.com/Frogging-Family/linux-tkg/issues/436) users where stock kernels cannot boot any longer, the whereabouts are still not entirely clear (it does not seem to affect every user)
   - Ubuntu: appears to be an initramfs generation issue
   - Fedora: needs disabling then re-enabling SELINUX so one can boot
-- Fedora + Nvidia users: Fedora's `akmod` nvidia packages do not work with `linux-tkg` (see https://github.com/Frogging-Family/linux-tkg/issues/375). `linux-tkg` requires Nvidias official `.run` installer (that uses `dkms` instead of `akmod`) to properly work with Nvidia.
 
 The interactive `install.sh` script will create, depending on the selected distro, `.deb` or `.rpm` packages, move them in the the subfolder `DEBS` or `RPMS` then prompts to install them with the distro's package manager.
 ```shell
