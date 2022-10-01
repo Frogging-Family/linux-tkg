@@ -134,8 +134,16 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   _build_dir="${srcdir}/${_srcpath}"
 
   if [[ "$_release_tarball" = "true" ]]; then
+    if [[ "$_verify_signatures" = "true" ]]; then
+      msg2 "Verifying source files checksums..."
+      _verify_sources
+    fi
     _linux_release_tarball
   else
+    if [[ "$_verify_signatures" = "true" ]]; then
+      msg2 "Verifying source files checksums..."
+      _verify_sources
+    fi
     _linux_git_branch_checkout
   fi
 

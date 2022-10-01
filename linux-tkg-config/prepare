@@ -381,8 +381,22 @@ _set_compiler(){
   echo -e "_compiler_name='$_compiler_name'\nllvm_opt='$llvm_opt'" >> "$_where"/BIG_UGLY_FROGMINER
 }
 
+_verify_sources() {
+  _abort() { error "There was an error verifying signatures or checksums, Aborting..."; exit 1; }
+
+  _tkg_sha256sums="${_where}/sha256sums-tkg.asc"
+
+  for f in "${_where}/linux-tkg-config/${_basekernel}/"*; do
+    grep -w "linux-tkg-config/${_basekernel}/$(basename "${f}")" "$_tkg_sha256sums" | sha256sum --strict -w -c || _abort
+  done
+
+  for f in "${_where}/linux-tkg-patches/${_basekernel}/"*; do
+    grep -w "linux-tkg-patches/${_basekernel}/$(basename "${f}")" "$_tkg_sha256sums" | sha256sum --strict -w -c || _abort
+  done
+}
+
 _linux_git_branch_checkout() {
-  _abort() { error "There was an error verifying the signatures for '$_kernel_git_tag', Aborting..."; exit 1; }
+  _abort() { error "There was an error verifying signatures or checksums, Aborting..."; exit 1; }
 
   if [ -z "$_kernel_git_tag" ]; then
     warning "internal error: kernel version should be chosen before cloning kernel sources"
@@ -477,7 +491,7 @@ _linux_git_branch_checkout() {
 }
 
 _linux_release_tarball() {
-  _abort() { rm -rf "${_tmp_dir:?}"; error "There was an error verifying the signatures or checksums for 'linux-${_basekernel}', or 'patch-${pkgver}', Aborting..."; exit 1; }
+  _abort() { rm -rf "${_tmp_dir:?}" error "There was an error verifying signatures or checksums, Aborting..."; exit 1; }
 
   local _major; _major="$(cut -c-1 <<< "$_basever")"
 

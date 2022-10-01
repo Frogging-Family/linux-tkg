@@ -73,16 +73,20 @@ validpgpkeys=(
   "647F28654894E3BD457199BE38DBBDC86092693E" # Greg Kroah-Hartman <gregkh@kernel.org>
   "ABAF11C65A2970B130ABE3C479BE3E4300411886" # Linus Torvalds <torvalds@kernel.org>
 )
+_linux_sha256sums="${_where}/sha256sums-linux.asc"
+_tkg_sha256sums="${_where}/sha256sums-tkg.asc"
 _major="$(cut -c-1 <<< "$pkgver")"
 
-_sources=(
-  "${_where}/linux-tkg-patches/${_basekernel}/"*
-  "${_where}/linux-tkg-config/${_basekernel}/"*
-)
+source=("${_where}/customization.cfg")
+sha256sums=("SKIP")
 
-for f in "${_sources[@]}"; do
-  source+=( "$f" )
-  sha256sums+=( "SKIP" )
+for f in "${_where}/linux-tkg-config/${_basekernel}/"*; do
+  source+=("$f")
+  sha256sums+=("$(grep -w "${_basekernel}/$(basename "${f}")" "$_tkg_sha256sums" | cut -d' ' -f-1)")
+done
+for f in "${_where}/linux-tkg-patches/${_basekernel}/"*; do
+  source+=("$f")
+  sha256sums+=("$(grep -w "${_basekernel}/$(basename "${f}")" "$_tkg_sha256sums" | cut -d' ' -f-1)")
 done
 
 if [[ "$_release_tarball" = "true" ]]; then
@@ -90,20 +94,16 @@ if [[ "$_release_tarball" = "true" ]]; then
     source+=("${pkgbase}.tar.gz::https://git.kernel.org/torvalds/t/linux-${pkgver}.tar.gz")
     sha256sums+=("SKIP")
   else
-    _linux_sha256sums="${_where}/sha256sums-linux.asc"
-    if [[ ! -e "$_linux_sha256sums" ]]; then
-      wget -O "$_linux_sha256sums" "https://mirrors.edge.kernel.org/pub/linux/kernel/v${_major}.x/sha256sums.asc"
-    fi
+    msg2 "Downloading 'sha256sums.asc'..."
+    wget -cO "$_linux_sha256sums" "https://mirrors.edge.kernel.org/pub/linux/kernel/v${_major}.x/sha256sums.asc"
     source+=(
       "${pkgbase}.tar.xz::https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.xz"
       "${pkgbase}.tar.sign::https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.sign"
       "https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/patch-${pkgver}.xz"
-      "${_where}/customization.cfg"
     )
-    sha256sums+=("$(grep -w "linux-${_basekernel}.tar.xz" "$_linux_sha256sums" | grep -oP '([^\s]+)(?=[^\w.\w-])')")
+    sha256sums+=("$(grep -w "linux-${_basekernel}.tar.xz" "$_linux_sha256sums" | cut -d' ' -f-1)")
     sha256sums+=("SKIP")
-    sha256sums+=("$(grep -w "patch-${pkgver}.xz" "$_linux_sha256sums" | grep -oP '([^\s]+)(?=[^\w.\w-])')")
-    sha256sums+=("SKIP")
+    sha256sums+=("$(grep -w "patch-${pkgver}.xz" "$_linux_sha256sums" | cut -d' ' -f-1)")
   fi
 else
   source+=("${pkgbase}::git+${_kernel_git_remotes[$_git_mirror]}?signed#tag=$_kernel_git_tag")
@@ -117,10 +117,10 @@ export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EP
 prepare() {
   rm -rf "${pkgdir:?}" # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
-  [[ "$_release_tarball" = "true" && ! -d "$_srcpath" ]] && mv -f "${srcdir}/linux-${_basekernel}" "${srcdir}/${_srcpath}"
-  [[ ! -L "${srcdir}/customization.cfg" ]] && ln -s "${_where}/customization.cfg" "$srcdir" # workaround
-
   source "${_where}/current_env"
+
+  [[ -d "${srcdir}/linux-${_basekernel}" && ! -d "${srcdir}/${_srcpath}" ]] && mv -f "${srcdir}/linux-${_basekernel}" "${srcdir}/${_srcpath}"
+  [[ ! -L "${srcdir}/customization.cfg" ]] && ln -s "${_where}/customization.cfg" "$srcdir" # workaround
 
   cd "${srcdir}/${_srcpath}"
 
