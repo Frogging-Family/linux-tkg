@@ -137,10 +137,12 @@ build() {
     PATH=${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}
   fi
 
-  if [ "$_force_all_threads" = "true" ]; then
-    _force_all_threads="-j$((`nproc`+1))"
-  else
-    _force_all_threads="${MAKEFLAGS}"
+  if [[ "$_force_all_threads" = "true" ]]; then
+    _make_flags="-j$((`nproc`+1))"
+  elif [[ "$_force_all_threads" = "false" && -n "$_thread_num" ]]; then
+    _make_flags="-j${_thread_num}"
+  elif [[ "$_force_all_threads" = "false" && -z "$_thread_num" ]]; then
+    _make_flags="${MAKEFLAGS}"
   fi
 
   # ccache
@@ -168,9 +170,9 @@ build() {
 
   # build!
   if [[ "$_use_schedtool" = "true" ]]; then
-    _runtime=$( time ( schedtool -B -n "$_nice_level" -e ionice -n "$_ionice_level" make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+    _runtime=$( time ( schedtool -B -n "$_nice_level" -e ionice -n "$_ionice_level" make ${_make_flags} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
   else
-    _runtime=$( time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+    _runtime=$( time ( make ${_make_flags} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
   fi
 }
 

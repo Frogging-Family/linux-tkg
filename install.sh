@@ -200,13 +200,13 @@ if [ "$1" = "install" ]; then
     PATH="${CUSTOM_GCC_PATH}/bin:${CUSTOM_GCC_PATH}/lib:${CUSTOM_GCC_PATH}/include:${PATH}"
   fi
 
-  if [ "$_force_all_threads" = "true" ]; then
-    _thread_num=`nproc`
-  else
-    _thread_num=`expr \`nproc\` / 4`
-    if [ "$_thread_num" = "0" ]; then
-      _thread_num=1
-    fi
+  if [[ "$_force_all_threads" = "true" ]]; then
+    _make_flags="-j$((`nproc`+1))"
+  elif [[ "$_force_all_threads" = "false" && -n "$_thread_num" ]]; then
+    _make_flags="-j${_thread_num}"
+  elif [[ "$_force_all_threads" = "false" && -z "$_thread_num" ]]; then
+    _make_flags="-j$((`nproc`/4))"
+    [[ "$_make_flags" -le "0" ]] && _make_flags="-j1"
   fi
 
   # ccache
@@ -249,7 +249,7 @@ if [ "$1" = "install" ]; then
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
-    _timed_build make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
+    _timed_build make ${llvm_opt} ${_make_flags} deb-pkg LOCALVERSION=-${_kernel_flavor}
     msg2 "Building successfully finished!"
 
     # Create DEBS folder if it doesn't exist
@@ -288,7 +288,7 @@ if [ "$1" = "install" ]; then
     fi
 
     msg2 "Building kernel RPM packages"
-    RPMOPTS="--define '_topdir ${_build_dir}'" _timed_build make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
+    RPMOPTS="--define '_topdir ${_build_dir}'" _timed_build make ${llvm_opt} ${_make_flags} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
     msg2 "Building successfully finished!"
 
     # Create RPMS folder if it doesn't exist
@@ -334,7 +334,7 @@ if [ "$1" = "install" ]; then
     fi
 
     msg2 "Building kernel"
-    _timed_build make ${llvm_opt} -j ${_thread_num}
+    _timed_build make ${llvm_opt} ${_make_flags}
     msg2 "Build successful"
 
     if [ "$_STRIP" = "true" ]; then
