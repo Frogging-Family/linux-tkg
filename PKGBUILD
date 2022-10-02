@@ -118,6 +118,9 @@ export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EP
 
 prepare() {
   rm -rf "${pkgdir:?}" # Nuke the entire pkg folder so it'll get regenerated clean on next build
+  if [ "$_NUKR" = "true" ]; then
+    rm -rf "${srcdir:?}/${_srcpath}"
+  fi
 
   source "${_where}/current_env"
 
@@ -368,7 +371,7 @@ hackheaders() {
   fi
 
   if [ "$_NUKR" = "true" ]; then
-    rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
+    rm -rf "${srcdir:?}/${_srcpath}" # Nuke the entire src folder so it'll get regenerated clean on next build
   fi
 }
 

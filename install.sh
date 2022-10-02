@@ -340,7 +340,7 @@ if [ "$1" = "install" ]; then
     msg2 "Build successful"
 
     if [ "$_STRIP" = "true" ]; then
-      echo "Stripping vmlinux..."
+      msg2 "Stripping vmlinux..."
       strip -v $STRIP_STATIC "vmlinux"
     fi
 
