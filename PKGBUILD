@@ -94,8 +94,10 @@ if [[ "$_release_tarball" = "true" ]]; then
     source+=("${pkgbase}.tar.gz::https://git.kernel.org/torvalds/t/linux-${pkgver}.tar.gz")
     sha256sums+=("SKIP")
   else
-    msg2 "Downloading 'sha256sums.asc'..."
-    wget -cO "$_linux_sha256sums" "https://mirrors.edge.kernel.org/pub/linux/kernel/v${_major}.x/sha256sums.asc"
+    if [[ ! -e "$_linux_sha256sums" ]]; then
+      msg2 "Downloading 'sha256sums.asc'..."
+      wget -cO "$_linux_sha256sums" "https://mirrors.edge.kernel.org/pub/linux/kernel/v${_major}.x/sha256sums.asc"
+    fi
     source+=(
       "${pkgbase}.tar.xz::https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.xz"
       "${pkgbase}.tar.sign::https://cdn.kernel.org/pub/linux/kernel/v${_major}.x/linux-${_basekernel}.tar.sign"
