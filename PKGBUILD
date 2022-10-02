@@ -361,7 +361,7 @@ hackheaders() {
   ln -sr "$builddir" "$pkgdir/usr/src/$pkgbase"
 
   if [ "$_STRIP" = "true" ]; then
-    echo "Stripping vmlinux..."
+    msg2 "Stripping vmlinux..."
     strip -v $STRIP_STATIC "$builddir/vmlinux"
   fi
 
