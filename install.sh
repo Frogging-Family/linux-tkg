@@ -7,7 +7,9 @@ if [ -z "$SCRIPT" ]; then
   exit_status="$?"
   sed -i 's/\x1b\[[0-9;]*m//g' shell-output.log
   sed -i 's/\x1b(B//g' shell-output.log
-  mv -f shell-output.log logs/shell-output.log.txt
+  # https://stackoverflow.com/a/43108392 @mklement0
+  tr -dC '[:print:]\t\n' < shell-output.log > logs/shell-output.log.txt
+  rm -f shell-output.log
   exit $exit_status
 fi
 
