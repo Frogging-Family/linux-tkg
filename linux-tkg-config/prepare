@@ -1787,7 +1787,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     fi
     _community_patches=($_community_patches)
     mkdir -p "$_where"/linux"$_basever"-tkg-userpatches
-    for _p in ${_community_patches[@]}; do
+    for _p in "${_community_patches[@]}"; do
       if [ ! -e "$_where/linux$_basever-tkg-userpatches/$_p" ]; then
         ln -s "$_where"/../community-patches/linux"$_basever"-tkg/$_p "$_where"/linux"$_basever"-tkg-userpatches/$_p
       else
@@ -1805,7 +1805,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
   fi
 
   # Community patches removal
-  for _p in ${_community_patches[@]}; do
+  for _p in "${_community_patches[@]}"; do
     rm -f "$_where"/linux"$_basever"-tkg-userpatches/$_p
   done
 
@@ -1814,31 +1814,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     sed -i '2iexit 0' scripts/depmod.sh
 
     # get kernel version
-    make prepare ${llvm_opt}
-  fi
-
-  # modprobed-db
-  if [ -z "$_modprobeddb" ]; then
-    plain ""
-    plain "Use modprobed db to clean config from unneeded modules?"
-    plain "Speeds up compilation considerably. Requires root."
-    plain "https://wiki.archlinux.org/index.php/Modprobed-db"
-    plain "!!!! Make sure to have a well populated db !!!!"
-    read -rp "`echo $'    > N/y : '`" CONDITIONMPDB;
-  fi
-  if [[ "$CONDITIONMPDB" =~ [yY] ]] || [ "$_modprobeddb" = "true" ]; then
-    if [ -f "$where"/"$_modprobeddb_db_path" ];then
-      _modprobeddb_db_path="$where"/"$_modprobeddb_db_path"
-    fi
-    if [ ! -f $_modprobeddb_db_path ]; then
-      msg2 "modprobed-db database not found"
-      exit 1
-    fi
-    # Workaround for: https://github.com/Tk-Glitch/PKGBUILDS/issues/404.
-    # Long live #404!
-    _disable "GPIO_BT8XX" "SND_SE6X" "SENSORS_ADM1021" "SENSORS_MAX6642" "SENSORS_ASUS_WMI_EC"
-
-    make LSMOD=$_modprobeddb_db_path localmodconfig ${llvm_opt}
+    make prepare ${llvm_opt} ${_make_flags}
   fi
 
   if [ true = "$_config_fragments" ]; then
@@ -1856,7 +1832,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
             y|yes)
               break;;
             n|no|'')
-              unset fragments[$i]
+              unset "fragments[$i]"
               break;;
             *)
               echo 'Please answer with yes or no'
@@ -1870,22 +1846,70 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     fi
   fi
 
-  # Distro specific workarounds in the .config file, when using Arch config file by default
-  if [ -z  "$_configfile" ] || [ "$_configfile" = "config_hardened.x86_64" ]; then
-    if [[ "$_distro" =~ ^(Debian|Ubuntu)$ ]]; then
-      _disable "MODULE_COMPRESS_ZSTD"
-      _enable "MODULE_COMPRESS_NONE"
+  # rewrite configuration
+  msg2 "Setting config"
+  make ${_config_updating} ${llvm_opt} ${_make_flags} |& tee -a "$_where"/logs/prepare.log.txt
+
+  if [[ -n "$_config_enable" ]]; then
+    OFS="$IFS"
+    IFS=" " read -ra _config_enable <<< "$_config_enable"
+    IFS="$OFS"
+    for conf in "${_config_enable[@]}"; do
+      echo "Enabling '$conf'..."
+      _enable "${conf//CONFIG_/}"
+      echo -e "Previous value: '$(grep -w "$conf" "${srcdir}/${_srcpath}/.config.old")'.\n"
+    done
+  fi
+
+  if [[ -n "$_config_disable" ]]; then
+    OFS="$IFS"
+    IFS=" " read -ra _config_disable <<< "$_config_disable"
+    IFS="$OFS"
+    for conf in "${_config_disable[@]}"; do
+      echo "Disabling '$conf'..."
+      _disable "${conf//CONFIG_/}"
+      echo -e "Previous value: '$(grep -w "$conf" "${srcdir}/${_srcpath}/.config.old")'.\n"
+    done
+  fi
+
+  if [[ -n "$_config_module" ]]; then
+    OFS="$IFS"
+    IFS=" " read -ra _config_module <<< "$_config_module"
+    IFS="$OFS"
+    for conf in "${_config_module[@]}"; do
+      echo "Setting '$conf' to module..."
+      _module "${conf//CONFIG_/}"
+      echo -e "Previous value: '$(grep -w "$conf" "${srcdir}/${_srcpath}/.config.old")'.\n"
+    done
+  fi
+
+  # modprobed-db
+  if [[ -z "$_modprobeddb" ]]; then
+    plain ""
+    plain "Use modprobed db to clean config from unneeded modules?"
+    plain "Speeds up compilation considerably. Requires root."
+    plain "https://wiki.archlinux.org/index.php/Modprobed-db"
+    plain "!!!! Make sure to have a well populated db !!!!"
+    read -rp "    > N/y : " CONDITIONMPDB;
+  fi
+  if [[ "$CONDITIONMPDB" =~ [yY] || "$_modprobeddb" = "true" ]]; then
+    if [[ -e "${_where}/${_modprobeddb_db_path}" ]]; then
+      _modprobeddb_db_path="${_where}/${_modprobeddb_db_path}"
+    elif [[ ! -e "$_modprobeddb_db_path" ]]; then
+      msg2 "modprobed-db database not found"
+      exit 1
     fi
+    # Workaround for: https://github.com/Tk-Glitch/PKGBUILDS/issues/404.
+    # Long live #404!
+    _disable "GPIO_BT8XX" "SND_SE6X" "SENSORS_ADM1021" "SENSORS_MAX6642" "SENSORS_ASUS_WMI_EC"
+
+    make LSMOD="$_modprobeddb_db_path" localmodconfig ${llvm_opt} ${_make_flags}
   fi
 
   # set _menuconfig early for Void
   if [ "$_distro" = "Void" ]; then
     _menuconfig="Void"
   fi
-
-  # rewrite configuration
-  msg2 "Setting config"
-  make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
 
   # menuconfig / nconfig
   if [ -z "$_menunconfig" ] && [ "$_distro" != "Void" ]; then
@@ -1894,7 +1918,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     plain "to configure the kernel before building it?"
     plain "If you do, make sure your terminal is currently"
     plain "at least 19 lines by 80 columns large or you'll get an error :D"
-    read -rp "`echo $'    > 0. nope\n      1. menuconfig\n      2. nconfig\n      3. xconfig\n      choice[0-3?]: '`" CONDITIONMNC;
+    read -rp $'    > 0. nope\n      1. menuconfig\n      2. nconfig\n      3. xconfig\n      choice[0-3?]: ' CONDITIONMNC;
     _menunconfig="$CONDITIONMNC"
   fi
   if [ 1 = "$_menunconfig" ]; then
@@ -1942,6 +1966,14 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
       ) fi
     fi
     rm .config.orig
+  fi
+
+  # Distro specific workarounds in the .config file, when using Arch config file by default
+  if [ -z  "$_configfile" ] || [ "$_configfile" = "config_hardened.x86_64" ]; then
+    if [[ "$_distro" =~ ^(Debian|Ubuntu)$ ]]; then
+      _disable "MODULE_COMPRESS_ZSTD"
+      _enable "MODULE_COMPRESS_NONE"
+    fi
   fi
 
   # generate keys for use later in build
