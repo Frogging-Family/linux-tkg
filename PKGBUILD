@@ -157,6 +157,7 @@ build() {
     [[ "$_ccache_file_clone" = "true" && -z "$CCACHE_FILECLONE" && -z "$CCACHE_NOFILECLONE" ]] && export CCACHE_FILECLONE="true"
     [[ "$_ccache_inode_cache" = "true" && -z "$CCACHE_INODECACHE" && -z "$CCACHE_NOINODECACHE" ]] && export CCACHE_INODECACHE="true"
     [[ -z "$CCACHE_SLOPPINESS" ]] && export CCACHE_SLOPPINESS="locale,time_macros,file_stat_matches"
+    [[ -z "$CCACHE_COMMENTS" && -z "$CCACHE_NOCOMMENTS" ]] && export CCACHE_NOCOMMENTS="true"
     [[ -z "$CCACHE_HASHDIR" && -z "$CCACHE_NOHASHDIR" ]] && export CCACHE_NOHASHDIR="true"
     msg2 'Ccache was found and will be used.'
   fi
