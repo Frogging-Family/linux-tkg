@@ -9893,3 +9893,34 @@ index f2b9e686d6a69c07f54c2cae36f7ce0ab70f9cb2..55c2a4c0cb845580c97e4adf07a34646
 +
  extern void swake_up_all_locked(struct swait_queue_head *q);
  extern void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait);
+
+From 3728c383c5031dce5ae0f5ea53fc47afba71270f Mon Sep 17 00:00:00 2001
+From: Juuso Alasuutari <juuso.alasuutari@gmail.com>
+Date: Sun, 14 Aug 2022 18:19:09 +0300
+Subject: [PATCH 01/10] sched/alt: [Sync] sched/core: Always flush pending
+ blk_plug
+
+---
+ kernel/sched/alt_core.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 588c7b983e3ba..8a6aa5b7279d3 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -4663,8 +4663,12 @@ static inline void sched_submit_work(struct task_struct *tsk)
+ 			io_wq_worker_sleeping(tsk);
+ 	}
+
+-	if (tsk_is_pi_blocked(tsk))
+-		return;
++	/*
++	 * spinlock and rwlock must not flush block requests.  This will
++	 * deadlock if the callback attempts to acquire a lock which is
++	 * already acquired.
++	 */
++	SCHED_WARN_ON(current->__state & TASK_RTLOCK_WAIT);
+
+ 	/*
+ 	 * If we are going to sleep and we have plugged IO queued,
+
