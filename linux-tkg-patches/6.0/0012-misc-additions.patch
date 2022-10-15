@@ -64,3 +64,365 @@ index 2c7171e0b0010..85de313ddec29 100644
  	select CPU_FREQ_GOV_PERFORMANCE
  	help
 
+From 2535fbde890f14c78b750139fcf87d1143850626 Mon Sep 17 00:00:00 2001
+From: Johannes Weiner <hannes@cmpxchg.org>
+Date: Tue, 2 Aug 2022 12:28:11 -0400
+Subject: [PATCH] mm: vmscan: fix extreme overreclaim and swap floods
+
+During proactive reclaim, we sometimes observe severe overreclaim, with
+several thousand times more pages reclaimed than requested.
+
+This trace was obtained from shrink_lruvec() during such an instance:
+
+    prio:0 anon_cost:1141521 file_cost:7767
+    nr_reclaimed:4387406 nr_to_reclaim:1047 (or_factor:4190)
+    nr=[7161123 345 578 1111]
+
+While he reclaimer requested 4M, vmscan reclaimed close to 16G, most of it
+by swapping.  These requests take over a minute, during which the write()
+to memory.reclaim is unkillably stuck inside the kernel.
+
+Digging into the source, this is caused by the proportional reclaim
+bailout logic.  This code tries to resolve a fundamental conflict: to
+reclaim roughly what was requested, while also aging all LRUs fairly and
+in accordance to their size, swappiness, refault rates etc.  The way it
+attempts fairness is that once the reclaim goal has been reached, it stops
+scanning the LRUs with the smaller remaining scan targets, and adjusts the
+remainder of the bigger LRUs according to how much of the smaller LRUs was
+scanned.  It then finishes scanning that remainder regardless of the
+reclaim goal.
+
+This works fine if priority levels are low and the LRU lists are
+comparable in size.  However, in this instance, the cgroup that is
+targeted by proactive reclaim has almost no files left - they've already
+been squeezed out by proactive reclaim earlier - and the remaining anon
+pages are hot.  Anon rotations cause the priority level to drop to 0,
+which results in reclaim targeting all of anon (a lot) and all of file
+(almost nothing).  By the time reclaim decides to bail, it has scanned
+most or all of the file target, and therefor must also scan most or all of
+the enormous anon target.  This target is thousands of times larger than
+the reclaim goal, thus causing the overreclaim.
+
+The bailout code hasn't changed in years, why is this failing now?  The
+most likely explanations are two other recent changes in anon reclaim:
+
+1. Before the series starting with commit 5df741963d52 ("mm: fix LRU
+   balancing effect of new transparent huge pages"), the VM was
+   overall relatively reluctant to swap at all, even if swap was
+   configured. This means the LRU balancing code didn't come into play
+   as often as it does now, and mostly in high pressure situations
+   where pronounced swap activity wouldn't be as surprising.
+
+2. For historic reasons, shrink_lruvec() loops on the scan targets of
+   all LRU lists except the active anon one, meaning it would bail if
+   the only remaining pages to scan were active anon - even if there
+   were a lot of them.
+
+   Before the series starting with commit ccc5dc67340c ("mm/vmscan:
+   make active/inactive ratio as 1:1 for anon lru"), most anon pages
+   would live on the active LRU; the inactive one would contain only a
+   handful of preselected reclaim candidates. After the series, anon
+   gets aged similarly to file, and the inactive list is the default
+   for new anon pages as well, making it often the much bigger list.
+
+   As a result, the VM is now more likely to actually finish large
+   anon targets than before.
+
+Change the code such that only one SWAP_CLUSTER_MAX-sized nudge toward the
+larger LRU lists is made before bailing out on a met reclaim goal.
+
+This fixes the extreme overreclaim problem.
+
+Fairness is more subtle and harder to evaluate.  No obvious misbehavior
+was observed on the test workload, in any case.  Conceptually, fairness
+should primarily be a cumulative effect from regular, lower priority
+scans.  Once the VM is in trouble and needs to escalate scan targets to
+make forward progress, fairness needs to take a backseat.  This is also
+acknowledged by the myriad exceptions in get_scan_count().  This patch
+makes fairness decrease gradually, as it keeps fairness work static over
+increasing priority levels with growing scan targets.  This should make
+more sense - although we may have to re-visit the exact values.
+
+Link: https://lkml.kernel.org/r/20220802162811.39216-1-hannes@cmpxchg.org
+Signed-off-by: Johannes Weiner <hannes@cmpxchg.org>
+Reviewed-by: Rik van Riel <riel@surriel.com>
+Acked-by: Mel Gorman <mgorman@techsingularity.net>
+Cc: Hugh Dickins <hughd@google.com>
+Cc: Joonsoo Kim <iamjoonsoo.kim@lge.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/vmscan.c | 10 ++++------
+ 1 file changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index 382dbe97329f33..266eb8cfe93a67 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -2955,8 +2955,8 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
+ 	enum lru_list lru;
+ 	unsigned long nr_reclaimed = 0;
+ 	unsigned long nr_to_reclaim = sc->nr_to_reclaim;
++	bool proportional_reclaim;
+ 	struct blk_plug plug;
+-	bool scan_adjusted;
+
+ 	get_scan_count(lruvec, sc, nr);
+
+@@ -2974,8 +2974,8 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
+ 	 * abort proportional reclaim if either the file or anon lru has already
+ 	 * dropped to zero at the first pass.
+ 	 */
+-	scan_adjusted = (!cgroup_reclaim(sc) && !current_is_kswapd() &&
+-			 sc->priority == DEF_PRIORITY);
++	proportional_reclaim = (!cgroup_reclaim(sc) && !current_is_kswapd() &&
++				sc->priority == DEF_PRIORITY);
+
+ 	blk_start_plug(&plug);
+ 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
+@@ -2995,7 +2995,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
+
+ 		cond_resched();
+
+-		if (nr_reclaimed < nr_to_reclaim || scan_adjusted)
++		if (nr_reclaimed < nr_to_reclaim || proportional_reclaim)
+ 			continue;
+
+ 		/*
+@@ -3046,8 +3046,6 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
+ 		nr_scanned = targets[lru] - nr[lru];
+ 		nr[lru] = targets[lru] * (100 - percentage) / 100;
+ 		nr[lru] -= min(nr[lru], nr_scanned);
+-
+-		scan_adjusted = true;
+ 	}
+ 	blk_finish_plug(&plug);
+ 	sc->nr_reclaimed += nr_reclaimed;
+From 430daaab3c78de6bd82f10cfb5a0f016c6e583f6 Mon Sep 17 00:00:00 2001
+From: Desmond Cheong Zhi Xi <desmondcheongzx@gmail.com>
+Date: Mon, 4 Oct 2021 14:07:34 -0400
+Subject: [PATCH] Bluetooth: fix deadlock for RFCOMM sk state change
+
+Syzbot reports the following task hang [1]:
+
+INFO: task syz-executor255:8499 blocked for more than 143 seconds.
+      Not tainted 5.14.0-rc7-syzkaller #0
+
+Call Trace:
+ context_switch kernel/sched/core.c:4681 [inline]
+ __schedule+0x93a/0x26f0 kernel/sched/core.c:5938
+ schedule+0xd3/0x270 kernel/sched/core.c:6017
+ __lock_sock+0x13d/0x260 net/core/sock.c:2644
+ lock_sock_nested+0xf6/0x120 net/core/sock.c:3185
+ lock_sock include/net/sock.h:1612 [inline]
+ rfcomm_sk_state_change+0xb4/0x390 net/bluetooth/rfcomm/sock.c:73
+ __rfcomm_dlc_close+0x1b6/0x8a0 net/bluetooth/rfcomm/core.c:489
+ rfcomm_dlc_close+0x1ea/0x240 net/bluetooth/rfcomm/core.c:520
+ __rfcomm_sock_close+0xac/0x260 net/bluetooth/rfcomm/sock.c:220
+ rfcomm_sock_shutdown+0xe9/0x210 net/bluetooth/rfcomm/sock.c:931
+ rfcomm_sock_release+0x5f/0x140 net/bluetooth/rfcomm/sock.c:951
+ __sock_release+0xcd/0x280 net/socket.c:649
+ sock_close+0x18/0x20 net/socket.c:1314
+ __fput+0x288/0x920 fs/file_table.c:280
+ task_work_run+0xdd/0x1a0 kernel/task_work.c:164
+ exit_task_work include/linux/task_work.h:32 [inline]
+ do_exit+0xbd4/0x2a60 kernel/exit.c:825
+ do_group_exit+0x125/0x310 kernel/exit.c:922
+ get_signal+0x47f/0x2160 kernel/signal.c:2808
+ arch_do_signal_or_restart+0x2a9/0x1c40 arch/x86/kernel/signal.c:865
+ handle_signal_work kernel/entry/common.c:148 [inline]
+ exit_to_user_mode_loop kernel/entry/common.c:172 [inline]
+ exit_to_user_mode_prepare+0x17d/0x290 kernel/entry/common.c:209
+ __syscall_exit_to_user_mode_work kernel/entry/common.c:291 [inline]
+ syscall_exit_to_user_mode+0x19/0x60 kernel/entry/common.c:302
+ do_syscall_64+0x42/0xb0 arch/x86/entry/common.c:86
+ entry_SYSCALL_64_after_hwframe+0x44/0xae
+
+Showing all locks held in the system:
+1 lock held by khungtaskd/1653:
+ #0: ffffffff8b97c280 (rcu_read_lock){....}-{1:2}, at:
+ debug_show_all_locks+0x53/0x260 kernel/locking/lockdep.c:6446
+1 lock held by krfcommd/4781:
+ #0: ffffffff8d306528 (rfcomm_mutex){+.+.}-{3:3}, at:
+ rfcomm_process_sessions net/bluetooth/rfcomm/core.c:1979 [inline]
+ #0: ffffffff8d306528 (rfcomm_mutex){+.+.}-{3:3}, at:
+ rfcomm_run+0x2ed/0x4a20 net/bluetooth/rfcomm/core.c:2086
+2 locks held by in:imklog/8206:
+ #0: ffff8880182ce5f0 (&f->f_pos_lock){+.+.}-{3:3}, at:
+ __fdget_pos+0xe9/0x100 fs/file.c:974
+ #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at:
+ raw_spin_rq_lock_nested kernel/sched/core.c:460 [inline]
+ #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at: raw_spin_rq_lock
+ kernel/sched/sched.h:1307 [inline]
+ #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at: rq_lock
+ kernel/sched/sched.h:1610 [inline]
+ #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at:
+ __schedule+0x233/0x26f0 kernel/sched/core.c:5852
+4 locks held by syz-executor255/8499:
+ #0: ffff888039a83690 (&sb->s_type->i_mutex_key#13){+.+.}-{3:3}, at:
+ inode_lock include/linux/fs.h:774 [inline]
+ #0: ffff888039a83690 (&sb->s_type->i_mutex_key#13){+.+.}-{3:3}, at:
+ __sock_release+0x86/0x280 net/socket.c:648
+ #1:
+ ffff88802fa31120 (sk_lock-AF_BLUETOOTH-BTPROTO_RFCOMM){+.+.}-{0:0},
+ at: lock_sock include/net/sock.h:1612 [inline]
+ #1:
+ ffff88802fa31120 (sk_lock-AF_BLUETOOTH-BTPROTO_RFCOMM){+.+.}-{0:0},
+ at: rfcomm_sock_shutdown+0x54/0x210 net/bluetooth/rfcomm/sock.c:928
+ #2: ffffffff8d306528 (rfcomm_mutex){+.+.}-{3:3}, at:
+ rfcomm_dlc_close+0x34/0x240 net/bluetooth/rfcomm/core.c:507
+ #3: ffff888141bd6d28 (&d->lock){+.+.}-{3:3}, at:
+ __rfcomm_dlc_close+0x162/0x8a0 net/bluetooth/rfcomm/core.c:487
+==================================================================
+
+The task hangs because of a deadlock that occurs when lock_sock() is
+called in rfcomm_sk_state_change(). One such call stack is:
+
+  rfcomm_sock_shutdown():
+    lock_sock();
+    __rfcomm_sock_close():
+      rfcomm_dlc_close():
+        __rfcomm_dlc_close():
+          rfcomm_dlc_lock();
+          rfcomm_sk_state_change():
+            lock_sock();
+
+lock_sock() has to be called when the sk state is changed because the
+lock is not always held when rfcomm_sk_state_change() is
+called. However, besides the recursive deadlock, there is also an
+issue of a lock hierarchy inversion between rfcomm_dlc_lock() and
+lock_sock() if the socket is locked in rfcomm_sk_state_change().
+
+To avoid these issues, we can instead schedule the sk state change in
+the global workqueue. This is already the implicit assumption about
+how sk state changes happen. For example, in rfcomm_sock_shutdown(),
+the call to __rfcomm_sock_close() is followed by
+bt_sock_wait_state().
+
+Additionally, the call to rfcomm_sock_kill() inside
+rfcomm_sk_state_change() should be removed. The socket shouldn't be
+killed here because only rfcomm_sock_release() calls sock_orphan(),
+which it already follows up with a call to rfcomm_sock_kill().
+
+Fixes: b7ce436a5d79 ("Bluetooth: switch to lock_sock in RFCOMM")
+Link: https://syzkaller.appspot.com/bug?extid=7d51f807c81b190a127d [1]
+Reported-by: syzbot+7d51f807c81b190a127d@syzkaller.appspotmail.com
+Tested-by: syzbot+7d51f807c81b190a127d@syzkaller.appspotmail.com
+Signed-off-by: Desmond Cheong Zhi Xi <desmondcheongzx@gmail.com>
+Cc: Hillf Danton <hdanton@sina.com>
+---
+ include/net/bluetooth/rfcomm.h |  3 +++
+ net/bluetooth/rfcomm/core.c    |  2 ++
+ net/bluetooth/rfcomm/sock.c    | 34 ++++++++++++++++++++++------------
+ 3 files changed, 27 insertions(+), 12 deletions(-)
+
+diff --git a/include/net/bluetooth/rfcomm.h b/include/net/bluetooth/rfcomm.h
+index 99d26879b02a53..a92799fc5e74d0 100644
+--- a/include/net/bluetooth/rfcomm.h
++++ b/include/net/bluetooth/rfcomm.h
+@@ -171,6 +171,7 @@ struct rfcomm_dlc {
+ 	struct rfcomm_session *session;
+ 	struct sk_buff_head   tx_queue;
+ 	struct timer_list     timer;
++	struct work_struct    state_change_work;
+
+ 	struct mutex  lock;
+ 	unsigned long state;
+@@ -186,6 +187,7 @@ struct rfcomm_dlc {
+ 	u8            sec_level;
+ 	u8            role_switch;
+ 	u32           defer_setup;
++	int           err;
+
+ 	uint          mtu;
+ 	uint          cfc;
+@@ -310,6 +312,7 @@ struct rfcomm_pinfo {
+ 	u8     role_switch;
+ };
+
++void __rfcomm_sk_state_change(struct work_struct *work);
+ int  rfcomm_init_sockets(void);
+ void rfcomm_cleanup_sockets(void);
+
+diff --git a/net/bluetooth/rfcomm/core.c b/net/bluetooth/rfcomm/core.c
+index 7324764384b677..c6494e85cd68b2 100644
+--- a/net/bluetooth/rfcomm/core.c
++++ b/net/bluetooth/rfcomm/core.c
+@@ -289,6 +289,7 @@ static void rfcomm_dlc_clear_state(struct rfcomm_dlc *d)
+ 	d->flags      = 0;
+ 	d->mscex      = 0;
+ 	d->sec_level  = BT_SECURITY_LOW;
++	d->err        = 0;
+ 	d->mtu        = RFCOMM_DEFAULT_MTU;
+ 	d->v24_sig    = RFCOMM_V24_RTC | RFCOMM_V24_RTR | RFCOMM_V24_DV;
+
+@@ -306,6 +307,7 @@ struct rfcomm_dlc *rfcomm_dlc_alloc(gfp_t prio)
+ 	timer_setup(&d->timer, rfcomm_dlc_timeout, 0);
+
+ 	skb_queue_head_init(&d->tx_queue);
++	INIT_WORK(&d->state_change_work, __rfcomm_sk_state_change);
+ 	mutex_init(&d->lock);
+ 	refcount_set(&d->refcnt, 1);
+
+diff --git a/net/bluetooth/rfcomm/sock.c b/net/bluetooth/rfcomm/sock.c
+index 4bf4ea6cbb5eee..4850dafbaa05fb 100644
+--- a/net/bluetooth/rfcomm/sock.c
++++ b/net/bluetooth/rfcomm/sock.c
+@@ -61,19 +61,22 @@ static void rfcomm_sk_data_ready(struct rfcomm_dlc *d, struct sk_buff *skb)
+ 		rfcomm_dlc_throttle(d);
+ }
+
+-static void rfcomm_sk_state_change(struct rfcomm_dlc *d, int err)
++void __rfcomm_sk_state_change(struct work_struct *work)
+ {
++	struct rfcomm_dlc *d = container_of(work, struct rfcomm_dlc,
++					    state_change_work);
+ 	struct sock *sk = d->owner, *parent;
+
+ 	if (!sk)
+ 		return;
+
+-	BT_DBG("dlc %p state %ld err %d", d, d->state, err);
+-
+ 	lock_sock(sk);
++	rfcomm_dlc_lock(d);
+
+-	if (err)
+-		sk->sk_err = err;
++	BT_DBG("dlc %p state %ld err %d", d, d->state, d->err);
++
++	if (d->err)
++		sk->sk_err = d->err;
+
+ 	sk->sk_state = d->state;
+
+@@ -91,15 +94,22 @@ static void rfcomm_sk_state_change(struct rfcomm_dlc *d, int err)
+ 		sk->sk_state_change(sk);
+ 	}
+
++	rfcomm_dlc_unlock(d);
+ 	release_sock(sk);
++	sock_put(sk);
++}
+
+-	if (parent && sock_flag(sk, SOCK_ZAPPED)) {
+-		/* We have to drop DLC lock here, otherwise
+-		 * rfcomm_sock_destruct() will dead lock. */
+-		rfcomm_dlc_unlock(d);
+-		rfcomm_sock_kill(sk);
+-		rfcomm_dlc_lock(d);
+-	}
++static void rfcomm_sk_state_change(struct rfcomm_dlc *d, int err)
++{
++	struct sock *sk = d->owner;
++
++	if (!sk)
++		return;
++
++	d->err = err;
++	sock_hold(sk);
++	if (!schedule_work(&d->state_change_work))
++		sock_put(sk);
+ }
+
+ /* ---- Socket functions ---- */
