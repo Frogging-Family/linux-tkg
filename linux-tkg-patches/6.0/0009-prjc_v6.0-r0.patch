@@ -1,6 +1,6 @@
-From b53bf730e6bba71ebc0ec8452cc2ca399137090e Mon Sep 17 00:00:00 2001
+From 711a56e8f6314d77141b0f661e6c13c8a2c4dddf Mon Sep 17 00:00:00 2001
 From: Tor Vic <torvic9@mailbox.org>
-Date: Mon, 3 Oct 2022 11:19:50 +0200
+Date: Wed, 16 Nov 2022 11:29:00 +0100
 Subject: [PATCH] Project-C 6.0-rc0-vd
 
 ---
@@ -22,7 +22,7 @@ Subject: [PATCH] Project-C 6.0-rc0-vd
  kernel/exit.c                                 |    4 +-
  kernel/locking/rtmutex.c                      |   16 +-
  kernel/sched/Makefile                         |    5 +
- kernel/sched/alt_core.c                       | 7937 +++++++++++++++++
+ kernel/sched/alt_core.c                       | 7959 +++++++++++++++++
  kernel/sched/alt_debug.c                      |   31 +
  kernel/sched/alt_sched.h                      |  645 ++
  kernel/sched/bmq.h                            |  110 +
@@ -43,7 +43,7 @@ Subject: [PATCH] Project-C 6.0-rc0-vd
  kernel/time/hrtimer.c                         |    2 +
  kernel/time/posix-cpu-timers.c                |   10 +-
  kernel/trace/trace_selftest.c                 |    5 +
- 39 files changed, 9245 insertions(+), 23 deletions(-)
+ 39 files changed, 9267 insertions(+), 23 deletions(-)
  create mode 100644 Documentation/scheduler/sched-BMQ.txt
  create mode 100644 kernel/sched/alt_core.c
  create mode 100644 kernel/sched/alt_debug.c
@@ -685,10 +685,10 @@ index 976092b7bd45..31d587c16ec1 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..f3bac14124c3
+index 000000000000..18dfee354f9b
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7937 @@
+@@ -0,0 +1,7959 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -3111,13 +3111,6 @@ index 000000000000..f3bac14124c3
 +	if (!llist)
 +		return;
 +
-+	/*
-+	 * rq::ttwu_pending racy indication of out-standing wakeups.
-+	 * Races such that false-negatives are possible, since they
-+	 * are shorter lived that false-positives would be.
-+	 */
-+	WRITE_ONCE(rq->ttwu_pending, 0);
-+
 +	rq_lock_irqsave(rq, &rf);
 +	update_rq_clock(rq);
 +
@@ -3131,6 +3124,17 @@ index 000000000000..f3bac14124c3
 +		ttwu_do_activate(rq, p, p->sched_remote_wakeup ? WF_MIGRATED : 0);
 +	}
 +
++	/*
++	 * Must be after enqueueing at least once task such that
++	 * idle_cpu() does not observe a false-negative -- if it does,
++	 * it is possible for select_idle_siblings() to stack a number
++	 * of tasks on this CPU during that window.
++	 *
++	 * It is ok to clear ttwu_pending when another task pending.
++	 * We will receive IPI after local irq enabled and then enqueue it.
++	 * Since now nr_running > 0, idle_cpu() will always get correct result.
++	 */
++	WRITE_ONCE(rq->ttwu_pending, 0);
 +	rq_unlock_irqrestore(rq, &rf);
 +}
 +
@@ -3601,6 +3605,40 @@ index 000000000000..f3bac14124c3
 +	return success;
 +}
 +
++static bool __task_needs_rq_lock(struct task_struct *p)
++{
++	unsigned int state = READ_ONCE(p->__state);
++
++	/*
++	 * Since pi->lock blocks try_to_wake_up(), we don't need rq->lock when
++	 * the task is blocked. Make sure to check @state since ttwu() can drop
++	 * locks at the end, see ttwu_queue_wakelist().
++	 */
++	if (state == TASK_RUNNING || state == TASK_WAKING)
++		return true;
++
++	/*
++	 * Ensure we load p->on_rq after p->__state, otherwise it would be
++	 * possible to, falsely, observe p->on_rq == 0.
++	 *
++	 * See try_to_wake_up() for a longer comment.
++	 */
++	smp_rmb();
++	if (p->on_rq)
++		return true;
++
++#ifdef CONFIG_SMP
++	/*
++	 * Ensure the task has finished __schedule() and will not be referenced
++	 * anymore. Again, see try_to_wake_up() for a longer comment.
++	 */
++	smp_rmb();
++	smp_cond_load_acquire(&p->on_cpu, !VAL);
++#endif
++
++	return false;
++}
++
 +/**
 + * task_call_func - Invoke a function on task in fixed state
 + * @p: Process for which the function is to be invoked, can be @current.
@@ -3618,28 +3656,12 @@ index 000000000000..f3bac14124c3
 +int task_call_func(struct task_struct *p, task_call_f func, void *arg)
 +{
 +	struct rq *rq = NULL;
-+	unsigned int state;
 +	struct rq_flags rf;
 +	int ret;
 +
 +	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
 +
-+	state = READ_ONCE(p->__state);
-+
-+	/*
-+	 * Ensure we load p->on_rq after p->__state, otherwise it would be
-+	 * possible to, falsely, observe p->on_rq == 0.
-+	 *
-+	 * See try_to_wake_up() for a longer comment.
-+	 */
-+	smp_rmb();
-+
-+	/*
-+	 * Since pi->lock blocks try_to_wake_up(), we don't need rq->lock when
-+	 * the task is blocked. Make sure to check @state since ttwu() can drop
-+	 * locks at the end, see ttwu_queue_wakelist().
-+	 */
-+	if (state == TASK_RUNNING || state == TASK_WAKING || p->on_rq)
++	if (__task_needs_rq_lock(p))
 +		rq = __task_rq_lock(p, &rf);
 +
 +	/*
@@ -9956,7 +9978,7 @@ index 8739c2a5a54e..d8dd6c15eb47 100644
 
 +#ifndef CONFIG_SCHED_ALT
  DEFINE_MUTEX(sched_domains_mutex);
-
+ 
  /* Protected by sched_domains_mutex: */
 @@ -1413,8 +1414,10 @@ static void asym_cpu_capacity_scan(void)
   */
@@ -9974,7 +9996,7 @@ index 8739c2a5a54e..d8dd6c15eb47 100644
  	return sd;
  }
 +#endif /* CONFIG_SCHED_ALT */
-
+ 
  /*
   * Topology list, bottom-up.
 @@ -1683,6 +1687,7 @@ void set_sched_topology(struct sched_domain_topology_level *tl)
@@ -10129,6 +10151,56 @@ index a2d301f58ced..2ccdede8585c 100644
  	};
  	struct wakeup_test_data *x = data;
 
---
-2.37.3
+-- 
+2.38.1
 
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index f3bac14124c3..27eafbccf23d 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -1448,11 +1448,13 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
+ 
+ 	WARN_ON_ONCE(is_migration_disabled(p));
+ #endif
+-	if (task_cpu(p) == new_cpu)
+-		return;
++
+ 	trace_sched_migrate_task(p, new_cpu);
+-	rseq_migrate(p);
+-	perf_event_task_migrate(p);
++
++	if (task_cpu(p) != new_cpu) {
++		rseq_migrate(p);
++		perf_event_task_migrate(p);
++	}
+ 
+ 	__set_task_cpu(p, new_cpu);
+ }
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index f3bac14124c3..5678c247c0ab 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -810,8 +810,8 @@ unsigned long get_wchan(struct task_struct *p)
+  * Context: rq->lock
+  */
+ #define __SCHED_DEQUEUE_TASK(p, rq, flags)					\
+-	psi_dequeue(p, flags & DEQUEUE_SLEEP);					\
+ 	sched_info_dequeue(rq, p);						\
++	psi_dequeue(p, flags & DEQUEUE_SLEEP);					\
+ 										\
+ 	list_del(&p->sq_node);							\
+ 	if (list_empty(&rq->queue.heads[p->sq_idx])) 				\
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index f3bac14124c3..349a2c92d534 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -4404,8 +4404,8 @@ static inline void schedule_debug(struct task_struct *prev, bool preempt)
+ 
+ /*
+  * Compile time debug macro
+- * #define ALT_SCHED_DEBUG
+  */
++#define ALT_SCHED_DEBUG
+ 
+ #ifdef ALT_SCHED_DEBUG
+ void alt_sched_debug(void)
