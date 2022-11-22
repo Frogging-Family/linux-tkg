@@ -44,6 +44,12 @@ plain() {
 
 declare -p -x > current_env
 source customization.cfg
+
+if [ -e "$_EXT_CONFIG_PATH" ]; then
+  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
+  source "$_EXT_CONFIG_PATH"
+fi
+
 . current_env
 
 source linux-tkg-config/prepare
