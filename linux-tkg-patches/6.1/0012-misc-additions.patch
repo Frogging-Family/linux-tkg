@@ -64,422 +64,253 @@ index 2c7171e0b0010..85de313ddec29 100644
  	select CPU_FREQ_GOV_PERFORMANCE
  	help
 
-From 430daaab3c78de6bd82f10cfb5a0f016c6e583f6 Mon Sep 17 00:00:00 2001
-From: Desmond Cheong Zhi Xi <desmondcheongzx@gmail.com>
-Date: Mon, 4 Oct 2021 14:07:34 -0400
-Subject: [PATCH] Bluetooth: fix deadlock for RFCOMM sk state change
+From 0c079d3f88df5f8286cd5c91b54bdac7c819be85 Mon Sep 17 00:00:00 2001
+From: Matthew Auld <matthew.auld@intel.com>
+Date: Tue, 6 Dec 2022 16:11:41 +0000
+Subject: [PATCH] drm/i915: improve the catch-all evict to handle lock
+ contention
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
-Syzbot reports the following task hang [1]:
+The catch-all evict can fail due to object lock contention, since it
+only goes as far as trylocking the object, due to us already holding the
+vm->mutex. Doing a full object lock here can deadlock, since the
+vm->mutex is always our inner lock. Add another execbuf pass which drops
+the vm->mutex and then tries to grab the object will the full lock,
+before then retrying the eviction. This should be good enough for now to
+fix the immediate regression with userspace seeing -ENOSPC from execbuf
+due to contended object locks during GTT eviction.
 
-INFO: task syz-executor255:8499 blocked for more than 143 seconds.
-      Not tainted 5.14.0-rc7-syzkaller #0
+Testcase: igt@gem_ppgtt@shrink-vs-evict-*
+Fixes: 7e00897be8bf ("drm/i915: Add object locking to i915_gem_evict_for_node and i915_gem_evict_something, v2.")
+References: https://gitlab.freedesktop.org/drm/intel/-/issues/7627
+References: https://gitlab.freedesktop.org/drm/intel/-/issues/7570
+References: https://bugzilla.mozilla.org/show_bug.cgi?id=1779558
+Signed-off-by: Matthew Auld <matthew.auld@intel.com>
+Cc: Maarten Lankhorst <maarten.lankhorst@linux.intel.com>
+Cc: Thomas Hellström <thomas.hellstrom@linux.intel.com>
+Cc: Tvrtko Ursulin <tvrtko.ursulin@linux.intel.com>
+Cc: Andrzej Hajda <andrzej.hajda@intel.com>
+Cc: Mani Milani <mani@chromium.org>
+Cc: <stable@vger.kernel.org> # v5.18+
 
-Call Trace:
- context_switch kernel/sched/core.c:4681 [inline]
- __schedule+0x93a/0x26f0 kernel/sched/core.c:5938
- schedule+0xd3/0x270 kernel/sched/core.c:6017
- __lock_sock+0x13d/0x260 net/core/sock.c:2644
- lock_sock_nested+0xf6/0x120 net/core/sock.c:3185
- lock_sock include/net/sock.h:1612 [inline]
- rfcomm_sk_state_change+0xb4/0x390 net/bluetooth/rfcomm/sock.c:73
- __rfcomm_dlc_close+0x1b6/0x8a0 net/bluetooth/rfcomm/core.c:489
- rfcomm_dlc_close+0x1ea/0x240 net/bluetooth/rfcomm/core.c:520
- __rfcomm_sock_close+0xac/0x260 net/bluetooth/rfcomm/sock.c:220
- rfcomm_sock_shutdown+0xe9/0x210 net/bluetooth/rfcomm/sock.c:931
- rfcomm_sock_release+0x5f/0x140 net/bluetooth/rfcomm/sock.c:951
- __sock_release+0xcd/0x280 net/socket.c:649
- sock_close+0x18/0x20 net/socket.c:1314
- __fput+0x288/0x920 fs/file_table.c:280
- task_work_run+0xdd/0x1a0 kernel/task_work.c:164
- exit_task_work include/linux/task_work.h:32 [inline]
- do_exit+0xbd4/0x2a60 kernel/exit.c:825
- do_group_exit+0x125/0x310 kernel/exit.c:922
- get_signal+0x47f/0x2160 kernel/signal.c:2808
- arch_do_signal_or_restart+0x2a9/0x1c40 arch/x86/kernel/signal.c:865
- handle_signal_work kernel/entry/common.c:148 [inline]
- exit_to_user_mode_loop kernel/entry/common.c:172 [inline]
- exit_to_user_mode_prepare+0x17d/0x290 kernel/entry/common.c:209
- __syscall_exit_to_user_mode_work kernel/entry/common.c:291 [inline]
- syscall_exit_to_user_mode+0x19/0x60 kernel/entry/common.c:302
- do_syscall_64+0x42/0xb0 arch/x86/entry/common.c:86
- entry_SYSCALL_64_after_hwframe+0x44/0xae
-
-Showing all locks held in the system:
-1 lock held by khungtaskd/1653:
- #0: ffffffff8b97c280 (rcu_read_lock){....}-{1:2}, at:
- debug_show_all_locks+0x53/0x260 kernel/locking/lockdep.c:6446
-1 lock held by krfcommd/4781:
- #0: ffffffff8d306528 (rfcomm_mutex){+.+.}-{3:3}, at:
- rfcomm_process_sessions net/bluetooth/rfcomm/core.c:1979 [inline]
- #0: ffffffff8d306528 (rfcomm_mutex){+.+.}-{3:3}, at:
- rfcomm_run+0x2ed/0x4a20 net/bluetooth/rfcomm/core.c:2086
-2 locks held by in:imklog/8206:
- #0: ffff8880182ce5f0 (&f->f_pos_lock){+.+.}-{3:3}, at:
- __fdget_pos+0xe9/0x100 fs/file.c:974
- #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at:
- raw_spin_rq_lock_nested kernel/sched/core.c:460 [inline]
- #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at: raw_spin_rq_lock
- kernel/sched/sched.h:1307 [inline]
- #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at: rq_lock
- kernel/sched/sched.h:1610 [inline]
- #1: ffff8880b9c51a58 (&rq->__lock){-.-.}-{2:2}, at:
- __schedule+0x233/0x26f0 kernel/sched/core.c:5852
-4 locks held by syz-executor255/8499:
- #0: ffff888039a83690 (&sb->s_type->i_mutex_key#13){+.+.}-{3:3}, at:
- inode_lock include/linux/fs.h:774 [inline]
- #0: ffff888039a83690 (&sb->s_type->i_mutex_key#13){+.+.}-{3:3}, at:
- __sock_release+0x86/0x280 net/socket.c:648
- #1:
- ffff88802fa31120 (sk_lock-AF_BLUETOOTH-BTPROTO_RFCOMM){+.+.}-{0:0},
- at: lock_sock include/net/sock.h:1612 [inline]
- #1:
- ffff88802fa31120 (sk_lock-AF_BLUETOOTH-BTPROTO_RFCOMM){+.+.}-{0:0},
- at: rfcomm_sock_shutdown+0x54/0x210 net/bluetooth/rfcomm/sock.c:928
- #2: ffffffff8d306528 (rfcomm_mutex){+.+.}-{3:3}, at:
- rfcomm_dlc_close+0x34/0x240 net/bluetooth/rfcomm/core.c:507
- #3: ffff888141bd6d28 (&d->lock){+.+.}-{3:3}, at:
- __rfcomm_dlc_close+0x162/0x8a0 net/bluetooth/rfcomm/core.c:487
-==================================================================
-
-The task hangs because of a deadlock that occurs when lock_sock() is
-called in rfcomm_sk_state_change(). One such call stack is:
-
-  rfcomm_sock_shutdown():
-    lock_sock();
-    __rfcomm_sock_close():
-      rfcomm_dlc_close():
-        __rfcomm_dlc_close():
-          rfcomm_dlc_lock();
-          rfcomm_sk_state_change():
-            lock_sock();
-
-lock_sock() has to be called when the sk state is changed because the
-lock is not always held when rfcomm_sk_state_change() is
-called. However, besides the recursive deadlock, there is also an
-issue of a lock hierarchy inversion between rfcomm_dlc_lock() and
-lock_sock() if the socket is locked in rfcomm_sk_state_change().
-
-To avoid these issues, we can instead schedule the sk state change in
-the global workqueue. This is already the implicit assumption about
-how sk state changes happen. For example, in rfcomm_sock_shutdown(),
-the call to __rfcomm_sock_close() is followed by
-bt_sock_wait_state().
-
-Additionally, the call to rfcomm_sock_kill() inside
-rfcomm_sk_state_change() should be removed. The socket shouldn't be
-killed here because only rfcomm_sock_release() calls sock_orphan(),
-which it already follows up with a call to rfcomm_sock_kill().
-
-Fixes: b7ce436a5d79 ("Bluetooth: switch to lock_sock in RFCOMM")
-Link: https://syzkaller.appspot.com/bug?extid=7d51f807c81b190a127d [1]
-Reported-by: syzbot+7d51f807c81b190a127d@syzkaller.appspotmail.com
-Tested-by: syzbot+7d51f807c81b190a127d@syzkaller.appspotmail.com
-Signed-off-by: Desmond Cheong Zhi Xi <desmondcheongzx@gmail.com>
-Cc: Hillf Danton <hdanton@sina.com>
+Revision 1 of https://patchwork.freedesktop.org/series/111686/
 ---
- include/net/bluetooth/rfcomm.h |  3 +++
- net/bluetooth/rfcomm/core.c    |  2 ++
- net/bluetooth/rfcomm/sock.c    | 34 ++++++++++++++++++++++------------
- 3 files changed, 27 insertions(+), 12 deletions(-)
+ .../gpu/drm/i915/gem/i915_gem_execbuffer.c    | 25 +++++++++++--
+ drivers/gpu/drm/i915/gem/i915_gem_mman.c      |  2 +-
+ drivers/gpu/drm/i915/i915_gem_evict.c         | 37 ++++++++++++++-----
+ drivers/gpu/drm/i915/i915_gem_evict.h         |  4 +-
+ drivers/gpu/drm/i915/i915_vma.c               |  2 +-
+ .../gpu/drm/i915/selftests/i915_gem_evict.c   |  4 +-
+ 6 files changed, 56 insertions(+), 18 deletions(-)
 
-diff --git a/include/net/bluetooth/rfcomm.h b/include/net/bluetooth/rfcomm.h
-index 99d26879b02a53..a92799fc5e74d0 100644
---- a/include/net/bluetooth/rfcomm.h
-+++ b/include/net/bluetooth/rfcomm.h
-@@ -171,6 +171,7 @@ struct rfcomm_dlc {
- 	struct rfcomm_session *session;
- 	struct sk_buff_head   tx_queue;
- 	struct timer_list     timer;
-+	struct work_struct    state_change_work;
+diff --git a/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c b/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c
+index 845023c14eb36f..094e92ed28db4f 100644
+--- a/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c
++++ b/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c
+@@ -741,25 +741,44 @@ static int eb_reserve(struct i915_execbuffer *eb)
+ 	 *
+ 	 * Defragmenting is skipped if all objects are pinned at a fixed location.
+ 	 */
+-	for (pass = 0; pass <= 2; pass++) {
++	for (pass = 0; pass <= 3; pass++) {
+ 		int pin_flags = PIN_USER | PIN_VALIDATE;
 
- 	struct mutex  lock;
- 	unsigned long state;
-@@ -186,6 +187,7 @@ struct rfcomm_dlc {
- 	u8            sec_level;
- 	u8            role_switch;
- 	u32           defer_setup;
-+	int           err;
+ 		if (pass == 0)
+ 			pin_flags |= PIN_NONBLOCK;
 
- 	uint          mtu;
- 	uint          cfc;
-@@ -310,6 +312,7 @@ struct rfcomm_pinfo {
- 	u8     role_switch;
- };
+ 		if (pass >= 1)
+-			unpinned = eb_unbind(eb, pass == 2);
++			unpinned = eb_unbind(eb, pass >= 2);
 
-+void __rfcomm_sk_state_change(struct work_struct *work);
- int  rfcomm_init_sockets(void);
- void rfcomm_cleanup_sockets(void);
+ 		if (pass == 2) {
+ 			err = mutex_lock_interruptible(&eb->context->vm->mutex);
+ 			if (!err) {
+-				err = i915_gem_evict_vm(eb->context->vm, &eb->ww);
++				err = i915_gem_evict_vm(eb->context->vm, &eb->ww, NULL);
+ 				mutex_unlock(&eb->context->vm->mutex);
+ 			}
+ 			if (err)
+ 				return err;
+ 		}
 
-diff --git a/net/bluetooth/rfcomm/core.c b/net/bluetooth/rfcomm/core.c
-index 7324764384b677..c6494e85cd68b2 100644
---- a/net/bluetooth/rfcomm/core.c
-+++ b/net/bluetooth/rfcomm/core.c
-@@ -289,6 +289,7 @@ static void rfcomm_dlc_clear_state(struct rfcomm_dlc *d)
- 	d->flags      = 0;
- 	d->mscex      = 0;
- 	d->sec_level  = BT_SECURITY_LOW;
-+	d->err        = 0;
- 	d->mtu        = RFCOMM_DEFAULT_MTU;
- 	d->v24_sig    = RFCOMM_V24_RTC | RFCOMM_V24_RTR | RFCOMM_V24_DV;
-
-@@ -306,6 +307,7 @@ struct rfcomm_dlc *rfcomm_dlc_alloc(gfp_t prio)
- 	timer_setup(&d->timer, rfcomm_dlc_timeout, 0);
-
- 	skb_queue_head_init(&d->tx_queue);
-+	INIT_WORK(&d->state_change_work, __rfcomm_sk_state_change);
- 	mutex_init(&d->lock);
- 	refcount_set(&d->refcnt, 1);
-
-diff --git a/net/bluetooth/rfcomm/sock.c b/net/bluetooth/rfcomm/sock.c
-index 4bf4ea6cbb5eee..4850dafbaa05fb 100644
---- a/net/bluetooth/rfcomm/sock.c
-+++ b/net/bluetooth/rfcomm/sock.c
-@@ -61,19 +61,22 @@ static void rfcomm_sk_data_ready(struct rfcomm_dlc *d, struct sk_buff *skb)
- 		rfcomm_dlc_throttle(d);
- }
-
--static void rfcomm_sk_state_change(struct rfcomm_dlc *d, int err)
-+void __rfcomm_sk_state_change(struct work_struct *work)
- {
-+	struct rfcomm_dlc *d = container_of(work, struct rfcomm_dlc,
-+					    state_change_work);
- 	struct sock *sk = d->owner, *parent;
-
- 	if (!sk)
- 		return;
-
--	BT_DBG("dlc %p state %ld err %d", d, d->state, err);
--
- 	lock_sock(sk);
-+	rfcomm_dlc_lock(d);
-
--	if (err)
--		sk->sk_err = err;
-+	BT_DBG("dlc %p state %ld err %d", d, d->state, d->err);
++		if (pass == 3) {
++retry:
++			err = mutex_lock_interruptible(&eb->context->vm->mutex);
++			if (!err) {
++				struct drm_i915_gem_object *busy_bo = NULL;
 +
-+	if (d->err)
-+		sk->sk_err = d->err;
++				err = i915_gem_evict_vm(eb->context->vm, &eb->ww, &busy_bo);
++				mutex_unlock(&eb->context->vm->mutex);
++				if (err && busy_bo) {
++					err = i915_gem_object_lock(busy_bo, &eb->ww);
++					i915_gem_object_put(busy_bo);
++					if (!err)
++						goto retry;
++				}
++			}
++			if (err)
++				return err;
++		}
++
+ 		list_for_each_entry(ev, &eb->unbound, bind_link) {
+ 			err = eb_reserve_vma(eb, ev, pin_flags);
+ 			if (err)
+diff --git a/drivers/gpu/drm/i915/gem/i915_gem_mman.c b/drivers/gpu/drm/i915/gem/i915_gem_mman.c
+index 73d9eda1d6b7a6..c83d98e1dc5da0 100644
+--- a/drivers/gpu/drm/i915/gem/i915_gem_mman.c
++++ b/drivers/gpu/drm/i915/gem/i915_gem_mman.c
+@@ -369,7 +369,7 @@ static vm_fault_t vm_fault_gtt(struct vm_fault *vmf)
+ 		if (vma == ERR_PTR(-ENOSPC)) {
+ 			ret = mutex_lock_interruptible(&ggtt->vm.mutex);
+ 			if (!ret) {
+-				ret = i915_gem_evict_vm(&ggtt->vm, &ww);
++				ret = i915_gem_evict_vm(&ggtt->vm, &ww, NULL);
+ 				mutex_unlock(&ggtt->vm.mutex);
+ 			}
+ 			if (ret)
+diff --git a/drivers/gpu/drm/i915/i915_gem_evict.c b/drivers/gpu/drm/i915/i915_gem_evict.c
+index f025ee4fa52618..a4b4d9b7d26c7a 100644
+--- a/drivers/gpu/drm/i915/i915_gem_evict.c
++++ b/drivers/gpu/drm/i915/i915_gem_evict.c
+@@ -416,6 +416,11 @@ int i915_gem_evict_for_node(struct i915_address_space *vm,
+  * @vm: Address space to cleanse
+  * @ww: An optional struct i915_gem_ww_ctx. If not NULL, i915_gem_evict_vm
+  * will be able to evict vma's locked by the ww as well.
++ * @busy_bo: Optional pointer to struct drm_i915_gem_object. If not NULL, then
++ * in the event i915_gem_evict_vm() is unable to trylock an object for eviction,
++ * then @busy_bo will point to it. -EBUSY is also returned. The caller must drop
++ * the vm->mutex, before trying again to acquire the contended lock. The caller
++ * also owns a reference to the object.
+  *
+  * This function evicts all vmas from a vm.
+  *
+@@ -425,7 +430,8 @@ int i915_gem_evict_for_node(struct i915_address_space *vm,
+  * To clarify: This is for freeing up virtual address space, not for freeing
+  * memory in e.g. the shrinker.
+  */
+-int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww)
++int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww,
++		      struct drm_i915_gem_object **busy_bo)
+ {
+ 	int ret = 0;
 
- 	sk->sk_state = d->state;
+@@ -457,15 +463,22 @@ int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww)
+ 			 * the resv is shared among multiple objects, we still
+ 			 * need the object ref.
+ 			 */
+-			if (dying_vma(vma) ||
++			if (!i915_gem_object_get_rcu(vma->obj) ||
+ 			    (ww && (dma_resv_locking_ctx(vma->obj->base.resv) == &ww->ctx))) {
+ 				__i915_vma_pin(vma);
+ 				list_add(&vma->evict_link, &locked_eviction_list);
+ 				continue;
+ 			}
 
-@@ -91,15 +94,22 @@ static void rfcomm_sk_state_change(struct rfcomm_dlc *d, int err)
- 		sk->sk_state_change(sk);
+-			if (!i915_gem_object_trylock(vma->obj, ww))
++			if (!i915_gem_object_trylock(vma->obj, ww)) {
++				if (busy_bo) {
++					*busy_bo = vma->obj; /* holds ref */
++					ret = -EBUSY;
++					break;
++				}
++				i915_gem_object_put(vma->obj);
+ 				continue;
++			}
+
+ 			__i915_vma_pin(vma);
+ 			list_add(&vma->evict_link, &eviction_list);
+@@ -473,25 +486,29 @@ int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww)
+ 		if (list_empty(&eviction_list) && list_empty(&locked_eviction_list))
+ 			break;
+
+-		ret = 0;
+ 		/* Unbind locked objects first, before unlocking the eviction_list */
+ 		list_for_each_entry_safe(vma, vn, &locked_eviction_list, evict_link) {
+ 			__i915_vma_unpin(vma);
+
+-			if (ret == 0)
++			if (ret == 0) {
+ 				ret = __i915_vma_unbind(vma);
+-			if (ret != -EINTR) /* "Get me out of here!" */
+-				ret = 0;
++				if (ret != -EINTR) /* "Get me out of here!" */
++					ret = 0;
++			}
++			if (!dying_vma(vma))
++				i915_gem_object_put(vma->obj);
+ 		}
+
+ 		list_for_each_entry_safe(vma, vn, &eviction_list, evict_link) {
+ 			__i915_vma_unpin(vma);
+-			if (ret == 0)
++			if (ret == 0) {
+ 				ret = __i915_vma_unbind(vma);
+-			if (ret != -EINTR) /* "Get me out of here!" */
+-				ret = 0;
++				if (ret != -EINTR) /* "Get me out of here!" */
++					ret = 0;
++			}
+
+ 			i915_gem_object_unlock(vma->obj);
++			i915_gem_object_put(vma->obj);
+ 		}
+ 	} while (ret == 0);
+
+diff --git a/drivers/gpu/drm/i915/i915_gem_evict.h b/drivers/gpu/drm/i915/i915_gem_evict.h
+index e593c530f9bd7a..bf0ee0e4fe6088 100644
+--- a/drivers/gpu/drm/i915/i915_gem_evict.h
++++ b/drivers/gpu/drm/i915/i915_gem_evict.h
+@@ -11,6 +11,7 @@
+ struct drm_mm_node;
+ struct i915_address_space;
+ struct i915_gem_ww_ctx;
++struct drm_i915_gem_object;
+
+ int __must_check i915_gem_evict_something(struct i915_address_space *vm,
+ 					  struct i915_gem_ww_ctx *ww,
+@@ -23,6 +24,7 @@ int __must_check i915_gem_evict_for_node(struct i915_address_space *vm,
+ 					 struct drm_mm_node *node,
+ 					 unsigned int flags);
+ int i915_gem_evict_vm(struct i915_address_space *vm,
+-		      struct i915_gem_ww_ctx *ww);
++		      struct i915_gem_ww_ctx *ww,
++		      struct drm_i915_gem_object **busy_bo);
+
+ #endif /* __I915_GEM_EVICT_H__ */
+diff --git a/drivers/gpu/drm/i915/i915_vma.c b/drivers/gpu/drm/i915/i915_vma.c
+index f17c09ead7d778..4d06875de14a14 100644
+--- a/drivers/gpu/drm/i915/i915_vma.c
++++ b/drivers/gpu/drm/i915/i915_vma.c
+@@ -1569,7 +1569,7 @@ static int __i915_ggtt_pin(struct i915_vma *vma, struct i915_gem_ww_ctx *ww,
+ 			 * locked objects when called from execbuf when pinning
+ 			 * is removed. This would probably regress badly.
+ 			 */
+-			i915_gem_evict_vm(vm, NULL);
++			i915_gem_evict_vm(vm, NULL, NULL);
+ 			mutex_unlock(&vm->mutex);
+ 		}
+ 	} while (1);
+diff --git a/drivers/gpu/drm/i915/selftests/i915_gem_evict.c b/drivers/gpu/drm/i915/selftests/i915_gem_evict.c
+index 8c6517d29b8e0c..37068542aafe7f 100644
+--- a/drivers/gpu/drm/i915/selftests/i915_gem_evict.c
++++ b/drivers/gpu/drm/i915/selftests/i915_gem_evict.c
+@@ -344,7 +344,7 @@ static int igt_evict_vm(void *arg)
+
+ 	/* Everything is pinned, nothing should happen */
+ 	mutex_lock(&ggtt->vm.mutex);
+-	err = i915_gem_evict_vm(&ggtt->vm, NULL);
++	err = i915_gem_evict_vm(&ggtt->vm, NULL, NULL);
+ 	mutex_unlock(&ggtt->vm.mutex);
+ 	if (err) {
+ 		pr_err("i915_gem_evict_vm on a full GGTT returned err=%d]\n",
+@@ -356,7 +356,7 @@ static int igt_evict_vm(void *arg)
+
+ 	for_i915_gem_ww(&ww, err, false) {
+ 		mutex_lock(&ggtt->vm.mutex);
+-		err = i915_gem_evict_vm(&ggtt->vm, &ww);
++		err = i915_gem_evict_vm(&ggtt->vm, &ww, NULL);
+ 		mutex_unlock(&ggtt->vm.mutex);
  	}
 
-+	rfcomm_dlc_unlock(d);
- 	release_sock(sk);
-+	sock_put(sk);
-+}
-
--	if (parent && sock_flag(sk, SOCK_ZAPPED)) {
--		/* We have to drop DLC lock here, otherwise
--		 * rfcomm_sock_destruct() will dead lock. */
--		rfcomm_dlc_unlock(d);
--		rfcomm_sock_kill(sk);
--		rfcomm_dlc_lock(d);
--	}
-+static void rfcomm_sk_state_change(struct rfcomm_dlc *d, int err)
-+{
-+	struct sock *sk = d->owner;
-+
-+	if (!sk)
-+		return;
-+
-+	d->err = err;
-+	sock_hold(sk);
-+	if (!schedule_work(&d->state_change_work))
-+		sock_put(sk);
- }
-
- /* ---- Socket functions ---- */
-
-From 727209376f4998bc84db1d5d8af15afea846a92b Mon Sep 17 00:00:00 2001
-From: "Guilherme G. Piccoli" <gpiccoli@igalia.com>
-Date: Mon, 24 Oct 2022 17:02:54 -0300
-Subject: x86/split_lock: Add sysctl to control the misery mode
-
-Commit b041b525dab9 ("x86/split_lock: Make life miserable for split lockers")
-changed the way the split lock detector works when in "warn" mode;
-basically, it not only shows the warn message, but also intentionally
-introduces a slowdown through sleeping plus serialization mechanism
-on such task. Based on discussions in [0], seems the warning alone
-wasn't enough motivation for userspace developers to fix their
-applications.
-
-This slowdown is enough to totally break some proprietary (aka.
-unfixable) userspace[1].
-
-Happens that originally the proposal in [0] was to add a new mode
-which would warns + slowdown the "split locking" task, keeping the
-old warn mode untouched. In the end, that idea was discarded and
-the regular/default "warn" mode now slows down the applications. This
-is quite aggressive with regards proprietary/legacy programs that
-basically are unable to properly run in kernel with this change.
-While it is understandable that a malicious application could DoS
-by split locking, it seems unacceptable to regress old/proprietary
-userspace programs through a default configuration that previously
-worked. An example of such breakage was reported in [1].
-
-Add a sysctl to allow controlling the "misery mode" behavior, as per
-Thomas suggestion on [2]. This way, users running legacy and/or
-proprietary software are allowed to still execute them with a decent
-performance while still observing the warning messages on kernel log.
-
-[0] https://lore.kernel.org/lkml/20220217012721.9694-1-tony.luck@intel.com/
-[1] https://github.com/doitsujin/dxvk/issues/2938
-[2] https://lore.kernel.org/lkml/87pmf4bter.ffs@tglx/
-
-[ dhansen: minor changelog tweaks, including clarifying the actual
-  	   problem ]
-
-Fixes: b041b525dab9 ("x86/split_lock: Make life miserable for split lockers")
-Suggested-by: Thomas Gleixner <tglx@linutronix.de>
-Signed-off-by: Guilherme G. Piccoli <gpiccoli@igalia.com>
-Signed-off-by: Dave Hansen <dave.hansen@linux.intel.com>
-Reviewed-by: Tony Luck <tony.luck@intel.com>
-Tested-by: Andre Almeida <andrealmeid@igalia.com>
-Link: https://lore.kernel.org/all/20221024200254.635256-1-gpiccoli%40igalia.com
----
- Documentation/admin-guide/sysctl/kernel.rst | 23 +++++++++++
- arch/x86/kernel/cpu/intel.c                 | 63 ++++++++++++++++++++++++-----
- 2 files changed, 76 insertions(+), 10 deletions(-)
-
-diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
-index 98d1b198b2b4c..c2c64c1b706ff 100644
---- a/Documentation/admin-guide/sysctl/kernel.rst
-+++ b/Documentation/admin-guide/sysctl/kernel.rst
-@@ -1314,6 +1314,29 @@ watchdog work to be queued by the watchdog timer function, otherwise the NMI
- watchdog — if enabled — can detect a hard lockup condition.
-
-
-+split_lock_mitigate (x86 only)
-+==============================
-+
-+On x86, each "split lock" imposes a system-wide performance penalty. On larger
-+systems, large numbers of split locks from unprivileged users can result in
-+denials of service to well-behaved and potentially more important users.
-+
-+The kernel mitigates these bad users by detecting split locks and imposing
-+penalties: forcing them to wait and only allowing one core to execute split
-+locks at a time.
-+
-+These mitigations can make those bad applications unbearably slow. Setting
-+split_lock_mitigate=0 may restore some application performance, but will also
-+increase system exposure to denial of service attacks from split lock users.
-+
-+= ===================================================================
-+0 Disable the mitigation mode - just warns the split lock on kernel log
-+  and exposes the system to denials of service from the split lockers.
-+1 Enable the mitigation mode (this is the default) - penalizes the split
-+  lockers with intentional performance degradation.
-+= ===================================================================
-+
-+
- stack_erasing
- =============
-
-diff --git a/arch/x86/kernel/cpu/intel.c b/arch/x86/kernel/cpu/intel.c
-index 2d7ea5480ec33..4278996504833 100644
---- a/arch/x86/kernel/cpu/intel.c
-+++ b/arch/x86/kernel/cpu/intel.c
-@@ -1034,8 +1034,32 @@ static const struct {
-
- static struct ratelimit_state bld_ratelimit;
-
-+static unsigned int sysctl_sld_mitigate = 1;
- static DEFINE_SEMAPHORE(buslock_sem);
-
-+#ifdef CONFIG_PROC_SYSCTL
-+static struct ctl_table sld_sysctls[] = {
-+	{
-+		.procname       = "split_lock_mitigate",
-+		.data           = &sysctl_sld_mitigate,
-+		.maxlen         = sizeof(unsigned int),
-+		.mode           = 0644,
-+		.proc_handler	= proc_douintvec_minmax,
-+		.extra1         = SYSCTL_ZERO,
-+		.extra2         = SYSCTL_ONE,
-+	},
-+	{}
-+};
-+
-+static int __init sld_mitigate_sysctl_init(void)
-+{
-+	register_sysctl_init("kernel", sld_sysctls);
-+	return 0;
-+}
-+
-+late_initcall(sld_mitigate_sysctl_init);
-+#endif
-+
- static inline bool match_option(const char *arg, int arglen, const char *opt)
- {
- 	int len = strlen(opt), ratelimit;
-@@ -1146,12 +1170,20 @@ static void split_lock_init(void)
- 		split_lock_verify_msr(sld_state != sld_off);
- }
-
--static void __split_lock_reenable(struct work_struct *work)
-+static void __split_lock_reenable_unlock(struct work_struct *work)
- {
- 	sld_update_msr(true);
- 	up(&buslock_sem);
- }
-
-+static DECLARE_DELAYED_WORK(sl_reenable_unlock, __split_lock_reenable_unlock);
-+
-+static void __split_lock_reenable(struct work_struct *work)
-+{
-+	sld_update_msr(true);
-+}
-+static DECLARE_DELAYED_WORK(sl_reenable, __split_lock_reenable);
-+
- /*
-  * If a CPU goes offline with pending delayed work to re-enable split lock
-  * detection then the delayed work will be executed on some other CPU. That
-@@ -1169,10 +1201,9 @@ static int splitlock_cpu_offline(unsigned int cpu)
- 	return 0;
- }
-
--static DECLARE_DELAYED_WORK(split_lock_reenable, __split_lock_reenable);
--
- static void split_lock_warn(unsigned long ip)
- {
-+	struct delayed_work *work;
- 	int cpu;
-
- 	if (!current->reported_split_lock)
-@@ -1180,14 +1211,26 @@ static void split_lock_warn(unsigned long ip)
- 				    current->comm, current->pid, ip);
- 	current->reported_split_lock = 1;
-
--	/* misery factor #1, sleep 10ms before trying to execute split lock */
--	if (msleep_interruptible(10) > 0)
--		return;
--	/* Misery factor #2, only allow one buslocked disabled core at a time */
--	if (down_interruptible(&buslock_sem) == -EINTR)
--		return;
-+	if (sysctl_sld_mitigate) {
-+		/*
-+		 * misery factor #1:
-+		 * sleep 10ms before trying to execute split lock.
-+		 */
-+		if (msleep_interruptible(10) > 0)
-+			return;
-+		/*
-+		 * Misery factor #2:
-+		 * only allow one buslocked disabled core at a time.
-+		 */
-+		if (down_interruptible(&buslock_sem) == -EINTR)
-+			return;
-+		work = &sl_reenable_unlock;
-+	} else {
-+		work = &sl_reenable;
-+	}
-+
- 	cpu = get_cpu();
--	schedule_delayed_work_on(cpu, &split_lock_reenable, 2);
-+	schedule_delayed_work_on(cpu, work, 2);
-
- 	/* Disable split lock detection on this CPU to make progress */
- 	sld_update_msr(false);
