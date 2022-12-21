@@ -314,3 +314,99 @@ index 8c6517d29b8e0c..37068542aafe7f 100644
  		mutex_unlock(&ggtt->vm.mutex);
  	}
 
+From 189603b802a2bb276b82a0a4f66528ad29156f46 Mon Sep 17 00:00:00 2001
+From: Alexey Izbyshev <izbyshev@ispras.ru>
+Date: Sat, 12 Nov 2022 00:54:39 +0300
+Subject: [PATCH] futex: Resend potentially swallowed owner death notification
+
+Commit ca16d5bee598 ("futex: Prevent robust futex exit race") addressed
+two cases when tasks waiting on a robust non-PI futex remained blocked
+despite the futex not being owned anymore:
+
+* if the owner died after writing zero to the futex word, but before
+  waking up a waiter
+
+* if a task waiting on the futex was woken up, but died before updating
+  the futex word (effectively swallowing the notification without acting
+  on it)
+
+In the second case, the task could be woken up either by the previous
+owner (after the futex word was reset to zero) or by the kernel (after
+the OWNER_DIED bit was set and the TID part of the futex word was reset
+to zero) if the previous owner died without the resetting the futex.
+
+Because the referenced commit wakes up a potential waiter only if the
+whole futex word is zero, the latter subcase remains unaddressed.
+
+Fix this by looking only at the TID part of the futex when deciding
+whether a wake up is needed.
+
+Fixes: ca16d5bee598 ("futex: Prevent robust futex exit race")
+Signed-off-by: Alexey Izbyshev <izbyshev@ispras.ru>
+Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
+Acked-by: Peter Zijlstra (Intel) <peterz@infradead.org>
+Link: https://lore.kernel.org/r/20221111215439.248185-1-izbyshev@ispras.ru
+---
+ kernel/futex/core.c | 26 +++++++++++++++++---------
+ 1 file changed, 17 insertions(+), 9 deletions(-)
+
+diff --git a/kernel/futex/core.c b/kernel/futex/core.c
+index b22ef1efe75118..514e4582b86341 100644
+--- a/kernel/futex/core.c
++++ b/kernel/futex/core.c
+@@ -638,6 +638,7 @@ static int handle_futex_death(u32 __user *uaddr, struct task_struct *curr,
+ 			      bool pi, bool pending_op)
+ {
+ 	u32 uval, nval, mval;
++	pid_t owner;
+ 	int err;
+
+ 	/* Futex address must be 32bit aligned */
+@@ -659,6 +660,10 @@ static int handle_futex_death(u32 __user *uaddr, struct task_struct *curr,
+ 	 * 2. A woken up waiter is killed before it can acquire the
+ 	 *    futex in user space.
+ 	 *
++	 * In the second case, the wake up notification could be generated
++	 * by the unlock path in user space after setting the futex value
++	 * to zero or by the kernel after setting the OWNER_DIED bit below.
++	 *
+ 	 * In both cases the TID validation below prevents a wakeup of
+ 	 * potential waiters which can cause these waiters to block
+ 	 * forever.
+@@ -667,24 +672,27 @@ static int handle_futex_death(u32 __user *uaddr, struct task_struct *curr,
+ 	 *
+ 	 *	1) task->robust_list->list_op_pending != NULL
+ 	 *	   @pending_op == true
+-	 *	2) User space futex value == 0
++	 *	2) The owner part of user space futex value == 0
+ 	 *	3) Regular futex: @pi == false
+ 	 *
+ 	 * If these conditions are met, it is safe to attempt waking up a
+ 	 * potential waiter without touching the user space futex value and
+-	 * trying to set the OWNER_DIED bit. The user space futex value is
+-	 * uncontended and the rest of the user space mutex state is
+-	 * consistent, so a woken waiter will just take over the
+-	 * uncontended futex. Setting the OWNER_DIED bit would create
+-	 * inconsistent state and malfunction of the user space owner died
+-	 * handling.
++	 * trying to set the OWNER_DIED bit. If the futex value is zero,
++	 * the rest of the user space mutex state is consistent, so a woken
++	 * waiter will just take over the uncontended futex. Setting the
++	 * OWNER_DIED bit would create inconsistent state and malfunction
++	 * of the user space owner died handling. Otherwise, the OWNER_DIED
++	 * bit is already set, and the woken waiter is expected to deal with
++	 * this.
+ 	 */
+-	if (pending_op && !pi && !uval) {
++	owner = uval & FUTEX_TID_MASK;
++
++	if (pending_op && !pi && !owner) {
+ 		futex_wake(uaddr, 1, 1, FUTEX_BITSET_MATCH_ANY);
+ 		return 0;
+ 	}
+
+-	if ((uval & FUTEX_TID_MASK) != task_pid_vnr(curr))
++	if (owner != task_pid_vnr(curr))
+ 		return 0;
+
+ 	/*
