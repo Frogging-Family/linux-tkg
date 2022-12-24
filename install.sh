@@ -83,7 +83,7 @@ _install_dependencies() {
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder linux-src-git, then applies extra patches and prepares the .config file
+        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder \$_kernel_work_folder, then applies extra patches and prepares the .config file
                    by copying the one from the currently running linux system and updates it.
         - install : does the config step, proceeds to compile, then prompts to install
                     - 'DEB' distros: it creates .deb packages that will be installed then stored in the DEBS folder.
@@ -136,24 +136,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
     _distro=""
   fi
 
-  # cd into the linux-src folder is important before calling _tkg_srcprep
-  cd "$_where/linux-src-git"
   _tkg_srcprep
 
-  _build_dir="$_where"
-  if [ "$_use_tmpfs" = "true" ]; then
-    if [ -d "$_tmpfs_path/linux-tkg" ]; then
-      msg2 "Nuking linux-tkg tmpfs folder $_tmpfs_path/linux-tkg"
-      rm -rf "$_tmpfs_path/linux-tkg"
-    fi
-    mkdir "$_tmpfs_path/linux-tkg"
-    cp -r "$_where/linux-src-git" "$_tmpfs_path/linux-tkg/linux-src-git"
-
-    # cd into the linux-src folder is important before calling _tkg_srcprep
-    _build_dir="$_tmpfs_path/linux-tkg"
-    cd "$_tmpfs_path/linux-tkg/linux-src-git"
-  fi
-
+  _build_dir="$_kernel_work_folder_abs/.."
 
   # Uppercase characters are not allowed in source package name for debian based distros
   if [[ "$_distro" =~ ^(Debian|Ubuntu)$ && "$_cpusched" = "MuQSS" ]]; then
@@ -221,6 +206,8 @@ if [ "$1" = "install" ]; then
     #_runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 "$@" 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( "$@" 2>&1 ) 3>&1 1>&2 2>&3 ) - Bash 5.2 is broken https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1018727
   #}
 
+  cd "$_kernel_work_folder_abs"
+
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
@@ -262,10 +249,7 @@ if [ "$1" = "install" ]; then
       _extra_ver_str="_${_kernel_flavor}"
     fi
 
-    _fedora_work_dir="${HOME}/.cache/linux-tkg-rpmbuild"
-    if [ "$_use_tmpfs" = "true" ]; then
-      _fedora_work_dir="$_tmpfs_path/linux-tkg/linux-tkg-rpmbuild"
-    fi
+    _fedora_work_dir="$_kernel_work_folder/linux-tkg-rpmbuild"
 
     msg2 "Building kernel RPM packages"
     RPMOPTS="--define '_topdir ${_fedora_work_dir}'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
