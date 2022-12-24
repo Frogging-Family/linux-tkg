@@ -396,7 +396,14 @@ _define_kernel_abs_paths() {
 }
 
 
-_linux_git_branch_checkout() {
+_setup_kernel_work_folder() {
+
+  _define_kernel_abs_paths
+
+  if [ "$_kernel_source_folder_abs" == "$_kernel_work_folder_abs" ]; then
+    warning "The kernel source folder cannot be the same as the kernel work folder"
+    exit 1
+  fi
 
   if [ -z "$_kernel_git_tag" ]; then
     warning "internal error: kernel version should be chosen before cloning kernel sources"
@@ -405,85 +412,44 @@ _linux_git_branch_checkout() {
 
   cd "$_where"
 
-  if ! [ -d linux-src-git ] || ( [ "$_source_in_tmpfs" = "true" ] && ! [ -d /tmp/linux-src-git ] ); then
+  if ! [ -d "$_kernel_source_folder_abs" ]; then
     msg2 "First initialization of the linux source code git folder"
-    if [ "$_source_in_tmpfs" = "true" ]; then
-      rm -rf "${_where}/linux-src-git"
-      mkdir "/tmp/linux-src-git"
-      ln -s "/tmp/linux-src-git" "${_where}"
-    else
-      mkdir linux-src-git
-    fi
-    cd linux-src-git
-    git init
+    mkdir -p "$_kernel_source_folder_abs"
+    cd "$_kernel_source_folder_abs"
+    git init --bare
+  fi
 
-    for remote in "${!_kernel_git_remotes[@]}"; do
+  cd "$_kernel_source_folder_abs"
+
+  # Add remotes if needed
+  for remote in "${!_kernel_git_remotes[@]}"; do
+    if ! git remote -v | grep -w "$remote" ; then
       git remote add "$remote" "${_kernel_git_remotes[$remote]}"
-    done
-  else
-    if [ "$_source_in_tmpfs" = "true" ]; then
-      rm -rf "${_where}/linux-src-git"
-      ln -s "/tmp/linux-src-git" "${_where}"
     fi
+  done
 
-    cd linux-src-git
+  msg2 "Fetching tag: $_kernel_git_tag from mirror $_git_mirror"
+  git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
 
-    # Remove "origin" remote if present
-    if git remote -v | grep -w "origin" ; then
-      git remote rm origin
-    fi
+  msg2 "Checking out tag: $_kernel_git_tag"
+  msg2 "   in the work folder: $_kernel_work_folder_abs"
 
-    for remote in "${!_kernel_git_remotes[@]}"; do
-      if ! git remote -v | grep -w "$remote" ; then
-        git remote add "$remote" "${_kernel_git_remotes[$remote]}"
-      fi
-    done
-
-    msg2 "Current branch: $(git branch | grep "\*")"
-    msg2 "Reseting files to their original state"
-
-    git reset --hard HEAD
-    git clean -f -d -x
-  fi
-
-  if [[ "$_sub" = rc* ]]; then
-    msg2 "Switching to master branch for RC Kernel"
-
-    if ! git branch --list | grep "master-${_git_mirror}" ; then
-      msg2 "master branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add kernel.org master
-      git remote set-branches --add googlesource.com master
-      git remote set-branches --add torvalds master
-      git fetch --depth=1 $_git_mirror master
-      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
-      git checkout -b master-${_git_mirror} ${_git_mirror}/master
-    else
-      msg2 "master branch exists locally, updating..."
-      git checkout master-${_git_mirror}
-      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
-      git reset --hard ${_git_mirror}/master
-    fi
-    msg2 "Checking out latest RC tag: $_kernel_git_tag"
+  # The space ' ' in grep -w "$_kernel_work_folder_abs " is important
+  # to not match an existing folder with a longer name with the same prefix name
+  if [ -d "$_kernel_work_folder_abs" ] && \
+     ( git worktree list | grep -w "$_kernel_work_folder_abs " ) && \
+     ( cd "$_kernel_work_folder_abs" && git status > /dev/null 2>&1 ); then
+    # Worktree folder exists and is a valid worktree
+    cd "$_kernel_work_folder_abs"
+    git reset --hard
+    git clean -ffdx
     git checkout "$_kernel_git_tag"
   else
-    msg2 "Switching to linux-${_basekernel}.y"
-    if ! git branch --list | grep -w "linux-${_basekernel}-${_git_mirror}" ; then
-      msg2 "${_basekernel}.y branch doesn't locally exist, shallow cloning..."
-      git remote set-branches --add kernel.org linux-${_basekernel}.y
-      git remote set-branches --add googlesource.com linux-${_basekernel}.y
-      git remote set-branches --add torvalds linux-${_basekernel}.y
-      git fetch --depth=1 $_git_mirror linux-${_basekernel}.y
-      git fetch --depth=1 $_git_mirror tag "$_kernel_git_tag"
-      git checkout -b linux-${_basekernel}-${_git_mirror} ${_git_mirror}/linux-${_basekernel}.y
-    else
-      msg2 "${_basekernel}.y branch exists locally, updating..."
-      git checkout linux-${_basekernel}-${_git_mirror}
-      git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
-      git reset --hard ${_git_mirror}/linux-${_basekernel}.y
-    fi
-    msg2 "Checking out latest release: $_kernel_git_tag"
-    git checkout "$_kernel_git_tag"
+    # In all other cases, just force create the work tree
+    rm -rf "$_kernel_work_folder_abs"
+    git worktree add -f "$_kernel_work_folder_abs" "$_kernel_git_tag"
   fi
+
 }
 
 
@@ -556,7 +522,7 @@ _tkg_initscript() {
     echo -e "_custom_pkgbase=\"$_custom_pkgbase\"" >> "$_where"/BIG_UGLY_FROGMINER
   fi
 
-  _linux_git_branch_checkout
+  _setup_kernel_work_folder
 }
 
 user_patcher() {
@@ -628,6 +594,10 @@ _tkg_patcher() {
 }
 
 _tkg_srcprep() {
+
+  _define_kernel_abs_paths
+
+  cd "$_kernel_work_folder_abs"
 
   msg2 "Setting version..."
   scripts/setlocalversion --save-scmversion
