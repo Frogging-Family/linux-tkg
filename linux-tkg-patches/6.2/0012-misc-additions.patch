@@ -1,0 +1,316 @@
+From e5e77ad2223f662e1615266d8ef39a8db7e65a70 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Felix=20H=C3=A4dicke?= <felixhaedicke@web.de>
+Date: Thu, 19 Nov 2020 09:22:32 +0100
+Subject: HID: quirks: Add Apple Magic Trackpad 2 to hid_have_special_driver
+ list
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Apple Magic Trackpad 2 is handled by the magicmouse driver. And
+there were severe stability issues when both drivers (hid-generic and
+hid-magicmouse) were loaded for this device.
+
+Fixes: https://bugzilla.kernel.org/show_bug.cgi?id=210241
+
+Signed-off-by: Felix Hädicke <felixhaedicke@web.de>
+---
+ drivers/hid/hid-quirks.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
+index bf7ecab5d9e5..142e9dae2837 100644
+--- a/drivers/hid/hid-quirks.c
++++ b/drivers/hid/hid-quirks.c
+@@ -478,6 +478,8 @@ static const struct hid_device_id hid_have_special_driver[] = {
+ #if IS_ENABLED(CONFIG_HID_MAGICMOUSE)
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICMOUSE) },
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD) },
++	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
+ #endif
+ #if IS_ENABLED(CONFIG_HID_MAYFLASH)
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_DRAGONRISE, USB_DEVICE_ID_DRAGONRISE_PS3) },
+-- 
+cgit v1.2.3-1-gf6bb5
+
+From f7f49141a5dbe9c99d78196b58c44307fb2e6be3 Mon Sep 17 00:00:00 2001
+From: Tk-Glitch <ti3nou@gmail.com>
+Date: Wed, 3 Feb 2021 11:20:12 +0200
+Subject: Revert "cpufreq: Avoid configuring old governors as default with intel_pstate"
+
+This is an undesirable behavior for us since our aggressive ondemand performs
+better than schedutil for gaming when using intel_pstate in passive mode.
+Also it interferes with the option to select the desired default governor we have.
+
+diff --git a/drivers/cpufreq/Kconfig b/drivers/cpufreq/Kconfig
+index 2c7171e0b0010..85de313ddec29 100644
+--- a/drivers/cpufreq/Kconfig
++++ b/drivers/cpufreq/Kconfig
+@@ -71,7 +71,6 @@ config CPU_FREQ_DEFAULT_GOV_USERSPACE
+ 
+ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
+ 	bool "ondemand"
+-	depends on !(X86_INTEL_PSTATE && SMP)
+ 	select CPU_FREQ_GOV_ONDEMAND
+ 	select CPU_FREQ_GOV_PERFORMANCE
+ 	help
+@@ -83,7 +84,6 @@ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
+ 
+ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
+ 	bool "conservative"
+-	depends on !(X86_INTEL_PSTATE && SMP)
+ 	select CPU_FREQ_GOV_CONSERVATIVE
+ 	select CPU_FREQ_GOV_PERFORMANCE
+ 	help
+
+From 0c079d3f88df5f8286cd5c91b54bdac7c819be85 Mon Sep 17 00:00:00 2001
+From: Matthew Auld <matthew.auld@intel.com>
+Date: Tue, 6 Dec 2022 16:11:41 +0000
+Subject: [PATCH] drm/i915: improve the catch-all evict to handle lock
+ contention
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The catch-all evict can fail due to object lock contention, since it
+only goes as far as trylocking the object, due to us already holding the
+vm->mutex. Doing a full object lock here can deadlock, since the
+vm->mutex is always our inner lock. Add another execbuf pass which drops
+the vm->mutex and then tries to grab the object will the full lock,
+before then retrying the eviction. This should be good enough for now to
+fix the immediate regression with userspace seeing -ENOSPC from execbuf
+due to contended object locks during GTT eviction.
+
+Testcase: igt@gem_ppgtt@shrink-vs-evict-*
+Fixes: 7e00897be8bf ("drm/i915: Add object locking to i915_gem_evict_for_node and i915_gem_evict_something, v2.")
+References: https://gitlab.freedesktop.org/drm/intel/-/issues/7627
+References: https://gitlab.freedesktop.org/drm/intel/-/issues/7570
+References: https://bugzilla.mozilla.org/show_bug.cgi?id=1779558
+Signed-off-by: Matthew Auld <matthew.auld@intel.com>
+Cc: Maarten Lankhorst <maarten.lankhorst@linux.intel.com>
+Cc: Thomas Hellström <thomas.hellstrom@linux.intel.com>
+Cc: Tvrtko Ursulin <tvrtko.ursulin@linux.intel.com>
+Cc: Andrzej Hajda <andrzej.hajda@intel.com>
+Cc: Mani Milani <mani@chromium.org>
+Cc: <stable@vger.kernel.org> # v5.18+
+
+Revision 1 of https://patchwork.freedesktop.org/series/111686/
+---
+ .../gpu/drm/i915/gem/i915_gem_execbuffer.c    | 25 +++++++++++--
+ drivers/gpu/drm/i915/gem/i915_gem_mman.c      |  2 +-
+ drivers/gpu/drm/i915/i915_gem_evict.c         | 37 ++++++++++++++-----
+ drivers/gpu/drm/i915/i915_gem_evict.h         |  4 +-
+ drivers/gpu/drm/i915/i915_vma.c               |  2 +-
+ .../gpu/drm/i915/selftests/i915_gem_evict.c   |  4 +-
+ 6 files changed, 56 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c b/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c
+index 845023c14eb36f..094e92ed28db4f 100644
+--- a/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c
++++ b/drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c
+@@ -741,25 +741,44 @@ static int eb_reserve(struct i915_execbuffer *eb)
+ 	 *
+ 	 * Defragmenting is skipped if all objects are pinned at a fixed location.
+ 	 */
+-	for (pass = 0; pass <= 2; pass++) {
++	for (pass = 0; pass <= 3; pass++) {
+ 		int pin_flags = PIN_USER | PIN_VALIDATE;
+
+ 		if (pass == 0)
+ 			pin_flags |= PIN_NONBLOCK;
+
+ 		if (pass >= 1)
+-			unpinned = eb_unbind(eb, pass == 2);
++			unpinned = eb_unbind(eb, pass >= 2);
+
+ 		if (pass == 2) {
+ 			err = mutex_lock_interruptible(&eb->context->vm->mutex);
+ 			if (!err) {
+-				err = i915_gem_evict_vm(eb->context->vm, &eb->ww);
++				err = i915_gem_evict_vm(eb->context->vm, &eb->ww, NULL);
+ 				mutex_unlock(&eb->context->vm->mutex);
+ 			}
+ 			if (err)
+ 				return err;
+ 		}
+
++		if (pass == 3) {
++retry:
++			err = mutex_lock_interruptible(&eb->context->vm->mutex);
++			if (!err) {
++				struct drm_i915_gem_object *busy_bo = NULL;
++
++				err = i915_gem_evict_vm(eb->context->vm, &eb->ww, &busy_bo);
++				mutex_unlock(&eb->context->vm->mutex);
++				if (err && busy_bo) {
++					err = i915_gem_object_lock(busy_bo, &eb->ww);
++					i915_gem_object_put(busy_bo);
++					if (!err)
++						goto retry;
++				}
++			}
++			if (err)
++				return err;
++		}
++
+ 		list_for_each_entry(ev, &eb->unbound, bind_link) {
+ 			err = eb_reserve_vma(eb, ev, pin_flags);
+ 			if (err)
+diff --git a/drivers/gpu/drm/i915/gem/i915_gem_mman.c b/drivers/gpu/drm/i915/gem/i915_gem_mman.c
+index 73d9eda1d6b7a6..c83d98e1dc5da0 100644
+--- a/drivers/gpu/drm/i915/gem/i915_gem_mman.c
++++ b/drivers/gpu/drm/i915/gem/i915_gem_mman.c
+@@ -369,7 +369,7 @@ static vm_fault_t vm_fault_gtt(struct vm_fault *vmf)
+ 		if (vma == ERR_PTR(-ENOSPC)) {
+ 			ret = mutex_lock_interruptible(&ggtt->vm.mutex);
+ 			if (!ret) {
+-				ret = i915_gem_evict_vm(&ggtt->vm, &ww);
++				ret = i915_gem_evict_vm(&ggtt->vm, &ww, NULL);
+ 				mutex_unlock(&ggtt->vm.mutex);
+ 			}
+ 			if (ret)
+diff --git a/drivers/gpu/drm/i915/i915_gem_evict.c b/drivers/gpu/drm/i915/i915_gem_evict.c
+index f025ee4fa52618..a4b4d9b7d26c7a 100644
+--- a/drivers/gpu/drm/i915/i915_gem_evict.c
++++ b/drivers/gpu/drm/i915/i915_gem_evict.c
+@@ -416,6 +416,11 @@ int i915_gem_evict_for_node(struct i915_address_space *vm,
+  * @vm: Address space to cleanse
+  * @ww: An optional struct i915_gem_ww_ctx. If not NULL, i915_gem_evict_vm
+  * will be able to evict vma's locked by the ww as well.
++ * @busy_bo: Optional pointer to struct drm_i915_gem_object. If not NULL, then
++ * in the event i915_gem_evict_vm() is unable to trylock an object for eviction,
++ * then @busy_bo will point to it. -EBUSY is also returned. The caller must drop
++ * the vm->mutex, before trying again to acquire the contended lock. The caller
++ * also owns a reference to the object.
+  *
+  * This function evicts all vmas from a vm.
+  *
+@@ -425,7 +430,8 @@ int i915_gem_evict_for_node(struct i915_address_space *vm,
+  * To clarify: This is for freeing up virtual address space, not for freeing
+  * memory in e.g. the shrinker.
+  */
+-int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww)
++int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww,
++		      struct drm_i915_gem_object **busy_bo)
+ {
+ 	int ret = 0;
+
+@@ -457,15 +463,22 @@ int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww)
+ 			 * the resv is shared among multiple objects, we still
+ 			 * need the object ref.
+ 			 */
+-			if (dying_vma(vma) ||
++			if (!i915_gem_object_get_rcu(vma->obj) ||
+ 			    (ww && (dma_resv_locking_ctx(vma->obj->base.resv) == &ww->ctx))) {
+ 				__i915_vma_pin(vma);
+ 				list_add(&vma->evict_link, &locked_eviction_list);
+ 				continue;
+ 			}
+
+-			if (!i915_gem_object_trylock(vma->obj, ww))
++			if (!i915_gem_object_trylock(vma->obj, ww)) {
++				if (busy_bo) {
++					*busy_bo = vma->obj; /* holds ref */
++					ret = -EBUSY;
++					break;
++				}
++				i915_gem_object_put(vma->obj);
+ 				continue;
++			}
+
+ 			__i915_vma_pin(vma);
+ 			list_add(&vma->evict_link, &eviction_list);
+@@ -473,25 +486,29 @@ int i915_gem_evict_vm(struct i915_address_space *vm, struct i915_gem_ww_ctx *ww)
+ 		if (list_empty(&eviction_list) && list_empty(&locked_eviction_list))
+ 			break;
+
+-		ret = 0;
+ 		/* Unbind locked objects first, before unlocking the eviction_list */
+ 		list_for_each_entry_safe(vma, vn, &locked_eviction_list, evict_link) {
+ 			__i915_vma_unpin(vma);
+
+-			if (ret == 0)
++			if (ret == 0) {
+ 				ret = __i915_vma_unbind(vma);
+-			if (ret != -EINTR) /* "Get me out of here!" */
+-				ret = 0;
++				if (ret != -EINTR) /* "Get me out of here!" */
++					ret = 0;
++			}
++			if (!dying_vma(vma))
++				i915_gem_object_put(vma->obj);
+ 		}
+
+ 		list_for_each_entry_safe(vma, vn, &eviction_list, evict_link) {
+ 			__i915_vma_unpin(vma);
+-			if (ret == 0)
++			if (ret == 0) {
+ 				ret = __i915_vma_unbind(vma);
+-			if (ret != -EINTR) /* "Get me out of here!" */
+-				ret = 0;
++				if (ret != -EINTR) /* "Get me out of here!" */
++					ret = 0;
++			}
+
+ 			i915_gem_object_unlock(vma->obj);
++			i915_gem_object_put(vma->obj);
+ 		}
+ 	} while (ret == 0);
+
+diff --git a/drivers/gpu/drm/i915/i915_gem_evict.h b/drivers/gpu/drm/i915/i915_gem_evict.h
+index e593c530f9bd7a..bf0ee0e4fe6088 100644
+--- a/drivers/gpu/drm/i915/i915_gem_evict.h
++++ b/drivers/gpu/drm/i915/i915_gem_evict.h
+@@ -11,6 +11,7 @@
+ struct drm_mm_node;
+ struct i915_address_space;
+ struct i915_gem_ww_ctx;
++struct drm_i915_gem_object;
+
+ int __must_check i915_gem_evict_something(struct i915_address_space *vm,
+ 					  struct i915_gem_ww_ctx *ww,
+@@ -23,6 +24,7 @@ int __must_check i915_gem_evict_for_node(struct i915_address_space *vm,
+ 					 struct drm_mm_node *node,
+ 					 unsigned int flags);
+ int i915_gem_evict_vm(struct i915_address_space *vm,
+-		      struct i915_gem_ww_ctx *ww);
++		      struct i915_gem_ww_ctx *ww,
++		      struct drm_i915_gem_object **busy_bo);
+
+ #endif /* __I915_GEM_EVICT_H__ */
+diff --git a/drivers/gpu/drm/i915/i915_vma.c b/drivers/gpu/drm/i915/i915_vma.c
+index f17c09ead7d778..4d06875de14a14 100644
+--- a/drivers/gpu/drm/i915/i915_vma.c
++++ b/drivers/gpu/drm/i915/i915_vma.c
+@@ -1569,7 +1569,7 @@ static int __i915_ggtt_pin(struct i915_vma *vma, struct i915_gem_ww_ctx *ww,
+ 			 * locked objects when called from execbuf when pinning
+ 			 * is removed. This would probably regress badly.
+ 			 */
+-			i915_gem_evict_vm(vm, NULL);
++			i915_gem_evict_vm(vm, NULL, NULL);
+ 			mutex_unlock(&vm->mutex);
+ 		}
+ 	} while (1);
+diff --git a/drivers/gpu/drm/i915/selftests/i915_gem_evict.c b/drivers/gpu/drm/i915/selftests/i915_gem_evict.c
+index 8c6517d29b8e0c..37068542aafe7f 100644
+--- a/drivers/gpu/drm/i915/selftests/i915_gem_evict.c
++++ b/drivers/gpu/drm/i915/selftests/i915_gem_evict.c
+@@ -344,7 +344,7 @@ static int igt_evict_vm(void *arg)
+
+ 	/* Everything is pinned, nothing should happen */
+ 	mutex_lock(&ggtt->vm.mutex);
+-	err = i915_gem_evict_vm(&ggtt->vm, NULL);
++	err = i915_gem_evict_vm(&ggtt->vm, NULL, NULL);
+ 	mutex_unlock(&ggtt->vm.mutex);
+ 	if (err) {
+ 		pr_err("i915_gem_evict_vm on a full GGTT returned err=%d]\n",
+@@ -356,7 +356,7 @@ static int igt_evict_vm(void *arg)
+
+ 	for_i915_gem_ww(&ww, err, false) {
+ 		mutex_lock(&ggtt->vm.mutex);
+-		err = i915_gem_evict_vm(&ggtt->vm, &ww);
++		err = i915_gem_evict_vm(&ggtt->vm, &ww, NULL);
+ 		mutex_unlock(&ggtt->vm.mutex);
+ 	}
+
