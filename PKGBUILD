@@ -84,15 +84,15 @@ prepare() {
   ln -s "${_where}/customization.cfg" "${srcdir}" # workaround
   ln -s "${_where}/linux-src-git" "${srcdir}" # workaround, this doesn't respect tmpfs choice
 
-  cd "${srcdir}/${_srcpath}"
-
   source "${_where}/current_env"
 
   _tkg_srcprep
 }
 
 build() {
-  cd "${srcdir}/${_srcpath}"
+
+  _define_kernel_abs_paths
+  cd "$_kernel_work_folder_abs"
 
   # Use custom compiler paths if defined
   if [ "$_compiler_name" = "-llvm" ] && [ -n "${CUSTOM_LLVM_PATH}" ]; then
@@ -143,7 +143,8 @@ hackbase() {
   fi
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
-  cd "${srcdir}/${_srcpath}"
+  _define_kernel_abs_paths
+  cd "$_kernel_work_folder_abs"
 
   # get kernel version
   local _kernver="$(<version)"
@@ -202,7 +203,9 @@ hackheaders() {
     ;;
   esac
 
-  cd "${srcdir}/${_srcpath}"
+  _define_kernel_abs_paths
+  cd "$_kernel_work_folder_abs"
+
   local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
 
   msg2 "Installing build files..."
