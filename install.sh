@@ -416,7 +416,7 @@ if [ "$1" = "uninstall-help" ]; then
     msg2 "Note: linux-libc-dev packages are no longer created and installed, you can safely remove any remnants."
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "List of installed custom tkg kernels: "
-    dnf list --installed kernel*
+    dnf list --installed | grep -i "tkg"
     msg2 "To uninstall a version, you should remove the kernel, kernel-headers and kernel-devel associated to it (if installed), with: "
     msg2 "      sudo dnf remove --noautoremove kernel-VERSION kernel-devel-VERSION kernel-headers-VERSION"
     msg2 "       where VERSION is displayed in the second column"
