@@ -81,8 +81,9 @@ export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EP
 prepare() {
   rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
+  _define_kernel_abs_paths
   ln -s "${_where}/customization.cfg" "${srcdir}" # workaround
-  ln -s "${_where}/linux-src-git" "${srcdir}" # workaround, this doesn't respect tmpfs choice
+  ln -s "${_kernel_work_folder_abs}" "${srcdir}"
 
   source "${_where}/current_env"
 
@@ -90,8 +91,6 @@ prepare() {
 }
 
 build() {
-
-  _define_kernel_abs_paths
   cd "$_kernel_work_folder_abs"
 
   # Use custom compiler paths if defined
