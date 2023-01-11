@@ -21,6 +21,7 @@ Alternative schedulers are available to you in linux-tkg:
 - MuQSS by Con Kolivas : [blog](http://ck-hack.blogspot.com/), [code repository](https://github.com/ckolivas/linux)
 - CacULE by Hamad Marri: [code repository](https://github.com/hamadmarri/cacule-cpu-scheduler)
 - Undead PDS: TkG's port of the pre-Project C "PDS-mq" scheduler by Alfred Chen. While PDS-mq got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par with PDS-mq in gaming. "U" PDS still performs better in some cases than other schedulers, so it's been kept undead.
+- BORE (Burst-Oriented Response Enhancer) by Masahito Suzuki [code repository](https://github.com/firelzrd/bore-scheduler)
 
 These alternative schedulers can offer a better performance/latency ratio for gaming and desktop use. The availability of each scheduler depends on the chosen Kernel version: the script will display what's available on a per-version basis.
 #### Default tweaks
