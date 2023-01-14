@@ -80,7 +80,10 @@ prepare() {
   rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
   _define_kernel_abs_paths
-  ln -s "${_where}/customization.cfg" "${srcdir}" # workaround
+  if [ -e "${srcdir}/customization.cfg" ]; then
+    msg2 "Nuking remnant customization.cfg symlink" && rm -rf "${srcdir}/customization.cfg"
+  fi
+  ln -s "${_where}/customization.cfg" "${srcdir}"
   ln -s "${_kernel_work_folder_abs}" "${srcdir}"
 
   source "${_where}/current_env"
