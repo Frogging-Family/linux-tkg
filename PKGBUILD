@@ -48,8 +48,6 @@ fi
 
 source "$_where"/BIG_UGLY_FROGMINER
 
-_srcpath="linux-src-git"
-
 if [ -n "$_custom_pkgbase" ]; then
   pkgbase="${_custom_pkgbase}"
 else
@@ -173,9 +171,9 @@ hackbase() {
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 
   # workaround for missing header with winesync
-  if [ -e "${srcdir}/${_srcpath}/include/uapi/linux/winesync.h" ]; then
+  if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/winesync.h" ]; then
     msg2 "Workaround missing winesync header"
-    install -Dm644 "${srcdir}/${_srcpath}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
+    install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
   fi
 
   # load winesync module at boot
