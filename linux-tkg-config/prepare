@@ -485,11 +485,7 @@ _tkg_initscript() {
   fi
 
   # create build dir early
-  if [ "$_distro" = "Void" ]; then
-    _path="${XBPS_BUILDDIR}/${wrksrc}"
-  else
-    _path="${_where}"
-  fi
+  _path="${_where}"
 
   # Clean the logs folder
   [ -e "${_where}/logs" ] && rm -rf "${_where}/logs"
@@ -501,13 +497,8 @@ _tkg_initscript() {
   # Select CPU scheduler
   _set_cpu_scheduler
 
-  if [ "$_distro" != "Void" ]; then
-    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
-  else
-    cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_path"
-    cp "$_where"/linux-tkg-config/${_basekernel}/* "$_path"
-  fi
+  cp "$_where"/linux-tkg-patches/${_basekernel}/* "$_where" # copy patches inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
+  cp "$_where"/linux-tkg-config/${_basekernel}/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
 
   # Set compiler
   _set_compiler
@@ -601,9 +592,6 @@ _tkg_srcprep() {
     echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/logs/prepare.log.txt
     echo "" > localversion.20-pkgname
   fi
-  if [ "${_distro}" = "Void" ]; then
-	  pkgver="${version}"
-  fi
 
   # Hardened Patches
   if [ "${_configfile}" = "config_hardened.x86_64" ] && [ "${_cpusched}" = "cfs" ]; then
@@ -619,9 +607,6 @@ _tkg_srcprep() {
   # graysky's cpu opts - https://github.com/graysky2/kernel_compiler_patch
 
   _patch_location="$srcdir"
-  if [ "${_distro}" = "Void" ]; then
-    _patch_location="${wrksrc}"
-  fi
 
   if [ "$_kver" = "504" ]; then
     _patch_name="more-uarches-for-kernel-4.19-5.4"
@@ -791,54 +776,28 @@ _tkg_srcprep() {
     tkgpatch="$srcdir/0009-glitched-bmq.patch" && _tkg_patcher
   elif [ "${_cpusched}" = "cacule" ]; then
     _msg="Applying cacule patch"
-    if [ "${_distro}" = "Void" ]; then
-      if [[ $_kver -lt 515 ]]; then
-        wget -P "$wrksrc" "https://raw.githubusercontent.com/hamadmarri/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-      elif [[ $_kver = 515 ]]; then
-        wget -P "$wrksrc" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-      else
-        wget -P "$wrksrc" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/0001-cacULE-${_basekernel}.patch"
-      fi
-      tkgpatch="$wrksrc/cacule-${_basekernel}.patch" && _tkg_patcher
+    if [[ $_kver -lt 515 ]]; then
+      wget -P "$srcdir" "https://raw.githubusercontent.com/hamadmarri/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
+    elif [[ $_kver = 515 ]]; then
+      wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
     else
-      if [[ $_kver -lt 515 ]]; then
-        wget -P "$srcdir" "https://raw.githubusercontent.com/hamadmarri/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-      elif [[ $_kver = 515 ]]; then
-        wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-      else
-        wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/0001-cacULE-${_basekernel}.patch"
-      fi
-      tkgpatch="$srcdir/cacule-${_basekernel}.patch" && _tkg_patcher
-      tkgpatch="$srcdir/0001-cacULE-${_basekernel}.patch" && _tkg_patcher
+      wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/0001-cacULE-${_basekernel}.patch"
     fi
+    tkgpatch="$srcdir/cacule-${_basekernel}.patch" && _tkg_patcher
+    tkgpatch="$srcdir/0001-cacULE-${_basekernel}.patch" && _tkg_patcher
   elif [ "${_cpusched}" = "tt" ]; then
     _msg="Applying TT patch"
-    if [ "${_distro}" = "Void" ]; then
-      curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-tt.patch" > "$wrksrc"/tt.patch
-      tkgpatch="$wrksrc/tt.patch" && _tkg_patcher
-    else
-      curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-tt.patch" > "$srcdir"/tt.patch
-      tkgpatch="$srcdir/tt.patch" && _tkg_patcher
-    fi
+    curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-tt.patch" > "$srcdir"/tt.patch
+    tkgpatch="$srcdir/tt.patch" && _tkg_patcher
     if [ "$_tt_high_hz" = "true" ] && [ $_kver = 515 ]; then
       _msg="Applying TT High HZ patch"
-      if [ "${_distro}" = "Void" ]; then
-        curl "https://raw.githubusercontent.com/hamadmarri/TT-CPU-Scheduler/master/patches/${_basekernel}/high-hz.patch" > "$wrksrc"/tt_high_hz.patch
-        tkgpatch="$wrksrc/tt_high_hz.patch" && _tkg_patcher
-      else
-        curl "https://raw.githubusercontent.com/hamadmarri/TT-CPU-Scheduler/master/patches/${_basekernel}/high-hz.patch" > "$srcdir"/tt_high_hz.patch
-        tkgpatch="$srcdir/tt_high_hz.patch" && _tkg_patcher
-      fi
+      curl "https://raw.githubusercontent.com/hamadmarri/TT-CPU-Scheduler/master/patches/${_basekernel}/high-hz.patch" > "$srcdir"/tt_high_hz.patch
+      tkgpatch="$srcdir/tt_high_hz.patch" && _tkg_patcher
     fi
   elif [ "${_cpusched}" = "bore" ]; then
     _msg="Applying BORE patch"
-    if [ "${_distro}" = "Void" ]; then
-      curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-bore.patch" > "$wrksrc"/0001-bore.patch
-      tkgpatch="$wrksrc/0001-bore.patch" && _tkg_patcher
-    else
-      curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-bore.patch" > "$srcdir"/0001-bore.patch
-      tkgpatch="$srcdir/0001-bore.patch" && _tkg_patcher
-    fi
+    curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-bore.patch" > "$srcdir"/0001-bore.patch
+    tkgpatch="$srcdir/0001-bore.patch" && _tkg_patcher
   elif [ "${_cpusched}" = "cfs" ]; then
     _msg="Applying Glitched CFS additions patch"
     tkgpatch="$srcdir/0003-glitched-cfs-additions.patch" && _tkg_patcher
@@ -909,8 +868,7 @@ _tkg_srcprep() {
 
   # ccache fix
   if [ "$_noccache" != "true" ]; then
-    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }\
-	    || { [ "$_distro" = "Void" ] && xbps-query -s ccache > /dev/null; } ; then
+    if { [ "$_distro" = "Arch" ] && pacman -Qq ccache &> /dev/null; } || { [ "$_distro" = "Ubuntu" ] && dpkg -l ccache > /dev/null; }; then
       _disable "GCC_PLUGINS"
     fi
   fi
@@ -1642,7 +1600,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     rm -f "$_where"/linux"$_basever"-tkg-userpatches/$_p
   done
 
-  if [ "$_distro" = "Arch" ] || [ "$_distro" = "Void" ]; then
+  if [ "$_distro" = "Arch" ]; then
     # don't run depmod on 'make install'. We'll do this ourselves in packaging
     sed -i '2iexit 0' scripts/depmod.sh
 
@@ -1711,17 +1669,12 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
     fi
   fi
 
-  # set _menuconfig early for Void
-  if [ "$_distro" = "Void" ]; then
-    _menuconfig="Void"
-  fi
-
   # rewrite configuration
   msg2 "Setting config"
   make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
 
   # menuconfig / nconfig
-  if [ -z "$_menunconfig" ] && [ "$_distro" != "Void" ]; then
+  if [ -z "$_menunconfig" ]; then
     plain ""
     plain "*Optional* For advanced users - Do you want to use make menuconfig or nconfig"
     plain "to configure the kernel before building it?"
@@ -1884,7 +1837,5 @@ exit_cleanup() {
     sed -i 's/\x1b(B//g' "$_where"/logs/shell-output.log.txt
   fi
 }
-# Void has its own clean function, this breaks it so ignore it
-if [ "$_distro" != "Void" ]; then
-  trap exit_cleanup EXIT
-fi
+
+trap exit_cleanup EXIT

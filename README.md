@@ -121,17 +121,6 @@ cd path/to/linux-tkg
 ```
 The script will use a slightly modified Arch config from the `linux-tkg-config` folder, it can be changed through the `_configfile` variable in `customization.cfg`.
 
-#### Void Linux
-```shell
-git clone -b tkg https://github.com/Hyper-KVM/void-packages/
-cd void-packages
-./xbps-src binary-bootstrap
-# Optional: edit customization.cfg located in srcpkgs/linux-tkg/files
-# Optional: add custom userpatches with the ".mypatch" extension to srcpkgs/linux-tkg/files/mypatches
-./xbps-src pkg -j$(nproc) linux-tkg
-```
-If you have to restart the build for any reason, run `./xbps-src clean linux-tkg` first.
-
 #### Generic install
 The interactive `install.sh` script can be used to perform a "Generic" install by choosing `Generic` when prompted. It git clones the kernel tree in the `linux-src-git` folder, patches the code and edits a `.config` file in it. The commands to do are the following:
 ```shell
