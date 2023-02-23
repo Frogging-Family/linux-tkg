@@ -1,8 +1,62 @@
+From e44ef62b127f6a161a131c84db92a7527d8fc72d Mon Sep 17 00:00:00 2001
+From: Peter Jung <admin@ptr1337.dev>
+Date: Wed, 22 Feb 2023 19:24:36 +0100
+Subject: [PATCH] prjc
+
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
+---
+ .../admin-guide/kernel-parameters.txt         |    6 +
+ Documentation/admin-guide/sysctl/kernel.rst   |   10 +
+ Documentation/scheduler/sched-BMQ.txt         |  110 +
+ fs/proc/base.c                                |    2 +-
+ include/asm-generic/resource.h                |    2 +-
+ include/linux/sched.h                         |   33 +-
+ include/linux/sched/deadline.h                |   20 +
+ include/linux/sched/prio.h                    |   26 +
+ include/linux/sched/rt.h                      |    2 +
+ include/linux/sched/topology.h                |    3 +-
+ init/Kconfig                                  |   34 +
+ init/init_task.c                              |   18 +
+ kernel/Kconfig.preempt                        |    2 +-
+ kernel/cgroup/cpuset.c                        |    4 +-
+ kernel/delayacct.c                            |    2 +-
+ kernel/exit.c                                 |    4 +-
+ kernel/locking/rtmutex.c                      |   16 +-
+ kernel/sched/Makefile                         |    5 +
+ kernel/sched/alt_core.c                       | 8111 +++++++++++++++++
+ kernel/sched/alt_debug.c                      |   31 +
+ kernel/sched/alt_sched.h                      |  671 ++
+ kernel/sched/bmq.h                            |  110 +
+ kernel/sched/build_policy.c                   |    8 +-
+ kernel/sched/build_utility.c                  |    2 +
+ kernel/sched/cpufreq_schedutil.c              |   10 +
+ kernel/sched/cputime.c                        |   10 +-
+ kernel/sched/debug.c                          |   10 +
+ kernel/sched/idle.c                           |    2 +
+ kernel/sched/pds.h                            |  127 +
+ kernel/sched/pelt.c                           |    4 +-
+ kernel/sched/pelt.h                           |    8 +-
+ kernel/sched/sched.h                          |    9 +
+ kernel/sched/stats.c                          |    4 +
+ kernel/sched/stats.h                          |    2 +
+ kernel/sched/topology.c                       |   17 +
+ kernel/sysctl.c                               |   15 +
+ kernel/time/hrtimer.c                         |    2 +
+ kernel/time/posix-cpu-timers.c                |   10 +-
+ kernel/trace/trace_selftest.c                 |    5 +
+ 39 files changed, 9445 insertions(+), 22 deletions(-)
+ create mode 100644 Documentation/scheduler/sched-BMQ.txt
+ create mode 100644 kernel/sched/alt_core.c
+ create mode 100644 kernel/sched/alt_debug.c
+ create mode 100644 kernel/sched/alt_sched.h
+ create mode 100644 kernel/sched/bmq.h
+ create mode 100644 kernel/sched/pds.h
+
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 42af9ca0127e..31747ec54f9d 100644
+index 6cfa6e3996cf..1b6a407213da 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -5406,6 +5406,12 @@
+@@ -5437,6 +5437,12 @@
  	sa1100ir	[NET]
  			See drivers/net/irda/sa1100_ir.c.
  
@@ -16,10 +70,10 @@ index 42af9ca0127e..31747ec54f9d 100644
  
  	schedstats=	[KNL,X86] Enable or disable scheduled statistics.
 diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
-index 98d1b198b2b4..d7c78a107f93 100644
+index 46e3d62c0eea..fb4568c919d0 100644
 --- a/Documentation/admin-guide/sysctl/kernel.rst
 +++ b/Documentation/admin-guide/sysctl/kernel.rst
-@@ -1552,3 +1552,13 @@ is 10 seconds.
+@@ -1597,3 +1597,13 @@ is 10 seconds.
  
  The softlockup threshold is (``2 * watchdog_thresh``). Setting this
  tunable to zero will disable lockup detection altogether.
@@ -176,7 +230,7 @@ index 8874f681b056..59eb72bf7d5f 100644
  	[RLIMIT_RTTIME]		= {  RLIM_INFINITY,  RLIM_INFINITY },	\
  }
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index ffb6eb55cd13..2e730a59caa2 100644
+index 853d08f7562b..ad7e050d7455 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
 @@ -762,8 +762,14 @@ struct task_struct {
@@ -232,7 +286,7 @@ index ffb6eb55cd13..2e730a59caa2 100644
  
  #ifdef CONFIG_CGROUP_SCHED
  	struct task_group		*sched_task_group;
-@@ -1545,6 +1567,15 @@ struct task_struct {
+@@ -1539,6 +1561,15 @@ struct task_struct {
  	 */
  };
  
@@ -352,10 +406,10 @@ index 816df6cc444e..c8da08e18c91 100644
  #else
  static inline void rebuild_sched_domains_energy(void)
 diff --git a/init/Kconfig b/init/Kconfig
-index 94125d3b6893..c87ba766d354 100644
+index 44e90b28a30f..af24591984ab 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -819,6 +819,7 @@ menu "Scheduler features"
+@@ -821,6 +821,7 @@ menu "Scheduler features"
  config UCLAMP_TASK
  	bool "Enable utilization clamping for RT/FAIR tasks"
  	depends on CPU_FREQ_GOV_SCHEDUTIL
@@ -363,7 +417,7 @@ index 94125d3b6893..c87ba766d354 100644
  	help
  	  This feature enables the scheduler to track the clamped utilization
  	  of each CPU based on RUNNABLE tasks scheduled on that CPU.
-@@ -865,6 +866,35 @@ config UCLAMP_BUCKETS_COUNT
+@@ -867,6 +868,35 @@ config UCLAMP_BUCKETS_COUNT
  
  	  If in doubt, use the default value.
  
@@ -399,7 +453,7 @@ index 94125d3b6893..c87ba766d354 100644
  endmenu
  
  #
-@@ -918,6 +948,7 @@ config NUMA_BALANCING
+@@ -924,6 +954,7 @@ config NUMA_BALANCING
  	depends on ARCH_SUPPORTS_NUMA_BALANCING
  	depends on !ARCH_WANT_NUMA_VARIABLE_LOCALITY
  	depends on SMP && NUMA && MIGRATION && !PREEMPT_RT
@@ -407,7 +461,7 @@ index 94125d3b6893..c87ba766d354 100644
  	help
  	  This option adds support for automatic NUMA aware memory/task placement.
  	  The mechanism is quite primitive and is based on migrating memory when
-@@ -1015,6 +1046,7 @@ config FAIR_GROUP_SCHED
+@@ -1021,6 +1052,7 @@ config FAIR_GROUP_SCHED
  	depends on CGROUP_SCHED
  	default CGROUP_SCHED
  
@@ -415,7 +469,7 @@ index 94125d3b6893..c87ba766d354 100644
  config CFS_BANDWIDTH
  	bool "CPU bandwidth provisioning for FAIR_GROUP_SCHED"
  	depends on FAIR_GROUP_SCHED
-@@ -1037,6 +1069,7 @@ config RT_GROUP_SCHED
+@@ -1043,6 +1075,7 @@ config RT_GROUP_SCHED
  	  realtime bandwidth for them.
  	  See Documentation/scheduler/sched-rt-group.rst for more information.
  
@@ -423,7 +477,7 @@ index 94125d3b6893..c87ba766d354 100644
  endif #CGROUP_SCHED
  
  config UCLAMP_TASK_GROUP
-@@ -1281,6 +1314,7 @@ config CHECKPOINT_RESTORE
+@@ -1287,6 +1320,7 @@ config CHECKPOINT_RESTORE
  
  config SCHED_AUTOGROUP
  	bool "Automatic process group scheduling"
@@ -491,10 +545,10 @@ index c2f1fd95a821..41654679b1b2 100644
  	  This option permits Core Scheduling, a means of coordinated task
  	  selection across SMT siblings. When enabled -- see
 diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
-index b474289c15b8..a23224b45b03 100644
+index ca826bd1eba3..60e194f1d6d8 100644
 --- a/kernel/cgroup/cpuset.c
 +++ b/kernel/cgroup/cpuset.c
-@@ -787,7 +787,7 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
+@@ -791,7 +791,7 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
  	return ret;
  }
  
@@ -503,7 +557,7 @@ index b474289c15b8..a23224b45b03 100644
  /*
   * Helper routine for generate_sched_domains().
   * Do cpusets a, b have overlapping effective cpus_allowed masks?
-@@ -1183,7 +1183,7 @@ static void rebuild_sched_domains_locked(void)
+@@ -1187,7 +1187,7 @@ static void rebuild_sched_domains_locked(void)
  	/* Have scheduler rebuild the domains */
  	partition_and_rebuild_sched_domains(ndoms, doms, attr);
  }
@@ -526,10 +580,10 @@ index e39cb696cfbd..463423572e09 100644
  	d->cpu_count += t1;
  
 diff --git a/kernel/exit.c b/kernel/exit.c
-index 35e0a31a0315..64e368441cf4 100644
+index 15dc2ec80c46..1e583e0f89a7 100644
 --- a/kernel/exit.c
 +++ b/kernel/exit.c
-@@ -125,7 +125,7 @@ static void __exit_signal(struct task_struct *tsk)
+@@ -172,7 +172,7 @@ static void __exit_signal(struct task_struct *tsk)
  			sig->curr_target = next_thread(tsk);
  	}
  
@@ -538,7 +592,7 @@ index 35e0a31a0315..64e368441cf4 100644
  			      sizeof(unsigned long long));
  
  	/*
-@@ -146,7 +146,7 @@ static void __exit_signal(struct task_struct *tsk)
+@@ -193,7 +193,7 @@ static void __exit_signal(struct task_struct *tsk)
  	sig->inblock += task_io_get_inblock(tsk);
  	sig->oublock += task_io_get_oublock(tsk);
  	task_io_accounting_add(&sig->ioac, &tsk->ioac);
@@ -548,10 +602,10 @@ index 35e0a31a0315..64e368441cf4 100644
  	__unhash_process(tsk, group_dead);
  	write_sequnlock(&sig->stats_lock);
 diff --git a/kernel/locking/rtmutex.c b/kernel/locking/rtmutex.c
-index 7779ee8abc2a..5b9893cdfb1b 100644
+index 728f434de2bb..0e1082a4e878 100644
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -300,21 +300,25 @@ static __always_inline void
+@@ -337,21 +337,25 @@ static __always_inline void
  waiter_update_prio(struct rt_mutex_waiter *waiter, struct task_struct *task)
  {
  	waiter->prio = __waiter_prio(task);
@@ -579,7 +633,7 @@ index 7779ee8abc2a..5b9893cdfb1b 100644
  	/*
  	 * If both waiters have dl_prio(), we check the deadlines of the
  	 * associated tasks.
-@@ -323,16 +327,22 @@ static __always_inline int rt_mutex_waiter_less(struct rt_mutex_waiter *left,
+@@ -360,16 +364,22 @@ static __always_inline int rt_mutex_waiter_less(struct rt_mutex_waiter *left,
  	 */
  	if (dl_prio(left->prio))
  		return dl_time_before(left->deadline, right->deadline);
@@ -602,7 +656,7 @@ index 7779ee8abc2a..5b9893cdfb1b 100644
  	/*
  	 * If both waiters have dl_prio(), we check the deadlines of the
  	 * associated tasks.
-@@ -341,8 +351,10 @@ static __always_inline int rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
+@@ -378,8 +388,10 @@ static __always_inline int rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
  	 */
  	if (dl_prio(left->prio))
  		return left->deadline == right->deadline;
@@ -632,10 +686,10 @@ index 976092b7bd45..31d587c16ec1 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..acb8657e811d
+index 000000000000..f5e9c01f9382
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7978 @@
+@@ -0,0 +1,8111 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -705,7 +759,7 @@ index 000000000000..acb8657e811d
 +#define sched_feat(x)	(0)
 +#endif /* CONFIG_SCHED_DEBUG */
 +
-+#define ALT_SCHED_VERSION "v6.1-r3"
++#define ALT_SCHED_VERSION "v6.2-r0"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -725,6 +779,12 @@ index 000000000000..acb8657e811d
 +#ifdef CONFIG_SCHED_PDS
 +#include "pds.h"
 +#endif
++
++struct affinity_context {
++	const struct cpumask *new_mask;
++	struct cpumask *user_mask;
++	unsigned int flags;
++};
 +
 +static int __init sched_timeslice(char *str)
 +{
@@ -787,6 +847,14 @@ index 000000000000..acb8657e811d
 +#endif
 +static cpumask_t sched_preempt_mask[SCHED_QUEUE_BITS] ____cacheline_aligned_in_smp;
 +static cpumask_t *const sched_idle_mask = &sched_preempt_mask[0];
++
++/* task function */
++static inline const struct cpumask *task_user_cpus(struct task_struct *p)
++{
++	if (!p->user_cpus_ptr)
++		return cpu_possible_mask; /* &init_task.cpus_mask */
++	return p->user_cpus_ptr;
++}
 +
 +/* sched_queue related functions */
 +static inline void sched_queue_init(struct sched_queue *q)
@@ -1400,7 +1468,7 @@ index 000000000000..acb8657e811d
 +
 +#define __SCHED_ENQUEUE_TASK(p, rq, flags)				\
 +	sched_info_enqueue(rq, p);					\
-+	psi_enqueue(p, flags);						\
++	psi_enqueue(p, flags & ENQUEUE_WAKEUP);				\
 +									\
 +	p->sq_idx = task_sched_prio_idx(p, rq);				\
 +	list_add_tail(&p->sq_node, &rq->queue.heads[p->sq_idx]);	\
@@ -2268,35 +2336,101 @@ index 000000000000..acb8657e811d
 +}
 +
 +static inline void
-+set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask)
++set_cpus_allowed_common(struct task_struct *p, struct affinity_context *ctx)
 +{
-+	cpumask_copy(&p->cpus_mask, new_mask);
-+	p->nr_cpus_allowed = cpumask_weight(new_mask);
++	cpumask_copy(&p->cpus_mask, ctx->new_mask);
++	p->nr_cpus_allowed = cpumask_weight(ctx->new_mask);
++
++	/*
++	 * Swap in a new user_cpus_ptr if SCA_USER flag set
++	 */
++	if (ctx->flags & SCA_USER)
++		swap(p->user_cpus_ptr, ctx->user_mask);
 +}
 +
 +static void
-+__do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
++__do_set_cpus_allowed(struct task_struct *p, struct affinity_context *ctx)
 +{
 +	lockdep_assert_held(&p->pi_lock);
-+	set_cpus_allowed_common(p, new_mask);
++	set_cpus_allowed_common(p, ctx);
 +}
 +
++/*
++ * Used for kthread_bind() and select_fallback_rq(), in both cases the user
++ * affinity (if any) should be destroyed too.
++ */
 +void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 +{
-+	__do_set_cpus_allowed(p, new_mask);
++	struct affinity_context ac = {
++		.new_mask  = new_mask,
++		.user_mask = NULL,
++		.flags     = SCA_USER,	/* clear the user requested mask */
++	};
++	union cpumask_rcuhead {
++		cpumask_t cpumask;
++		struct rcu_head rcu;
++	};
++
++	__do_set_cpus_allowed(p, &ac);
++
++	/*
++	 * Because this is called with p->pi_lock held, it is not possible
++	 * to use kfree() here (when PREEMPT_RT=y), therefore punt to using
++	 * kfree_rcu().
++	 */
++	kfree_rcu((union cpumask_rcuhead *)ac.user_mask, rcu);
++}
++
++static cpumask_t *alloc_user_cpus_ptr(int node)
++{
++	/*
++	 * See do_set_cpus_allowed() above for the rcu_head usage.
++	 */
++	int size = max_t(int, cpumask_size(), sizeof(struct rcu_head));
++
++	return kmalloc_node(size, GFP_KERNEL, node);
 +}
 +
 +int dup_user_cpus_ptr(struct task_struct *dst, struct task_struct *src,
 +		      int node)
 +{
-+	if (!src->user_cpus_ptr)
++	cpumask_t *user_mask;
++	unsigned long flags;
++
++	/*
++	 * Always clear dst->user_cpus_ptr first as their user_cpus_ptr's
++	 * may differ by now due to racing.
++	 */
++	dst->user_cpus_ptr = NULL;
++
++	/*
++	 * This check is racy and losing the race is a valid situation.
++	 * It is not worth the extra overhead of taking the pi_lock on
++	 * every fork/clone.
++	 */
++	if (data_race(!src->user_cpus_ptr))
 +		return 0;
 +
-+	dst->user_cpus_ptr = kmalloc_node(cpumask_size(), GFP_KERNEL, node);
-+	if (!dst->user_cpus_ptr)
++	user_mask = alloc_user_cpus_ptr(node);
++	if (!user_mask)
 +		return -ENOMEM;
 +
-+	cpumask_copy(dst->user_cpus_ptr, src->user_cpus_ptr);
++	/*
++	 * Use pi_lock to protect content of user_cpus_ptr
++	 *
++	 * Though unlikely, user_cpus_ptr can be reset to NULL by a concurrent
++	 * do_set_cpus_allowed().
++	 */
++	raw_spin_lock_irqsave(&src->pi_lock, flags);
++	if (src->user_cpus_ptr) {
++		swap(dst->user_cpus_ptr, user_mask);
++		cpumask_copy(dst->user_cpus_ptr, src->user_cpus_ptr);
++	}
++	raw_spin_unlock_irqrestore(&src->pi_lock, flags);
++
++	if (unlikely(user_mask))
++		kfree(user_mask);
++
 +	return 0;
 +}
 +
@@ -2641,6 +2775,8 @@ index 000000000000..acb8657e811d
 +
 +static int affine_move_task(struct rq *rq, struct task_struct *p, int dest_cpu,
 +			    raw_spinlock_t *lock, unsigned long irq_flags)
++	__releases(rq->lock)
++	__releases(p->pi_lock)
 +{
 +	/* Can the task run on the task's current CPU? If so, we're done */
 +	if (!cpumask_test_cpu(task_cpu(p), &p->cpus_mask)) {
@@ -2678,8 +2814,7 @@ index 000000000000..acb8657e811d
 +}
 +
 +static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
-+					 const struct cpumask *new_mask,
-+					 u32 flags,
++					 struct affinity_context *ctx,
 +					 struct rq *rq,
 +					 raw_spinlock_t *lock,
 +					 unsigned long irq_flags)
@@ -2687,7 +2822,6 @@ index 000000000000..acb8657e811d
 +	const struct cpumask *cpu_allowed_mask = task_cpu_possible_mask(p);
 +	const struct cpumask *cpu_valid_mask = cpu_active_mask;
 +	bool kthread = p->flags & PF_KTHREAD;
-+	struct cpumask *user_mask = NULL;
 +	int dest_cpu;
 +	int ret = 0;
 +
@@ -2705,7 +2839,7 @@ index 000000000000..acb8657e811d
 +		cpu_valid_mask = cpu_online_mask;
 +	}
 +
-+	if (!kthread && !cpumask_subset(new_mask, cpu_allowed_mask)) {
++	if (!kthread && !cpumask_subset(ctx->new_mask, cpu_allowed_mask)) {
 +		ret = -EINVAL;
 +		goto out;
 +	}
@@ -2714,30 +2848,23 @@ index 000000000000..acb8657e811d
 +	 * Must re-check here, to close a race against __kthread_bind(),
 +	 * sched_setaffinity() is not guaranteed to observe the flag.
 +	 */
-+	if ((flags & SCA_CHECK) && (p->flags & PF_NO_SETAFFINITY)) {
++	if ((ctx->flags & SCA_CHECK) && (p->flags & PF_NO_SETAFFINITY)) {
 +		ret = -EINVAL;
 +		goto out;
 +	}
 +
-+	if (cpumask_equal(&p->cpus_mask, new_mask))
++	if (cpumask_equal(&p->cpus_mask, ctx->new_mask))
 +		goto out;
 +
-+	dest_cpu = cpumask_any_and(cpu_valid_mask, new_mask);
++	dest_cpu = cpumask_any_and(cpu_valid_mask, ctx->new_mask);
 +	if (dest_cpu >= nr_cpu_ids) {
 +		ret = -EINVAL;
 +		goto out;
 +	}
 +
-+	__do_set_cpus_allowed(p, new_mask);
++	__do_set_cpus_allowed(p, ctx);
 +
-+	if (flags & SCA_USER)
-+		user_mask = clear_user_cpus_ptr(p);
-+
-+	ret = affine_move_task(rq, p, dest_cpu, lock, irq_flags);
-+
-+	kfree(user_mask);
-+
-+	return ret;
++	return affine_move_task(rq, p, dest_cpu, lock, irq_flags);
 +
 +out:
 +	__task_access_unlock(p, lock);
@@ -2748,7 +2875,6 @@ index 000000000000..acb8657e811d
 +
 +/*
 + * Change a given task's CPU affinity. Migrate the thread to a
-+ * proper CPU and schedule it away if the CPU it's executing on
 + * is removed from the allowed bitmask.
 + *
 + * NOTE: the caller must have a valid reference to the task, the
@@ -2756,7 +2882,7 @@ index 000000000000..acb8657e811d
 + * call is not atomic; no spinlocks may be held.
 + */
 +static int __set_cpus_allowed_ptr(struct task_struct *p,
-+				  const struct cpumask *new_mask, u32 flags)
++				  struct affinity_context *ctx)
 +{
 +	unsigned long irq_flags;
 +	struct rq *rq;
@@ -2764,20 +2890,36 @@ index 000000000000..acb8657e811d
 +
 +	raw_spin_lock_irqsave(&p->pi_lock, irq_flags);
 +	rq = __task_access_lock(p, &lock);
++	/*
++	 * Masking should be skipped if SCA_USER or any of the SCA_MIGRATE_*
++	 * flags are set.
++	 */
++	if (p->user_cpus_ptr &&
++	    !(ctx->flags & SCA_USER) &&
++	    cpumask_and(rq->scratch_mask, ctx->new_mask, p->user_cpus_ptr))
++		ctx->new_mask = rq->scratch_mask;
 +
-+	return __set_cpus_allowed_ptr_locked(p, new_mask, flags, rq, lock, irq_flags);
++
++	return __set_cpus_allowed_ptr_locked(p, ctx, rq, lock, irq_flags);
 +}
 +
 +int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 +{
-+	return __set_cpus_allowed_ptr(p, new_mask, 0);
++	struct affinity_context ac = {
++		.new_mask  = new_mask,
++		.flags     = 0,
++	};
++
++	return __set_cpus_allowed_ptr(p, &ac);
 +}
 +EXPORT_SYMBOL_GPL(set_cpus_allowed_ptr);
 +
 +/*
 + * Change a given task's CPU affinity to the intersection of its current
-+ * affinity mask and @subset_mask, writing the resulting mask to @new_mask
-+ * and pointing @p->user_cpus_ptr to a copy of the old mask.
++ * affinity mask and @subset_mask, writing the resulting mask to @new_mask.
++ * If user_cpus_ptr is defined, use it as the basis for restricting CPU
++ * affinity or use cpu_online_mask instead.
++ *
 + * If the resulting mask is empty, leave the affinity unchanged and return
 + * -EINVAL.
 + */
@@ -2785,48 +2927,34 @@ index 000000000000..acb8657e811d
 +				     struct cpumask *new_mask,
 +				     const struct cpumask *subset_mask)
 +{
-+	struct cpumask *user_mask = NULL;
++	struct affinity_context ac = {
++		.new_mask  = new_mask,
++		.flags     = 0,
++	};
 +	unsigned long irq_flags;
 +	raw_spinlock_t *lock;
 +	struct rq *rq;
 +	int err;
 +
-+	if (!p->user_cpus_ptr) {
-+		user_mask = kmalloc(cpumask_size(), GFP_KERNEL);
-+		if (!user_mask)
-+			return -ENOMEM;
-+	}
-+
 +	raw_spin_lock_irqsave(&p->pi_lock, irq_flags);
 +	rq = __task_access_lock(p, &lock);
 +
-+	if (!cpumask_and(new_mask, &p->cpus_mask, subset_mask)) {
++	if (!cpumask_and(new_mask, task_user_cpus(p), subset_mask)) {
 +		err = -EINVAL;
 +		goto err_unlock;
 +	}
 +
-+	/*
-+	 * We're about to butcher the task affinity, so keep track of what
-+	 * the user asked for in case we're able to restore it later on.
-+	 */
-+	if (user_mask) {
-+		cpumask_copy(user_mask, p->cpus_ptr);
-+		p->user_cpus_ptr = user_mask;
-+	}
-+
-+	/*return __set_cpus_allowed_ptr_locked(p, new_mask, 0, rq, &rf);*/
-+	return __set_cpus_allowed_ptr_locked(p, new_mask, 0, rq, lock, irq_flags);
++	return __set_cpus_allowed_ptr_locked(p, &ac, rq, lock, irq_flags);
 +
 +err_unlock:
 +	__task_access_unlock(p, lock);
 +	raw_spin_unlock_irqrestore(&p->pi_lock, irq_flags);
-+	kfree(user_mask);
 +	return err;
 +}
 +
 +/*
 + * Restrict the CPU affinity of task @p so that it is a subset of
-+ * task_cpu_possible_mask() and point @p->user_cpu_ptr to a copy of the
++ * task_cpu_possible_mask() and point @p->user_cpus_ptr to a copy of the
 + * old affinity mask. If the resulting mask is empty, we warn and walk
 + * up the cpuset hierarchy until we find a suitable mask.
 + */
@@ -2870,34 +2998,29 @@ index 000000000000..acb8657e811d
 +}
 +
 +static int
-+__sched_setaffinity(struct task_struct *p, const struct cpumask *mask);
++__sched_setaffinity(struct task_struct *p, struct affinity_context *ctx);
 +
 +/*
 + * Restore the affinity of a task @p which was previously restricted by a
-+ * call to force_compatible_cpus_allowed_ptr(). This will clear (and free)
-+ * @p->user_cpus_ptr.
++ * call to force_compatible_cpus_allowed_ptr().
 + *
 + * It is the caller's responsibility to serialise this with any calls to
 + * force_compatible_cpus_allowed_ptr(@p).
 + */
 +void relax_compatible_cpus_allowed_ptr(struct task_struct *p)
 +{
-+	struct cpumask *user_mask = p->user_cpus_ptr;
-+	unsigned long flags;
++	struct affinity_context ac = {
++		.new_mask  = task_user_cpus(p),
++		.flags     = 0,
++	};
++	int ret;
 +
 +	/*
-+	 * Try to restore the old affinity mask. If this fails, then
-+	 * we free the mask explicitly to avoid it being inherited across
-+	 * a subsequent fork().
++	 * Try to restore the old affinity mask with __sched_setaffinity().
++	 * Cpuset masking will be done there too.
 +	 */
-+	if (!user_mask || !__sched_setaffinity(p, user_mask))
-+		return;
-+
-+	raw_spin_lock_irqsave(&p->pi_lock, flags);
-+	user_mask = clear_user_cpus_ptr(p);
-+	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
-+
-+	kfree(user_mask);
++	ret = __sched_setaffinity(p, &ac);
++	WARN_ON_ONCE(ret);
 +}
 +
 +#else /* CONFIG_SMP */
@@ -2909,14 +3032,19 @@ index 000000000000..acb8657e811d
 +
 +static inline int
 +__set_cpus_allowed_ptr(struct task_struct *p,
-+		       const struct cpumask *new_mask, u32 flags)
++		       struct affinity_context *ctx)
 +{
-+	return set_cpus_allowed_ptr(p, new_mask);
++	return set_cpus_allowed_ptr(p, ctx->new_mask);
 +}
 +
 +static inline bool rq_has_pinned_tasks(struct rq *rq)
 +{
 +	return false;
++}
++
++static inline cpumask_t *alloc_user_cpus_ptr(int node)
++{
++	return NULL;
 +}
 +
 +#endif /* !CONFIG_SMP */
@@ -3030,13 +3158,6 @@ index 000000000000..acb8657e811d
 +	if (!llist)
 +		return;
 +
-+	/*
-+	 * rq::ttwu_pending racy indication of out-standing wakeups.
-+	 * Races such that false-negatives are possible, since they
-+	 * are shorter lived that false-positives would be.
-+	 */
-+	WRITE_ONCE(rq->ttwu_pending, 0);
-+
 +	rq_lock_irqsave(rq, &rf);
 +	update_rq_clock(rq);
 +
@@ -3050,6 +3171,17 @@ index 000000000000..acb8657e811d
 +		ttwu_do_activate(rq, p, p->sched_remote_wakeup ? WF_MIGRATED : 0);
 +	}
 +
++	/*
++	 * Must be after enqueueing at least once task such that
++	 * idle_cpu() does not observe a false-negative -- if it does,
++	 * it is possible for select_idle_siblings() to stack a number
++	 * of tasks on this CPU during that window.
++	 *
++	 * It is ok to clear ttwu_pending when another task pending.
++	 * We will receive IPI after local irq enabled and then enqueue it.
++	 * Since now nr_running > 0, idle_cpu() will always get correct result.
++	 */
++	WRITE_ONCE(rq->ttwu_pending, 0);
 +	rq_unlock_irqrestore(rq, &rf);
 +}
 +
@@ -4635,7 +4767,9 @@ index 000000000000..acb8657e811d
 +	struct rq *rq = cpu_rq(cpu);
 +	u64 resched_latency;
 +
-+	arch_scale_freq_tick();
++	if (housekeeping_cpu(cpu, HK_TYPE_TICK))
++		arch_scale_freq_tick();
++
 +	sched_clock_tick();
 +
 +	raw_spin_lock(&rq->lock);
@@ -4734,7 +4868,7 @@ index 000000000000..acb8657e811d
 +		int i;
 +
 +		for_each_cpu_wrap(i, &chk, cpu) {
-+			if (cpumask_subset(cpu_smt_mask(i), &chk) &&
++			if (!cpumask_intersects(cpu_smt_mask(i), sched_idle_mask) &&\
 +			    sg_balance_trigger(i))
 +				return;
 +		}
@@ -4857,6 +4991,7 @@ index 000000000000..acb8657e811d
 +static void sched_tick_stop(int cpu)
 +{
 +	struct tick_work *twork;
++	int os;
 +
 +	if (housekeeping_cpu(cpu, HK_TYPE_TICK))
 +		return;
@@ -4864,7 +4999,10 @@ index 000000000000..acb8657e811d
 +	WARN_ON_ONCE(!tick_work_cpu);
 +
 +	twork = per_cpu_ptr(tick_work_cpu, cpu);
-+	cancel_delayed_work_sync(&twork->work);
++	/* There cannot be competing actions, but don't rely on stop-machine. */
++	os = atomic_xchg(&twork->state, TICK_SCHED_REMOTE_OFFLINING);
++	WARN_ON_ONCE(os != TICK_SCHED_REMOTE_RUNNING);
++	/* Don't cancel, as this would mess up the state machine. */
 +}
 +#endif /* CONFIG_HOTPLUG_CPU */
 +
@@ -4988,8 +5126,7 @@ index 000000000000..acb8657e811d
 +		pr_err("Preemption disabled at:");
 +		print_ip_sym(KERN_ERR, preempt_disable_ip);
 +	}
-+	if (panic_on_warn)
-+		panic("scheduling while atomic\n");
++	check_panic_on_warn("scheduling while atomic");
 +
 +	dump_stack();
 +	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
@@ -5305,7 +5442,7 @@ index 000000000000..acb8657e811d
 +			prev->sched_contributes_to_load =
 +				(prev_state & TASK_UNINTERRUPTIBLE) &&
 +				!(prev_state & TASK_NOLOAD) &&
-+				!(prev->flags & TASK_FROZEN);
++				!(prev_state & TASK_FROZEN);
 +
 +			if (prev->sched_contributes_to_load)
 +				rq->nr_uninterruptible++;
@@ -6653,7 +6790,7 @@ index 000000000000..acb8657e811d
 +#endif
 +
 +static int
-+__sched_setaffinity(struct task_struct *p, const struct cpumask *mask)
++__sched_setaffinity(struct task_struct *p, struct affinity_context *ctx)
 +{
 +	int retval;
 +	cpumask_var_t cpus_allowed, new_mask;
@@ -6667,9 +6804,12 @@ index 000000000000..acb8657e811d
 +	}
 +
 +	cpuset_cpus_allowed(p, cpus_allowed);
-+	cpumask_and(new_mask, mask, cpus_allowed);
-+again:
-+	retval = __set_cpus_allowed_ptr(p, new_mask, SCA_CHECK | SCA_USER);
++	cpumask_and(new_mask, ctx->new_mask, cpus_allowed);
++
++	ctx->new_mask = new_mask;
++	ctx->flags |= SCA_CHECK;
++
++	retval = __set_cpus_allowed_ptr(p, ctx);
 +	if (retval)
 +		goto out_free_new_mask;
 +
@@ -6681,7 +6821,24 @@ index 000000000000..acb8657e811d
 +		 * cpuset's cpus_allowed
 +		 */
 +		cpumask_copy(new_mask, cpus_allowed);
-+		goto again;
++
++		/*
++		 * If SCA_USER is set, a 2nd call to __set_cpus_allowed_ptr()
++		 * will restore the previous user_cpus_ptr value.
++		 *
++		 * In the unlikely event a previous user_cpus_ptr exists,
++		 * we need to further restrict the mask to what is allowed
++		 * by that old user_cpus_ptr.
++		 */
++		if (unlikely((ctx->flags & SCA_USER) && ctx->user_mask)) {
++			bool empty = !cpumask_and(new_mask, new_mask,
++						  ctx->user_mask);
++
++			if (WARN_ON_ONCE(empty))
++				cpumask_copy(new_mask, cpus_allowed);
++		}
++		__set_cpus_allowed_ptr(p, ctx);
++		retval = -EINVAL;
 +	}
 +
 +out_free_new_mask:
@@ -6693,6 +6850,8 @@ index 000000000000..acb8657e811d
 +
 +long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 +{
++	struct affinity_context ac;
++	struct cpumask *user_mask;
 +	struct task_struct *p;
 +	int retval;
 +
@@ -6727,7 +6886,27 @@ index 000000000000..acb8657e811d
 +	if (retval)
 +		goto out_put_task;
 +
-+	retval = __sched_setaffinity(p, in_mask);
++	/*
++	 * With non-SMP configs, user_cpus_ptr/user_mask isn't used and
++	 * alloc_user_cpus_ptr() returns NULL.
++	 */
++	user_mask = alloc_user_cpus_ptr(NUMA_NO_NODE);
++	if (user_mask) {
++		cpumask_copy(user_mask, in_mask);
++	} else if (IS_ENABLED(CONFIG_SMP)) {
++		retval = -ENOMEM;
++		goto out_put_task;
++	}
++
++	ac = (struct affinity_context){
++		.new_mask  = in_mask,
++		.user_mask = user_mask,
++		.flags     = SCA_USER,
++	};
++
++	retval = __sched_setaffinity(p, &ac);
++	kfree(ac.user_mask);
++
 +out_put_task:
 +	put_task_struct(p);
 +	return retval;
@@ -7483,6 +7662,12 @@ index 000000000000..acb8657e811d
 + */
 +void __init init_idle(struct task_struct *idle, int cpu)
 +{
++#ifdef CONFIG_SMP
++	struct affinity_context ac = (struct affinity_context) {
++		.new_mask  = cpumask_of(cpu),
++		.flags     = 0,
++	};
++#endif
 +	struct rq *rq = cpu_rq(cpu);
 +	unsigned long flags;
 +
@@ -7509,7 +7694,7 @@ index 000000000000..acb8657e811d
 +	 *
 +	 * And since this is boot we can forgo the serialisation.
 +	 */
-+	set_cpus_allowed_common(idle, cpumask_of(cpu));
++	set_cpus_allowed_common(idle, &ac);
 +#endif
 +
 +	/* Silence PROVE_RCU */
@@ -8137,6 +8322,8 @@ index 000000000000..acb8657e811d
 +
 +		hrtick_rq_init(rq);
 +		atomic_set(&rq->nr_iowait, 0);
++
++		zalloc_cpumask_var_node(&rq->scratch_mask, GFP_KERNEL, cpu_to_node(i));
 +	}
 +#ifdef CONFIG_SMP
 +	/* Set rq->online for cpu 0 */
@@ -8653,10 +8840,10 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..c32403ed82b6
+index 000000000000..0b563999d4c1
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,668 @@
+@@ -0,0 +1,671 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -8903,6 +9090,9 @@ index 000000000000..c32403ed82b6
 +#endif
 +	atomic_t		nohz_flags;
 +#endif /* CONFIG_NO_HZ_COMMON */
++
++	/* Scratch cpumask to be temporarily used under rq_lock */
++	cpumask_var_t		scratch_mask;
 +};
 +
 +extern unsigned long rq_load_util(struct rq *rq, unsigned long max);
@@ -9874,7 +10064,7 @@ index 3a0e0dc28721..e8a7d84aa5a5 100644
  static inline int
  update_thermal_load_avg(u64 now, struct rq *rq, u64 capacity)
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index a4a20046e586..c363693cd869 100644
+index 771f8ddb7053..787a5069d69a 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
 @@ -5,6 +5,10 @@
@@ -9888,7 +10078,7 @@ index a4a20046e586..c363693cd869 100644
  #include <linux/sched/affinity.h>
  #include <linux/sched/autogroup.h>
  #include <linux/sched/cpufreq.h>
-@@ -3183,4 +3187,9 @@ static inline void update_current_exec_runtime(struct task_struct *curr,
+@@ -3261,4 +3265,9 @@ static inline void update_current_exec_runtime(struct task_struct *curr,
  	cgroup_account_cputime(curr, delta_exec);
  }
  
@@ -9930,7 +10120,7 @@ index 857f837f52cb..5486c63e4790 100644
  	}
  	return 0;
 diff --git a/kernel/sched/stats.h b/kernel/sched/stats.h
-index 84a188913cc9..53934e7ef5db 100644
+index 38f3698f5e5b..b9d597394316 100644
 --- a/kernel/sched/stats.h
 +++ b/kernel/sched/stats.h
 @@ -89,6 +89,7 @@ static inline void rq_sched_info_depart  (struct rq *rq, unsigned long long delt
@@ -10005,7 +10195,7 @@ index 8739c2a5a54e..d8dd6c15eb47 100644
 +#endif /* CONFIG_NUMA */
 +#endif
 diff --git a/kernel/sysctl.c b/kernel/sysctl.c
-index c6d9dec11b74..2bc42ce8b48e 100644
+index 137d4abe3eda..6bada3a6d571 100644
 --- a/kernel/sysctl.c
 +++ b/kernel/sysctl.c
 @@ -93,6 +93,10 @@ EXPORT_SYMBOL_GPL(sysctl_long_vals);
@@ -10019,7 +10209,7 @@ index c6d9dec11b74..2bc42ce8b48e 100644
  #ifdef CONFIG_PERF_EVENTS
  static const int six_hundred_forty_kb = 640 * 1024;
  #endif
-@@ -1953,6 +1959,17 @@ static struct ctl_table kern_table[] = {
+@@ -1934,6 +1938,17 @@ static struct ctl_table kern_table[] = {
  		.proc_handler	= proc_dointvec,
  	},
  #endif
@@ -10113,10 +10303,10 @@ index cb925e8ef9a8..67d823510f5c 100644
  	return false;
  }
 diff --git a/kernel/trace/trace_selftest.c b/kernel/trace/trace_selftest.c
-index a2d301f58ced..2ccdede8585c 100644
+index ff0536cea968..ce266990006d 100644
 --- a/kernel/trace/trace_selftest.c
 +++ b/kernel/trace/trace_selftest.c
-@@ -1143,10 +1143,15 @@ static int trace_wakeup_test_thread(void *data)
+@@ -1150,10 +1150,15 @@ static int trace_wakeup_test_thread(void *data)
  {
  	/* Make this a -deadline thread */
  	static const struct sched_attr attr = {
@@ -10132,3 +10322,6 @@ index a2d301f58ced..2ccdede8585c 100644
  	};
  	struct wakeup_test_data *x = data;
  
+-- 
+2.39.2
+
