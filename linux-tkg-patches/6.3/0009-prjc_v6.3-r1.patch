@@ -352,10 +352,18 @@ index 816df6cc444e..c8da08e18c91 100644
  #else
  static inline void rebuild_sched_domains_energy(void)
 diff --git a/init/Kconfig b/init/Kconfig
-index c88bb30a8b0b..454f792df9dd 100644
+index c88bb30a8b0b..dff86592555a 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -817,6 +817,7 @@ menu "Scheduler features"
+@@ -629,6 +629,7 @@ config TASK_IO_ACCOUNTING
+
+ config PSI
+ 	bool "Pressure stall information tracking"
++	depends on !SCHED_ALT
+ 	help
+ 	  Collect metrics that indicate how overcommitted the CPU, memory,
+ 	  and IO capacity are in the system.
+@@ -817,6 +818,7 @@ menu "Scheduler features"
  config UCLAMP_TASK
  	bool "Enable utilization clamping for RT/FAIR tasks"
  	depends on CPU_FREQ_GOV_SCHEDUTIL
@@ -363,7 +371,7 @@ index c88bb30a8b0b..454f792df9dd 100644
  	help
  	  This feature enables the scheduler to track the clamped utilization
  	  of each CPU based on RUNNABLE tasks scheduled on that CPU.
-@@ -863,6 +864,35 @@ config UCLAMP_BUCKETS_COUNT
+@@ -863,6 +865,35 @@ config UCLAMP_BUCKETS_COUNT
 
  	  If in doubt, use the default value.
 
@@ -399,7 +407,7 @@ index c88bb30a8b0b..454f792df9dd 100644
  endmenu
 
  #
-@@ -916,6 +946,7 @@ config NUMA_BALANCING
+@@ -916,6 +947,7 @@ config NUMA_BALANCING
  	depends on ARCH_SUPPORTS_NUMA_BALANCING
  	depends on !ARCH_WANT_NUMA_VARIABLE_LOCALITY
  	depends on SMP && NUMA && MIGRATION && !PREEMPT_RT
@@ -407,7 +415,7 @@ index c88bb30a8b0b..454f792df9dd 100644
  	help
  	  This option adds support for automatic NUMA aware memory/task placement.
  	  The mechanism is quite primitive and is based on migrating memory when
-@@ -1013,6 +1044,7 @@ config FAIR_GROUP_SCHED
+@@ -1013,6 +1045,7 @@ config FAIR_GROUP_SCHED
  	depends on CGROUP_SCHED
  	default CGROUP_SCHED
 
@@ -415,7 +423,7 @@ index c88bb30a8b0b..454f792df9dd 100644
  config CFS_BANDWIDTH
  	bool "CPU bandwidth provisioning for FAIR_GROUP_SCHED"
  	depends on FAIR_GROUP_SCHED
-@@ -1035,6 +1067,7 @@ config RT_GROUP_SCHED
+@@ -1035,6 +1068,7 @@ config RT_GROUP_SCHED
  	  realtime bandwidth for them.
  	  See Documentation/scheduler/sched-rt-group.rst for more information.
 
@@ -423,7 +431,7 @@ index c88bb30a8b0b..454f792df9dd 100644
  endif #CGROUP_SCHED
 
  config SCHED_MM_CID
-@@ -1283,6 +1316,7 @@ config CHECKPOINT_RESTORE
+@@ -1283,6 +1317,7 @@ config CHECKPOINT_RESTORE
 
  config SCHED_AUTOGROUP
  	bool "Automatic process group scheduling"
@@ -632,10 +640,10 @@ index 976092b7bd45..31d587c16ec1 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..6bb41dd1c541
+index 000000000000..fbf506b16bf4
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,8188 @@
+@@ -0,0 +1,8174 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -706,7 +714,7 @@ index 000000000000..6bb41dd1c541
 +#define sched_feat(x)	(0)
 +#endif /* CONFIG_SCHED_DEBUG */
 +
-+#define ALT_SCHED_VERSION "v6.3-r0"
++#define ALT_SCHED_VERSION "v6.3-r1"
 +
 +/*
 + * Compile time debug macro
@@ -814,7 +822,7 @@ index 000000000000..6bb41dd1c541
 +	int i;
 +
 +	bitmap_zero(q->bitmap, SCHED_QUEUE_BITS);
-+	for(i = 0; i < SCHED_BITS; i++)
++	for(i = 0; i < SCHED_LEVELS; i++)
 +		INIT_LIST_HEAD(&q->heads[i]);
 +}
 +
@@ -893,8 +901,7 @@ index 000000000000..6bb41dd1c541
 + */
 +static inline struct task_struct *sched_rq_first_task(struct rq *rq)
 +{
-+	unsigned long idx = find_first_bit(rq->queue.bitmap, SCHED_QUEUE_BITS);
-+	const struct list_head *head = &rq->queue.heads[sched_prio2idx(idx, rq)];
++	const struct list_head *head = &rq->queue.heads[sched_prio2idx(rq->prio, rq)];
 +
 +	return list_first_entry(head, struct task_struct, sq_node);
 +}
@@ -1227,7 +1234,6 @@ index 000000000000..6bb41dd1c541
 +
 +	rq->prev_irq_time += irq_delta;
 +	delta -= irq_delta;
-+	psi_account_irqtime(rq->curr, irq_delta);
 +#endif
 +#ifdef CONFIG_PARAVIRT_TIME_ACCOUNTING
 +	if (static_key_false((&paravirt_steal_rq_enabled))) {
@@ -1406,17 +1412,17 @@ index 000000000000..6bb41dd1c541
 + * Add/Remove/Requeue task to/from the runqueue routines
 + * Context: rq->lock
 + */
-+#define __SCHED_DEQUEUE_TASK(p, rq, flags)					\
++#define __SCHED_DEQUEUE_TASK(p, rq, flags, func)				\
 +	sched_info_dequeue(rq, p);						\
-+	psi_dequeue(p, flags & DEQUEUE_SLEEP);					\
 +										\
 +	list_del(&p->sq_node);							\
-+	if (list_empty(&rq->queue.heads[p->sq_idx])) 				\
-+		clear_bit(sched_idx2prio(p->sq_idx, rq), rq->queue.bitmap);
++	if (list_empty(&rq->queue.heads[p->sq_idx])) { 				\
++		clear_bit(sched_idx2prio(p->sq_idx, rq), rq->queue.bitmap);	\
++		func;								\
++	}
 +
 +#define __SCHED_ENQUEUE_TASK(p, rq, flags)				\
 +	sched_info_enqueue(rq, p);					\
-+	psi_enqueue(p, flags & ENQUEUE_WAKEUP);				\
 +									\
 +	p->sq_idx = task_sched_prio_idx(p, rq);				\
 +	list_add_tail(&p->sq_node, &rq->queue.heads[p->sq_idx]);	\
@@ -1427,12 +1433,12 @@ index 000000000000..6bb41dd1c541
 +#ifdef ALT_SCHED_DEBUG
 +	lockdep_assert_held(&rq->lock);
 +
-+	/*printk(KERN_INFO "sched: dequeue(%d) %px %016llx\n", cpu_of(rq), p, p->priodl);*/
++	/*printk(KERN_INFO "sched: dequeue(%d) %px %016llx\n", cpu_of(rq), p, p->deadline);*/
 +	WARN_ONCE(task_rq(p) != rq, "sched: dequeue task reside on cpu%d from cpu%d\n",
 +		  task_cpu(p), cpu_of(rq));
 +#endif
 +
-+	__SCHED_DEQUEUE_TASK(p, rq, flags);
++	__SCHED_DEQUEUE_TASK(p, rq, flags, update_sched_preempt_mask(rq));
 +	--rq->nr_running;
 +#ifdef CONFIG_SMP
 +	if (1 == rq->nr_running)
@@ -1447,7 +1453,7 @@ index 000000000000..6bb41dd1c541
 +#ifdef ALT_SCHED_DEBUG
 +	lockdep_assert_held(&rq->lock);
 +
-+	/*printk(KERN_INFO "sched: enqueue(%d) %px %016llx\n", cpu_of(rq), p, p->priodl);*/
++	/*printk(KERN_INFO "sched: enqueue(%d) %px %d\n", cpu_of(rq), p, p->prio);*/
 +	WARN_ONCE(task_rq(p) != rq, "sched: enqueue task reside on cpu%d to cpu%d\n",
 +		  task_cpu(p), cpu_of(rq));
 +#endif
@@ -1467,7 +1473,7 @@ index 000000000000..6bb41dd1c541
 +{
 +#ifdef ALT_SCHED_DEBUG
 +	lockdep_assert_held(&rq->lock);
-+	/*printk(KERN_INFO "sched: requeue(%d) %px %016llx\n", cpu_of(rq), p, p->priodl);*/
++	/*printk(KERN_INFO "sched: requeue(%d) %px %016llx\n", cpu_of(rq), p, p->deadline);*/
 +	WARN_ONCE(task_rq(p) != rq, "sched: cpu[%d] requeue task reside on cpu%d\n",
 +		  cpu_of(rq), task_cpu(p));
 +#endif
@@ -1476,8 +1482,7 @@ index 000000000000..6bb41dd1c541
 +	list_add_tail(&p->sq_node, &rq->queue.heads[idx]);
 +	if (idx != p->sq_idx) {
 +		if (list_empty(&rq->queue.heads[p->sq_idx]))
-+			clear_bit(sched_idx2prio(p->sq_idx, rq),
-+				  rq->queue.bitmap);
++			clear_bit(sched_idx2prio(p->sq_idx, rq), rq->queue.bitmap);
 +		p->sq_idx = idx;
 +		set_bit(sched_idx2prio(p->sq_idx, rq), rq->queue.bitmap);
 +		update_sched_preempt_mask(rq);
@@ -1989,8 +1994,8 @@ index 000000000000..6bb41dd1c541
 + */
 +static inline void deactivate_task(struct task_struct *p, struct rq *rq)
 +{
-+	p->on_rq = 0;
 +	dequeue_task(p, rq, DEQUEUE_SLEEP);
++	p->on_rq = 0;
 +	cpufreq_update_util(rq, 0);
 +}
 +
@@ -2207,9 +2212,8 @@ index 000000000000..6bb41dd1c541
 +{
 +	lockdep_assert_held(&rq->lock);
 +
-+	p->on_rq = TASK_ON_RQ_MIGRATING;
++	WRITE_ONCE(p->on_rq, TASK_ON_RQ_MIGRATING);
 +	dequeue_task(p, rq, 0);
-+	update_sched_preempt_mask(rq);
 +	set_task_cpu(p, new_cpu);
 +	raw_spin_unlock(&rq->lock);
 +
@@ -3593,7 +3597,6 @@ index 000000000000..6bb41dd1c541
 +		}
 +
 +		wake_flags |= WF_MIGRATED;
-+		psi_ttwu_dequeue(p);
 +		set_task_cpu(p, cpu);
 +	}
 +#else
@@ -5170,12 +5173,10 @@ index 000000000000..6bb41dd1c541
 +	       (p = sched_rq_next_task(skip, rq)) != rq->idle) {
 +		skip = sched_rq_next_task(p, rq);
 +		if (cpumask_test_cpu(dest_cpu, p->cpus_ptr)) {
-+			p->on_rq = TASK_ON_RQ_MIGRATING;
-+			__SCHED_DEQUEUE_TASK(p, rq, 0);
++			__SCHED_DEQUEUE_TASK(p, rq, 0, );
 +			set_task_cpu(p, dest_cpu);
 +			sched_task_sanity_check(p, dest_rq);
 +			__SCHED_ENQUEUE_TASK(p, dest_rq, 0);
-+			p->on_rq = TASK_ON_RQ_QUEUED;
 +			nr_migrated++;
 +		}
 +		nr_tries--;
@@ -5220,6 +5221,7 @@ index 000000000000..6bb41dd1c541
 +				if (rq->nr_running > 1)
 +					cpumask_set_cpu(cpu, &sched_rq_pending_mask);
 +
++				update_sched_preempt_mask(rq);
 +				cpufreq_update_util(rq, 0);
 +
 +				return 1;
@@ -5291,8 +5293,7 @@ index 000000000000..6bb41dd1c541
 +#ifdef CONFIG_HIGH_RES_TIMERS
 +	hrtick_start(rq, next->time_slice);
 +#endif
-+	/*printk(KERN_INFO "sched: choose_next_task(%d) next %px\n", cpu,
-+	 * next);*/
++	/*printk(KERN_INFO "sched: choose_next_task(%d) next %px\n", cpu, next);*/
 +	return next;
 +}
 +
@@ -5360,7 +5361,6 @@ index 000000000000..6bb41dd1c541
 +	unsigned long prev_state;
 +	struct rq *rq;
 +	int cpu;
-+	int deactivated = 0;
 +
 +	cpu = smp_processor_id();
 +	rq = cpu_rq(cpu);
@@ -5425,7 +5425,6 @@ index 000000000000..6bb41dd1c541
 +			 */
 +			sched_task_deactivate(prev, rq);
 +			deactivate_task(prev, rq);
-+			deactivated = 1;
 +
 +			if (prev->in_iowait) {
 +				atomic_inc(&rq->nr_iowait);
@@ -5445,11 +5444,10 @@ index 000000000000..6bb41dd1c541
 +#endif
 +
 +	if (likely(prev != next)) {
-+		if (deactivated)
-+			update_sched_preempt_mask(rq);
 +		next->last_ran = rq->clock_task;
 +		rq->last_ts_switch = rq->clock;
 +
++		/*printk(KERN_INFO "sched: %px -> %px\n", prev, next);*/
 +		rq->nr_switches++;
 +		/*
 +		 * RCU users of rcu_dereference(rq->curr) may not see
@@ -5471,8 +5469,6 @@ index 000000000000..6bb41dd1c541
 +		 *   is a RELEASE barrier),
 +		 */
 +		++*switch_count;
-+
-+		psi_sched_switch(prev, next, deactivated);
 +
 +		trace_sched_switch(sched_mode & SM_MASK_PREEMPT, prev, next, prev_state);
 +
@@ -8333,8 +8329,6 @@ index 000000000000..6bb41dd1c541
 +	sched_init_topology_cpumask_early();
 +#endif /* SMP */
 +
-+	psi_init();
-+
 +	preempt_dynamic_init();
 +}
 +
@@ -8863,16 +8857,15 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..f5346eb994da
+index 000000000000..55a15b806e87
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,730 @@
+@@ -0,0 +1,729 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
 +#include <linux/context_tracking.h>
 +#include <linux/profile.h>
-+#include <linux/psi.h>
 +#include <linux/stop_machine.h>
 +#include <linux/syscalls.h>
 +#include <linux/tick.h>
@@ -8887,15 +8880,15 @@ index 000000000000..f5346eb994da
 +#ifdef CONFIG_SCHED_BMQ
 +/* bits:
 + * RT(0-99), (Low prio adj range, nice width, high prio adj range) / 2, cpu idle task */
-+#define SCHED_BITS	(MAX_RT_PRIO + NICE_WIDTH / 2 + MAX_PRIORITY_ADJ + 1)
++#define SCHED_LEVELS	(MAX_RT_PRIO + NICE_WIDTH / 2 + MAX_PRIORITY_ADJ + 1)
 +#endif
 +
 +#ifdef CONFIG_SCHED_PDS
-+/* bits: RT(0-99), reserved(100-127), NORMAL_PRIO_NUM, cpu idle task */
-+#define SCHED_BITS	(MIN_NORMAL_PRIO + NORMAL_PRIO_NUM + 1)
++/* bits: RT(0-24), reserved(25-31), SCHED_NORMAL_PRIO_NUM(32), cpu idle task(1) */
++#define SCHED_LEVELS	(64 + 1)
 +#endif /* CONFIG_SCHED_PDS */
 +
-+#define IDLE_TASK_SCHED_PRIO	(SCHED_BITS - 1)
++#define IDLE_TASK_SCHED_PRIO	(SCHED_LEVELS - 1)
 +
 +#ifdef CONFIG_SCHED_DEBUG
 +# define SCHED_WARN_ON(x)	WARN_ONCE(x, #x)
@@ -8980,11 +8973,11 @@ index 000000000000..f5346eb994da
 +#define WF_FORK		0x02		/* child wakeup after fork */
 +#define WF_MIGRATED	0x04		/* internal use, task got migrated */
 +
-+#define SCHED_QUEUE_BITS	(SCHED_BITS - 1)
++#define SCHED_QUEUE_BITS	(SCHED_LEVELS - 1)
 +
 +struct sched_queue {
 +	DECLARE_BITMAP(bitmap, SCHED_QUEUE_BITS);
-+	struct list_head heads[SCHED_BITS];
++	struct list_head heads[SCHED_LEVELS];
 +};
 +
 +struct rq;
@@ -9011,7 +9004,7 @@ index 000000000000..f5346eb994da
 +#ifdef CONFIG_SCHED_PDS
 +	u64			time_edge;
 +#endif
-+	unsigned long prio;
++	unsigned long		prio;
 +
 +	/* switch count */
 +	u64 nr_switches;
@@ -9942,16 +9935,23 @@ index e9ef66be2870..4fff3f75a779 100644
 +#endif
 diff --git a/kernel/sched/pds.h b/kernel/sched/pds.h
 new file mode 100644
-index 000000000000..27e09b4feb8c
+index 000000000000..15cc4887efed
 --- /dev/null
 +++ b/kernel/sched/pds.h
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,152 @@
 +#define ALT_SCHED_NAME "PDS"
 +
-+static int sched_timeslice_shift = 22;
++#define MIN_SCHED_NORMAL_PRIO	(32)
++static const u64 RT_MASK = ((1ULL << MIN_SCHED_NORMAL_PRIO) - 1);
++
++#define SCHED_NORMAL_PRIO_NUM	(32)
++#define SCHED_EDGE_DELTA	(SCHED_NORMAL_PRIO_NUM - NICE_WIDTH / 2)
 +
 +/* PDS assume NORMAL_PRIO_NUM is power of 2 */
-+#define NORMAL_PRIO_MOD(x)	((x) & (NORMAL_PRIO_NUM - 1))
++#define SCHED_NORMAL_PRIO_MOD(x)	((x) & (SCHED_NORMAL_PRIO_NUM - 1))
++
++/* default time slice 4ms -> shift 22, 2 time slice slots -> shift 23 */
++static __read_mostly int sched_timeslice_shift = 23;
 +
 +/*
 + * Common interfaces
@@ -9959,18 +9959,18 @@ index 000000000000..27e09b4feb8c
 +static inline void sched_timeslice_imp(const int timeslice_ms)
 +{
 +	if (2 == timeslice_ms)
-+		sched_timeslice_shift = 21;
++		sched_timeslice_shift = 22;
 +}
 +
 +static inline int
 +task_sched_prio_normal(const struct task_struct *p, const struct rq *rq)
 +{
-+	s64 delta = p->deadline - rq->time_edge + NORMAL_PRIO_NUM - NICE_WIDTH;
++	s64 delta = p->deadline - rq->time_edge + SCHED_EDGE_DELTA;
 +
 +#ifdef ALT_SCHED_DEBUG
 +	if (WARN_ONCE(delta > NORMAL_PRIO_NUM - 1,
 +		      "pds: task_sched_prio_normal() delta %lld\n", delta))
-+		return NORMAL_PRIO_NUM - 1;
++		return SCHED_NORMAL_PRIO_NUM - 1;
 +#endif
 +
 +	return max(0LL, delta);
@@ -9978,8 +9978,8 @@ index 000000000000..27e09b4feb8c
 +
 +static inline int task_sched_prio(const struct task_struct *p)
 +{
-+	return (p->prio < MIN_NORMAL_PRIO) ? p->prio :
-+		MIN_NORMAL_PRIO + task_sched_prio_normal(p, task_rq(p));
++	return (p->prio < MIN_NORMAL_PRIO) ? (p->prio >> 2) :
++		MIN_SCHED_NORMAL_PRIO + task_sched_prio_normal(p, task_rq(p));
 +}
 +
 +static inline int
@@ -9987,30 +9987,32 @@ index 000000000000..27e09b4feb8c
 +{
 +	u64 idx;
 +
-+	if (p->prio < MAX_RT_PRIO)
-+		return p->prio;
++	if (p->prio < MIN_NORMAL_PRIO)
++		return p->prio >> 2;
 +
-+	idx = max(p->deadline + NORMAL_PRIO_NUM - NICE_WIDTH, rq->time_edge);
-+	return MIN_NORMAL_PRIO + NORMAL_PRIO_MOD(idx);
++	idx = max(p->deadline + SCHED_EDGE_DELTA, rq->time_edge);
++	/*printk(KERN_INFO "sched: task_sched_prio_idx edge:%llu, deadline=%llu idx=%llu\n", rq->time_edge, p->deadline, idx);*/
++	return MIN_SCHED_NORMAL_PRIO + SCHED_NORMAL_PRIO_MOD(idx);
 +}
 +
-+static inline int sched_prio2idx(int prio, struct rq *rq)
++static inline int sched_prio2idx(int sched_prio, struct rq *rq)
 +{
-+	return (IDLE_TASK_SCHED_PRIO == prio || prio < MAX_RT_PRIO) ? prio :
-+		MIN_NORMAL_PRIO + NORMAL_PRIO_MOD(prio + rq->time_edge);
++	return (IDLE_TASK_SCHED_PRIO == sched_prio || sched_prio < MIN_SCHED_NORMAL_PRIO) ?
++		sched_prio :
++		MIN_SCHED_NORMAL_PRIO + SCHED_NORMAL_PRIO_MOD(sched_prio + rq->time_edge);
 +}
 +
-+static inline int sched_idx2prio(int idx, struct rq *rq)
++static inline int sched_idx2prio(int sched_idx, struct rq *rq)
 +{
-+	return (idx < MAX_RT_PRIO) ? idx : MIN_NORMAL_PRIO +
-+		NORMAL_PRIO_MOD(idx - rq->time_edge);
++	return (sched_idx < MIN_SCHED_NORMAL_PRIO) ?
++		sched_idx :
++		MIN_SCHED_NORMAL_PRIO + SCHED_NORMAL_PRIO_MOD(sched_idx - rq->time_edge);
 +}
 +
 +static inline void sched_renew_deadline(struct task_struct *p, const struct rq *rq)
 +{
-+	if (p->prio >= MAX_RT_PRIO)
-+		p->deadline = (rq->clock >> sched_timeslice_shift) +
-+			p->static_prio - (MAX_PRIO - NICE_WIDTH);
++	if (p->prio >= MIN_NORMAL_PRIO)
++		p->deadline = rq->time_edge + (p->static_prio - (MAX_PRIO - NICE_WIDTH)) / 2;
 +}
 +
 +int task_running_nice(struct task_struct *p)
@@ -10024,30 +10026,40 @@ index 000000000000..27e09b4feb8c
 +	u64 old = rq->time_edge;
 +	u64 now = rq->clock >> sched_timeslice_shift;
 +	u64 prio, delta;
++	DECLARE_BITMAP(normal, SCHED_QUEUE_BITS);
 +
 +	if (now == old)
 +		return;
 +
 +	rq->time_edge = now;
-+	delta = min_t(u64, NORMAL_PRIO_NUM, now - old);
++	delta = min_t(u64, SCHED_NORMAL_PRIO_NUM, now - old);
 +	INIT_LIST_HEAD(&head);
 +
-+	for_each_set_bit(prio, &rq->queue.bitmap[2], delta)
-+		list_splice_tail_init(rq->queue.heads + MIN_NORMAL_PRIO +
-+				      NORMAL_PRIO_MOD(prio + old), &head);
++	/*printk(KERN_INFO "sched: update_rq_time_edge 0x%016lx %llu\n", rq->queue.bitmap[0], delta);*/
++	prio = MIN_SCHED_NORMAL_PRIO;
++	for_each_set_bit_from(prio, rq->queue.bitmap, MIN_SCHED_NORMAL_PRIO + delta)
++		list_splice_tail_init(rq->queue.heads + MIN_SCHED_NORMAL_PRIO +
++				      SCHED_NORMAL_PRIO_MOD(prio + old), &head);
 +
-+	rq->queue.bitmap[2] = (NORMAL_PRIO_NUM == delta) ? 0UL :
-+		rq->queue.bitmap[2] >> delta;
++	bitmap_shift_right(normal, rq->queue.bitmap, delta, SCHED_QUEUE_BITS);
 +	if (!list_empty(&head)) {
 +		struct task_struct *p;
-+		u64 idx = MIN_NORMAL_PRIO + NORMAL_PRIO_MOD(now);
++		u64 idx = MIN_SCHED_NORMAL_PRIO + SCHED_NORMAL_PRIO_MOD(now);
 +
 +		list_for_each_entry(p, &head, sq_node)
 +			p->sq_idx = idx;
 +
 +		list_splice(&head, rq->queue.heads + idx);
-+		rq->queue.bitmap[2] |= 1UL;
++		set_bit(MIN_SCHED_NORMAL_PRIO, normal);
 +	}
++	bitmap_replace(rq->queue.bitmap, normal, rq->queue.bitmap,
++		       (const unsigned long *)&RT_MASK, SCHED_QUEUE_BITS);
++
++	if (rq->prio < MIN_SCHED_NORMAL_PRIO || IDLE_TASK_SCHED_PRIO == rq->prio)
++		return;
++
++	rq->prio = (rq->prio < MIN_SCHED_NORMAL_PRIO + delta) ?
++		MIN_SCHED_NORMAL_PRIO : rq->prio - delta;
 +}
 +
 +static inline void time_slice_expired(struct task_struct *p, struct rq *rq)
@@ -10060,7 +10072,7 @@ index 000000000000..27e09b4feb8c
 +
 +static inline void sched_task_sanity_check(struct task_struct *p, struct rq *rq)
 +{
-+	u64 max_dl = rq->time_edge + NICE_WIDTH - 1;
++	u64 max_dl = rq->time_edge + NICE_WIDTH / 2 - 1;
 +	if (unlikely(p->deadline > max_dl))
 +		p->deadline = max_dl;
 +}
@@ -10228,7 +10240,7 @@ index 38f3698f5e5b..b9d597394316 100644
  #ifdef CONFIG_PSI
  void psi_task_change(struct task_struct *task, int clear, int set);
 diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index 051aaf65c749..c69f7c8a8f7f 100644
+index 051aaf65c749..21256b848f0b 100644
 --- a/kernel/sched/topology.c
 +++ b/kernel/sched/topology.c
 @@ -3,6 +3,7 @@
@@ -10266,7 +10278,7 @@ index 051aaf65c749..c69f7c8a8f7f 100644
  #ifdef CONFIG_NUMA
 
  static const struct cpumask *sd_numa_mask(int cpu)
-@@ -2740,3 +2745,15 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
+@@ -2740,3 +2745,20 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
  	partition_sched_domains_locked(ndoms_new, doms_new, dattr_new);
  	mutex_unlock(&sched_domains_mutex);
  }
@@ -10279,6 +10291,11 @@ index 051aaf65c749..c69f7c8a8f7f 100644
 +int sched_numa_find_closest(const struct cpumask *cpus, int cpu)
 +{
 +	return best_mask_cpu(cpu, cpus);
++}
++
++int sched_numa_find_nth_cpu(const struct cpumask *cpus, int cpu, int node)
++{
++	return cpumask_nth(cpu, cpus);
 +}
 +#endif /* CONFIG_NUMA */
 +#endif
@@ -10411,18 +10428,3 @@ index ff0536cea968..ce266990006d 100644
  	};
  	struct wakeup_test_data *x = data;
 
-diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index c69f7c8a8f7f..21256b848f0b 100644
---- a/kernel/sched/topology.c
-+++ b/kernel/sched/topology.c
-@@ -2755,5 +2755,10 @@ int sched_numa_find_closest(const struct cpumask *cpus, int cpu)
- {
-        return best_mask_cpu(cpu, cpus);
- }
-+
-+int sched_numa_find_nth_cpu(const struct cpumask *cpus, int cpu, int node)
-+{
-+       return cpumask_nth(cpu, cpus);
-+}
- #endif /* CONFIG_NUMA */
- #endif
