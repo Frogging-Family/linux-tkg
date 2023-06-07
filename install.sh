@@ -73,7 +73,7 @@ _install_dependencies() {
     if [ $(rpm -E %fedora) = "32" ]; then
       sudo dnf install bison ccache dwarves elfutils-libelf-devel fedora-packager fedpkg flex gcc-c++ git grubby libXi-devel lz4 ncurses-devel openssl-devel pesign qt5-devel rpm-build rpmdevtools schedtool zstd ${clang_deps} -y
     else
-      sudo dnf install bison ccache dwarves elfutils-devel elfutils-libelf-devel fedora-packager fedpkg flex gcc-c++ git grubby libXi-devel lz4 make ncurses-devel openssl openssl-devel perl-devel perl-generators pesign python3-devel qt5-qtbase-devel rpm-build rpmdevtools schedtool zstd -y ${clang_deps} -y
+      sudo dnf install perl bison ccache dwarves elfutils-devel elfutils-libelf-devel fedora-packager fedpkg flex gcc-c++ git grubby libXi-devel lz4 make ncurses-devel openssl openssl-devel perl-devel perl-generators pesign python3-devel qt5-qtbase-devel rpm-build rpmdevtools schedtool zstd -y ${clang_deps} -y
     fi
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
@@ -250,6 +250,9 @@ if [ "$1" = "install" ]; then
     fi
 
     _fedora_work_dir="$_kernel_work_folder_abs/linux-tkg-rpmbuild"
+
+    msg2 "Add patched files to the diff.patch"
+    (cd ${_kernel_work_folder_abs} && git add -- . ':!linux-tkg-rpmbuild')
 
     msg2 "Building kernel RPM packages"
     RPMOPTS="--define '_topdir ${_fedora_work_dir}'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
