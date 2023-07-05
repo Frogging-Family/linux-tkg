@@ -64,3 +64,68 @@ index 2c7171e0b0010..85de313ddec29 100644
  	select CPU_FREQ_GOV_PERFORMANCE
  	help
 
+From 50c597f3cc8dc4de0f0b6153a0ff1bd0b2dc6f56 Mon Sep 17 00:00:00 2001
+From: Pablo Neira Ayuso <pablo@netfilter.org>
+Date: Mon, 26 Jun 2023 00:42:18 +0200
+Subject: [PATCH] netfilter: nf_tables: unbind non-anonymous set if rule
+ construction fails
+
+Otherwise a dangling reference to a rule object that is gone remains
+in the set binding list.
+
+Fixes: 26b5a5712eb8 ("netfilter: nf_tables: add NFT_TRANS_PREPARE_ERROR to deal with bound set/chain")
+Signed-off-by: Pablo Neira Ayuso <pablo@netfilter.org>
+(cherry picked from commit 3e70489721b6c870252c9082c496703677240f53)
+For: https://bugs.archlinux.org/task/78908
+---
+ net/netfilter/nf_tables_api.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/net/netfilter/nf_tables_api.c b/net/netfilter/nf_tables_api.c
+index 4c7937fd803f9f..1d64c163076a12 100644
+--- a/net/netfilter/nf_tables_api.c
++++ b/net/netfilter/nf_tables_api.c
+@@ -5343,6 +5343,8 @@ void nf_tables_deactivate_set(const struct nft_ctx *ctx, struct nft_set *set,
+ 		nft_set_trans_unbind(ctx, set);
+ 		if (nft_set_is_anonymous(set))
+ 			nft_deactivate_next(ctx->net, set);
++		else
++			list_del_rcu(&binding->list);
+ 
+ 		set->use--;
+ 		break;
+
+From a6571d06002b30ca7f51af7681128179b122977c Mon Sep 17 00:00:00 2001
+From: Suren Baghdasaryan <surenb@google.com>
+Date: Mon, 3 Jul 2023 11:21:50 -0700
+Subject: [PATCH] mm: disable CONFIG_PER_VMA_LOCK by default until its fixed
+
+A memory corruption was reported in [1] with bisection pointing to the
+patch [2] enabling per-VMA locks for x86.
+Disable per-VMA locks config to prevent this issue while the problem is
+being investigated. This is expected to be a temporary measure.
+
+[1] https://bugzilla.kernel.org/show_bug.cgi?id=217624
+[2] https://lore.kernel.org/all/20230227173632.3292573-30-surenb@google.com
+
+Reported-by: Jiri Slaby <jirislaby@kernel.org>
+Reported-by: Jacob Young <jacobly.alt@gmail.com>
+Fixes: 0bff0aaea03e ("x86/mm: try VMA lock-based page fault handling first")
+Signed-off-by: Suren Baghdasaryan <surenb@google.com>
+---
+ mm/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/mm/Kconfig b/mm/Kconfig
+index e3454087fd31ae..d91a544678ee9d 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -1198,7 +1198,7 @@ config ARCH_SUPPORTS_PER_VMA_LOCK
+        def_bool n
+ 
+ config PER_VMA_LOCK
+-	def_bool y
++	bool "Enable per-vma locking during page fault handling."
+ 	depends on ARCH_SUPPORTS_PER_VMA_LOCK && MMU && SMP
+ 	help
+ 	  Allow per-vma locking during page fault handling.
