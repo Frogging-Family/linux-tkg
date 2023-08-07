@@ -123,7 +123,11 @@ build() {
   CFLAGS+=" ${_compileropt}"
 
   # build!
-  _runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+  if pacman -Qq schedtool &> /dev/null; then
+    msg2 "Using schedtool"
+    _schedtool="schedtool -B -n 1 -e ionice -n 1"
+  fi
+  _runtime=$( time ( $_schedtool make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
 }
 
 hackbase() {
