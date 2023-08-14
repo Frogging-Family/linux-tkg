@@ -227,10 +227,9 @@ if [ "$1" = "install" ]; then
       fi
       _headers_deb="linux-headers-${_kernelname}*.deb"
       _image_deb="linux-image-${_kernelname}_*.deb"
-      _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
 
       cd DEBS
-      sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
+      sudo dpkg -i $_headers_deb $_image_deb
     fi
 
   elif [[ "$_distro" =~ ^(Fedora|Suse)$ ]]; then
