@@ -53,109 +53,9 @@ jobs:
         env:
           latest_release: ${{ steps.latest_release.outputs.release }}
 
-  build-pds:
-    env:
-      _cpusched: "pds"
-
-    # The following code is repeated in each build job
-    # Can be factorized once YAML anchors get implemented in Github
-    # See https://github.com/actions/runner/issues/1182 for status
-
-    runs-on: ubuntu-latest
-    container: archlinux:latest
-
-    needs: ["check-for-newer-kernel"]
-
-    # the == 0 test is for "true" because it tests the exit code of a bash test
-    if: |
-      github.ref == 'refs/heads/master' &&
-      needs.check-for-newer-kernel.outputs.new_kernel == '0'
-
-    steps:
-      # We need to install git so the checkout is done with it
-      - name: Install git
-        run: pacman -Syu --noconfirm git
-
-      - name: Checkount linux-tkg
-        uses: actions/checkout@v3.0.2
-
-      # 1. Install deps needed for building and sudo
-      # 2. create a user "user" and give it passwordless sudo
-      #    and necessary permissions
-      #    because makepkg absolutely refuses to run as root
-      - name: Prepare for makepkg
-        run: |
-          pacman -Syu --noconfirm base-devel sudo
-          useradd user -G wheel && echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          chown user -R ..
-          chown user -R /tmp
-
-      # - name: "[debug] make dummy modprobed-db file for faster ci"
-      #   run: |
-      #     touch "${_modprobeddb_db_path}"
-      #     echo "${_modprobeddb_db_path}"
-
-      - name: Compile Kernel
-        run: su user -c "yes '' | makepkg --noconfirm -s"
-        # run: |
-        #   mkdir -p "$PKGDEST"
-        #   echo "test" > "$PKGDEST"/linux-$_cpusched.pkg.tar.zst
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: kernel-packages-${{ env._cpusched }}
-          path: ${{ env.PKGDEST }}/linux*.pkg.tar.zst
-
   build-cfs:
     env:
       _cpusched: "cfs"
-
-    runs-on: ubuntu-latest
-    container: archlinux:latest
-
-    needs: ["check-for-newer-kernel"]
-    if: |
-      github.ref == 'refs/heads/master' &&
-      needs.check-for-newer-kernel.outputs.new_kernel == '0'
-
-    steps:
-      # We need to install git so the checkout is done with it
-      - name: Install git
-        run: pacman -Syu --noconfirm git
-
-      - name: Checkount linux-tkg
-        uses: actions/checkout@v3.0.2
-
-      # 1. Install deps needed for building and sudo
-      # 2. create a user "user" and give it passwordless sudo
-      #    and necessary permissions
-      #    because makepkg absolutely refuses to run as root
-      - name: Prepare for makepkg
-        run: |
-          pacman -Syu --noconfirm base-devel sudo
-          useradd user -G wheel && echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          chown user -R ..
-          chown user -R /tmp
-
-      # - name: "[debug] make dummy modprobed-db file for faster ci"
-      #   run: |
-      #     touch "${_modprobeddb_db_path}"
-      #     echo "${_modprobeddb_db_path}"
-
-      - name: Compile Kernel
-        run: su user -c "yes '' | makepkg --noconfirm -s"
-        # run: |
-        #   mkdir -p "$PKGDEST"
-        #   echo "test" > "$PKGDEST"/linux-$_cpusched.pkg.tar.zst
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: kernel-packages-${{ env._cpusched }}
-          path: ${{ env.PKGDEST }}/linux*.pkg.tar.zst
-
-  build-bmq:
-    env:
-      _cpusched: "bmq"
 
     runs-on: ubuntu-latest
     container: archlinux:latest
@@ -204,7 +104,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    needs: [check-for-newer-kernel, "build-pds", "build-cfs", "build-bmq"]
+    needs: [check-for-newer-kernel, "build-cfs"]
     steps:
       - name: Download release artifacts
         uses: actions/download-artifact@v3
