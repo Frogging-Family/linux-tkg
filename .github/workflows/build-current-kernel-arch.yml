@@ -53,18 +53,11 @@ jobs:
         env:
           latest_release: ${{ steps.latest_release.outputs.release }}
 
-  build-cfs:
-    env:
-      _cpusched: "cfs"
-
+  cleanup-ubuntu:
+  
     runs-on: ubuntu-latest
-    container: archlinux:latest
-
-    needs: ["check-for-newer-kernel"]
-    if: |
-      github.ref == 'refs/heads/master' &&
-      needs.check-for-newer-kernel.outputs.new_kernel == '0'
-
+    needs: [check-for-newer-kernel]
+    
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -82,6 +75,19 @@ jobs:
           docker-images: false
           swap-storage: true
 
+  build-cfs:
+    env:
+      _cpusched: "cfs"
+
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+
+    needs: [check-for-newer-kernel, cleanup-ubuntu]
+    if: |
+      github.ref == 'refs/heads/master' &&
+      needs.check-for-newer-kernel.outputs.new_kernel == '0'
+
+    steps:
       # We need to install git so the checkout is done with it
       - name: Install git
         run: pacman -Syu --noconfirm git
@@ -120,7 +126,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    needs: [check-for-newer-kernel, "build-cfs"]
+    needs: [check-for-newer-kernel, cleanup-ubuntu, "build-cfs"]
     steps:
       - name: Download release artifacts
         uses: actions/download-artifact@v3
