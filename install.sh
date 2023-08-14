@@ -370,10 +370,6 @@ if [ "$1" = "install" ]; then
 
     msg2 "Installing kernel"
     sudo make install
-    msg2 "Creating initramfs"
-    sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
-    msg2 "Updating GRUB"
-    sudo grub-mkconfig -o /boot/grub/grub.cfg
 
     if [ "$_distro" = "Gentoo" ]; then
 
@@ -390,6 +386,13 @@ if [ "$1" = "install" ]; then
       if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
         sudo emerge @module-rebuild --keep-going
       fi
+
+    else
+
+      msg2 "Creating initramfs"
+      sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
+      msg2 "Updating GRUB"
+      sudo grub-mkconfig -o /boot/grub/grub.cfg
 
     fi
 
