@@ -67,17 +67,13 @@ _install_dependencies() {
   fi
   if [ "$_distro" = "Debian" -o "$_distro" = "Ubuntu" ]; then
     msg2 "Installing dependencies"
-    sudo apt install bc bison build-essential ccache cpio fakeroot flex git kmod libelf-dev libncurses5-dev libssl-dev lz4 qtbase5-dev rsync schedtool wget zstd ${clang_deps} -y
+    sudo apt install bc bison build-essential ccache cpio fakeroot flex git kmod libelf-dev libncurses5-dev libssl-dev lz4 qtbase5-dev rsync schedtool wget zstd debhelper ${clang_deps} -y
   elif [ "$_distro" = "Fedora" ]; then
     msg2 "Installing dependencies"
-    if [ $(rpm -E %fedora) = "32" ]; then
-      sudo dnf install bison ccache dwarves elfutils-libelf-devel fedora-packager fedpkg flex gcc-c++ git grubby libXi-devel lz4 ncurses-devel openssl-devel pesign qt5-devel rpm-build rpmdevtools schedtool zstd ${clang_deps} -y
-    else
-      sudo dnf install perl bison ccache dwarves elfutils-devel elfutils-libelf-devel fedora-packager fedpkg flex gcc-c++ git grubby libXi-devel lz4 make ncurses-devel openssl openssl-devel perl-devel perl-generators pesign python3-devel qt5-qtbase-devel rpm-build rpmdevtools schedtool zstd -y ${clang_deps} -y
-    fi
+    sudo dnf install perl bison ccache dwarves elfutils-devel elfutils-libelf-devel fedora-packager fedpkg flex gcc-c++ git grubby libXi-devel lz4 make ncurses-devel openssl openssl-devel perl-devel perl-generators pesign python3-devel qt5-qtbase-devel rpm-build rpmdevtools schedtool zstd bc rsync -y ${clang_deps} -y
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
-    sudo zypper install -y bc bison ccache dwarves elfutils flex gcc-c++ git libXi-devel libelf-devel libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 make ncurses-devel openssl-devel patch pesign rpm-build rpmdevtools schedtool ${clang_deps}
+    sudo zypper install -y bc bison ccache dwarves elfutils flex gcc-c++ git libXi-devel libelf-devel libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 make ncurses-devel openssl-devel patch pesign rpm-build rpmdevtools schedtool python3 rsync zstd ${clang_deps}
   fi
 }
 
@@ -231,10 +227,9 @@ if [ "$1" = "install" ]; then
       fi
       _headers_deb="linux-headers-${_kernelname}*.deb"
       _image_deb="linux-image-${_kernelname}_*.deb"
-      _kernel_devel_deb="linux-libc-dev_${_kernelname}*.deb"
 
       cd DEBS
-      sudo dpkg -i $_headers_deb $_image_deb $_kernel_devel_deb
+      sudo dpkg -i $_headers_deb $_image_deb
     fi
 
   elif [[ "$_distro" =~ ^(Fedora|Suse)$ ]]; then
@@ -375,10 +370,6 @@ if [ "$1" = "install" ]; then
 
     msg2 "Installing kernel"
     sudo make install
-    msg2 "Creating initramfs"
-    sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
-    msg2 "Updating GRUB"
-    sudo grub-mkconfig -o /boot/grub/grub.cfg
 
     if [ "$_distro" = "Gentoo" ]; then
 
@@ -395,6 +386,13 @@ if [ "$1" = "install" ]; then
       if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
         sudo emerge @module-rebuild --keep-going
       fi
+
+    else
+
+      msg2 "Creating initramfs"
+      sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
+      msg2 "Updating GRUB"
+      sudo grub-mkconfig -o /boot/grub/grub.cfg
 
     fi
 
