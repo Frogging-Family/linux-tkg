@@ -253,7 +253,8 @@ _set_cpu_scheduler() {
     ["upds"]="Undead PDS (TkG)"
     ["cacule"]="CacULE"
     ["tt"]="TT (TaskType)"
-    ["bore"]="BORE (Burst-Oriented Response Enhancer) CPU Scheduler"
+    ["bore"]="BORE (Burst-Oriented Response Enhancer - CFS variant) CPU Scheduler"
+    ["bore-eevdf"]="BORE (Burst-Oriented Response Enhancer - EEVDF variant) CPU Scheduler"
     ["eevdf"]="Earliest Eligible Virtual Deadline First (EEVDF) scheduler"
   )
 
@@ -295,7 +296,7 @@ _set_cpu_scheduler() {
   elif [ "$_kver" = "604" ]; then
     _avail_cpu_scheds=("cfs" "eevdf" "pds" "bmq" "tt" "bore")
   elif [ "$_kver" = "605" ]; then
-    _avail_cpu_scheds=("cfs" "eevdf" "tt" "bore")
+    _avail_cpu_scheds=("cfs" "eevdf" "tt" "bore" "bore-eevdf")
   else
     _avail_cpu_scheds=("cfs")
   fi
@@ -831,12 +832,18 @@ _tkg_srcprep() {
   elif [ "${_cpusched}" = "cfs" ]; then
     _msg="Applying Glitched CFS additions patch"
     tkgpatch="$srcdir/0003-glitched-cfs-additions.patch" && _tkg_patcher
-  elif [ "${_cpusched}" = "eevdf" ]; then
+  elif [[ "${_cpusched}" =~ "eevdf" ]]; then
     _msg="Applying Earliest Eligible Virtual Deadline First (EEVDF) scheduler patch"
     tkgpatch="$srcdir/0003-eevdf.patch" && _tkg_patcher
+
+    if [ "${_cpusched}" = "bore-eevdf" ]; then
+      _msg="Applying BORE-EEVDF patch"
+      curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-bore-eevdf.patch" > "$srcdir"/0001-bore-eevdf.patch
+      tkgpatch="$srcdir/0001-bore-eevdf.patch" && _tkg_patcher
+    fi
   fi
 
-  if [ "${_cpusched}" = "cfs" ] || [ "${_cpusched}" = "cacule" ] || [ "${_cpusched}" = "tt" ] || [ "${_cpusched}" = "bore" ] || [ "${_cpusched}" = "eevdf" ]; then
+  if [ "${_cpusched}" = "cfs" ] || [ "${_cpusched}" = "cacule" ] || [ "${_cpusched}" = "tt" ] || [ "${_cpusched}" = "bore" ] || [[ "${_cpusched}" =~ "eevdf" ]]; then
     _msg="Applying Glitched CFS patch"
     tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
   fi
@@ -1069,7 +1076,7 @@ _tkg_srcprep() {
     # BMQ default config
     _enable "SCHED_ALT" "SCHED_BMQ"
     _disable "SCHED_PDS"
-  elif [ "${_cpusched}" = "bore" ]; then
+  elif [[ "${_cpusched}" =~ "bore" ]]; then
     _enable "SCHED_BORE"
   fi
 
@@ -1283,6 +1290,7 @@ _tkg_srcprep() {
     ["eevdf"]="5"
     ["bmq"]="5"
     ["bore"]="5"
+    ["bore-eevdf"]="5"
   )
 
   if [[ -n "$_timer_freq" && ! "${_avail_timer_frequencies[*]}" =~ "$_timer_freq" ]]; then
