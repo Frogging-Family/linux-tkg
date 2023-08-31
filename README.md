@@ -43,7 +43,6 @@ The `customization.cfg` file offers many toggles for extra tweaks:
 - Using [Modprobed-db](https://github.com/graysky2/modprobed-db)'s database can reduce the compilation time and produce a smaller kernel which will only contain the modules listed in it. **NOT recommended**
   - **Warning**: make sure to read [thoroughly about it first](https://wiki.archlinux.org/index.php/Modprobed-db) since it comes with caveats that can lead to an unbootable kernel.
 - "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
-- [Anbox](https://wiki.archlinux.org/title/Anbox) support (See [Anbox usage](https://github.com/Frogging-Family/linux-tkg#anbox-usage))
 - `ZFS` FPU symbols (<5.9)
 - Overrides for missing ACS capabilities
 - Provide own kernel `.config` file
@@ -51,38 +50,6 @@ The `customization.cfg` file offers many toggles for extra tweaks:
 #### User patches
 
 To apply your own patch files using the provided scripts, you will need to put them in a `linux5y-tkg-userpatches` folder -- `y` needs to be changed with the kernel version the patch works on, _e.g_ `linux510-tkg-userpatches` -- at the same level as the `PKGBUILD` file, with the `.mypatch` extension. The script will by default ask if you want to apply them, one by one. The option `_user_patches` should be set to `true` in the `customization.cfg` file for this to work.
-
-#### Anbox usage
-
-**As of kernel 5.18, ashmem was dropped, breaking anbox. Their old Android 7 base doesn't allow moving to memfd so it might take a while to fix. The newer WayDroid alternative moved to using memfd thanks to an easier to work with Android 10 base. It still depends on binderfs, which is supported on 5.18+, but ashmem isn't a requirement for it anymore. An ashmem dkms driver can be used to circumvent the issue, but it currently is problematic on 5.19 and is likely to require active maintenance going forward. If you can, consider moving to WayDroid.**
-
-When enabling the anbox support option, the `binder` and `ashmem` modules are built-in. You don't have to load them. However you'll need to mount binderfs :
-```shell
-sudo mkdir /dev/binderfs
-sudo mount -t binder binder /dev/binderfs
-```
-
-To make this persistent, you can create `/etc/tmpfiles.d/anbox.conf` with the following content :
-```
-d! /dev/binderfs 0755 root root
-```
-After which you can add the following to your `/etc/fstab` :
-```
-binder                         /dev/binderfs binder   nofail  0      0
-```
-
-Then, if needed, start the anbox service :
-```shell
-systemctl start anbox-container-manager.service
-```
-
-You can also enable the service for it to be auto-started on boot :
-```shell
-systemctl enable anbox-container-manager.service
-```
-
-You're set to run Anbox.
-If you prefer automatic setup you can install `anbox-support` from AUR which will take care of everything by itself.
 
 
 ### Install procedure
