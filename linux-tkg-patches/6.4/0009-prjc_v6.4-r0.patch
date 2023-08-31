@@ -11164,3 +11164,147 @@ index 529590499b1f..d04bb99b4f0e 100644
  	};
  	struct wakeup_test_data *x = data;
 
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 5a83919dc4e491ccab0f1a3809a3f01c7ff7d1fc..812009077a0f6bc235befa84973d46f5088614bf 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -5507,6 +5507,7 @@ static int __sched_setscheduler(struct task_struct *p,
+ 	struct balance_callback *head;
+ 	unsigned long flags;
+ 	struct rq *rq;
++	bool cpuset_locked = false;
+ 	int reset_on_fork;
+ 	raw_spinlock_t *lock;
+
+@@ -5581,8 +5582,10 @@ static int __sched_setscheduler(struct task_struct *p,
+ 			return retval;
+ 	}
+
+-	if (pi)
+-		cpuset_read_lock();
++	if (pi) {
++		cpuset_locked = true;
++		cpuset_lock();
++	}
+
+ 	/*
+ 	 * Make sure no PI-waiters arrive (or leave) while we are
+@@ -5629,8 +5632,8 @@ static int __sched_setscheduler(struct task_struct *p,
+ 		policy = oldpolicy = -1;
+ 		__task_access_unlock(p, lock);
+ 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+-		if (pi)
+-			cpuset_read_unlock();
++		if (cpuset_locked)
++			cpuset_unlock();
+ 		goto recheck;
+ 	}
+
+@@ -5662,7 +5665,8 @@ static int __sched_setscheduler(struct task_struct *p,
+ 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+
+ 	if (pi) {
+-		cpuset_read_unlock();
++		if (cpuset_locked)
++			cpuset_unlock();
+ 		rt_mutex_adjust_pi(p);
+ 	}
+
+@@ -5675,8 +5679,8 @@ static int __sched_setscheduler(struct task_struct *p,
+ unlock:
+ 	__task_access_unlock(p, lock);
+ 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+-	if (pi)
+-		cpuset_read_unlock();
++	if (cpuset_locked)
++		cpuset_unlock();
+ 	return retval;
+ }
+
+
+diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
+index 33e7a816dbd38583b837185b6aa61504f3f3a810..bba3fc7e450a76cfaf6c981c138ef5a894a0ffb6 100644
+--- a/kernel/cgroup/cpuset.c
++++ b/kernel/cgroup/cpuset.c
+@@ -2498,11 +2498,13 @@ static int cpuset_can_attach_check(struct cpuset *cs)
+ 	return 0;
+ }
+
++#ifndef CONFIG_SCHED_ALT
+ static void reset_migrate_dl_data(struct cpuset *cs)
+ {
+ 	cs->nr_migrate_dl_tasks = 0;
+ 	cs->sum_migrate_dl_bw = 0;
+ }
++#endif
+
+ /* Called by cgroups to determine if a cpuset is usable; cpuset_mutex held */
+ static int cpuset_can_attach(struct cgroup_taskset *tset)
+@@ -2532,12 +2534,15 @@ static int cpuset_can_attach(struct cgroup_taskset *tset)
+ 		if (ret)
+ 			goto out_unlock;
+
++#ifndef CONFIG_SCHED_ALT
+ 		if (dl_task(task)) {
+ 			cs->nr_migrate_dl_tasks++;
+ 			cs->sum_migrate_dl_bw += task->dl.dl_bw;
+ 		}
++#endif
+ 	}
+
++#ifndef CONFIG_SCHED_ALT
+ 	if (!cs->nr_migrate_dl_tasks)
+ 		goto out_success;
+
+@@ -2558,6 +2563,7 @@ static int cpuset_can_attach(struct cgroup_taskset *tset)
+ 	}
+
+ out_success:
++#endif
+ 	/*
+ 	 * Mark attach is in progress.  This makes validate_change() fail
+ 	 * changes which zero cpus/mems_allowed.
+@@ -2580,13 +2586,14 @@ static void cpuset_cancel_attach(struct cgroup_taskset *tset)
+ 	cs->attach_in_progress--;
+ 	if (!cs->attach_in_progress)
+ 		wake_up(&cpuset_attach_wq);
+-
++#ifndef CONFIG_SCHED_ALT
+ 	if (cs->nr_migrate_dl_tasks) {
+ 		int cpu = cpumask_any(cs->effective_cpus);
+
+ 		dl_bw_free(cpu, cs->sum_migrate_dl_bw);
+ 		reset_migrate_dl_data(cs);
+ 	}
++#endif
+
+ 	mutex_unlock(&cpuset_mutex);
+ }
+@@ -2688,11 +2695,13 @@ static void cpuset_attach(struct cgroup_taskset *tset)
+ out:
+ 	cs->old_mems_allowed = cpuset_attach_nodemask_to;
+
++#ifndef CONFIG_SCHED_ALT
+ 	if (cs->nr_migrate_dl_tasks) {
+ 		cs->nr_deadline_tasks += cs->nr_migrate_dl_tasks;
+ 		oldcs->nr_deadline_tasks -= cs->nr_migrate_dl_tasks;
+ 		reset_migrate_dl_data(cs);
+ 	}
++#endif
+
+ 	cs->attach_in_progress--;
+ 	if (!cs->attach_in_progress)
+diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
+index 812009077a0f6bc235befa84973d46f5088614bf..389ecb74b4b9406939e67b1c4f597e1211e4a484 100644
+--- a/kernel/sched/alt_core.c
++++ b/kernel/sched/alt_core.c
+@@ -7089,8 +7089,7 @@ int cpuset_cpumask_can_shrink(const struct cpumask __maybe_unused *cur,
+ 	return 1;
+ }
+
+-int task_can_attach(struct task_struct *p,
+-		    const struct cpumask *cs_effective_cpus)
++int task_can_attach(struct task_struct *p)
+ {
+ 	int ret = 0;
+
