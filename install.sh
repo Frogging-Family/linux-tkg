@@ -287,7 +287,7 @@ if [ "$1" = "install" ]; then
         fi
         msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
         msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'"
-        sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm $_kernel_syms_rpm
+        sudo zypper install --oldpackage --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm $_kernel_syms_rpm
       fi
 
       if [ "$_distro" = "Suse" ]; then
