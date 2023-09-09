@@ -280,7 +280,7 @@ if [ "$1" = "install" ]; then
       elif [ "$_distro" = "Suse" ]; then
         warning "By default, system kernel updates will overwrite your custom kernel."
         warning "Adding a lock will prevent this but skip system kernel updates."
-        msg2 "You can remove the lock if needed with 'sudo zypper removelock kernel-default-devel kernel-default kernel-devel'"
+        msg2 "You can remove the lock if needed with 'sudo zypper removelock kernel-default-devel kernel-default kernel-devel kernel-syms'"
         read -p "Would you like to lock system kernel packages ? Y/[n]: " _lock
         if [[ "$_lock" =~ ^(Y|y|Yes|yes)$ ]]; then
           sudo zypper addlock kernel-default-devel kernel-default kernel-devel kernel-syms
