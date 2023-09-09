@@ -277,6 +277,13 @@ if [ "$1" = "install" ]; then
       if [ "$_distro" = "Fedora" ]; then
         sudo dnf install $_kernel_rpm $_kernel_devel_rpm
       elif [ "$_distro" = "Suse" ]; then
+        warning "By default, system kernel updates will overwrite your custom kernel."
+        warning "Adding a lock will prevent this but skip system kernel updates."
+        msg2 "You can remove the lock if needed with 'sudo zypper removelock kernel-default-devel kernel-default kernel-devel'"
+        read -p "Would you like to lock system kernel packages ? Y/[n]: " _lock
+        if [[ "$_lock" =~ ^(Y|y|Yes|yes)$ ]]; then
+          sudo zypper addlock kernel-default-devel kernel-default kernel-devel kernel-ksyms
+        fi
         msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
         msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'"
         sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm
