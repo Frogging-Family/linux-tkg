@@ -283,7 +283,7 @@ if [ "$1" = "install" ]; then
         msg2 "You can remove the lock if needed with 'sudo zypper removelock kernel-default-devel kernel-default kernel-devel'"
         read -p "Would you like to lock system kernel packages ? Y/[n]: " _lock
         if [[ "$_lock" =~ ^(Y|y|Yes|yes)$ ]]; then
-          sudo zypper addlock kernel-default-devel kernel-default kernel-devel kernel-ksyms
+          sudo zypper addlock kernel-default-devel kernel-default kernel-devel kernel-syms
         fi
         msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
         msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'"
