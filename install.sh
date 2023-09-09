@@ -282,6 +282,11 @@ if [ "$1" = "install" ]; then
         sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm
       fi
 
+      if [ "$_distro" = "Suse" ]; then
+        msg2 "Updating GRUB"
+        sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+      fi
+
       msg2 "Install successful"
     fi
 
