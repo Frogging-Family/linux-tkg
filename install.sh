@@ -272,7 +272,7 @@ if [ "$1" = "install" ]; then
       _kernel_rpm="kernel-${_kernelname}*.rpm"
       # The headers are actually contained in the kernel-devel RPM and not the headers one...
       _kernel_devel_rpm="kernel-devel-${_kernelname}*.rpm"
-      _kernel_ksyms_rpm="kernel-ksyms-${_kernelname}*.rpm"
+      _kernel_syms_rpm="kernel-syms-${_kernelname}*.rpm"
 
       cd RPMS
       if [ "$_distro" = "Fedora" ]; then
@@ -287,7 +287,7 @@ if [ "$1" = "install" ]; then
         fi
         msg2 "Some files from 'linux-glibc-devel' will be replaced by files from the custom kernel-hearders package"
         msg2 "To revert back to the original kernel headers do 'sudo zypper install -f linux-glibc-devel'"
-        sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm $_kernel_ksyms_rpm
+        sudo zypper install --allow-unsigned-rpm $_kernel_rpm $_kernel_devel_rpm $_kernel_syms_rpm
       fi
 
       if [ "$_distro" = "Suse" ]; then
