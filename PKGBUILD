@@ -125,9 +125,18 @@ build() {
   # build!
   if pacman -Qq schedtool &> /dev/null; then
     msg2 "Using schedtool"
-    #_schedtool="schedtool -B -n 1 -e ionice -n 1"
+    _schedtool="command schedtool -B -n 1"
+    _ionice="command ionice -n 1"
   fi
-  _runtime=$( time ( $_schedtool make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3 )
+  _runtime=$(
+    if [ -n "$_schedtool" ]; then
+      _pid="$(exec bash -c 'echo "$PPID"')"
+      $_schedtool "$_pid" ||:
+      $_ionice -p "$_pid" ||:
+    fi
+    time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3
+    return $?
+  )
 }
 
 hackbase() {
