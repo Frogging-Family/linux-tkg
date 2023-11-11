@@ -15,21 +15,21 @@ This repository provides scripts to automatically download, patch and compile th
 ### Customization options
 #### Alternative CPU schedulers
 
-[CFS](https://en.wikipedia.org/wiki/Completely_Fair_Scheduler) is the only CPU scheduler available in the "vanilla" kernel sources. Its current implementation doesn't allow for injecting additional schedulers, and requires replacing it. Only one scheduler can be patched in at a time.
+[EEVDF](https://lwn.net/Articles/925371/) is the only CPU scheduler available in the "vanilla" kernel sources. Its current implementation doesn't allow for injecting additional schedulers, and requires replacing it. Only one scheduler can be patched in at a time.
 
 Alternative schedulers are available to you in linux-tkg:
 - Project C / PDS & BMQ by Alfred Chen: [blog](http://cchalpha.blogspot.com/ ), [code repository](https://gitlab.com/alfredchen/projectc)
 - MuQSS by Con Kolivas : [blog](http://ck-hack.blogspot.com/), [code repository](https://github.com/ckolivas/linux)
 - CacULE by Hamad Marri - CFS based : [code repository](https://github.com/hamadmarri/cacule-cpu-scheduler)
 - Task Type (TT) by Hamad Marri - CFS based : [code repository](https://github.com/hamadmarri/TT-CPU-Scheduler)
-- BORE (Burst-Oriented Response Enhancer) by Masahito Suzuki - CFS based : [code repository](https://github.com/firelzrd/bore-scheduler)
+- BORE (Burst-Oriented Response Enhancer) by Masahito Suzuki - CFS/EEVDF based : [code repository](https://github.com/firelzrd/bore-scheduler)
 - Undead PDS : TkG's port of the pre-Project C "PDS-mq" scheduler by Alfred Chen. While PDS-mq got dropped with kernel 5.1 in favor of its BMQ evolution/rework, it wasn't on par with PDS-mq in gaming. "U" PDS still performed better in some cases than other schedulers, so it's been kept undead for a while.
 
 These alternative schedulers can offer a better performance/latency ratio for gaming and desktop use. The availability of each scheduler depends on the chosen Kernel version: the script will display what's available on a per-version basis.
 #### Default tweaks
 - Memory management and swapping tweaks
 - Scheduling tweaks
-- `CFS` tweaks
+- `CFS/EEVDF` tweaks
 - Using the ["Cake"](https://www.bufferbloat.net/projects/codel/wiki/CakeTechnical/) network queue management system
 - Using `vm.max_map_count=16777216` by default
 - Cherry-picked patches from [Clear Linux's patchset](https://github.com/clearlinux-pkgs/linux)

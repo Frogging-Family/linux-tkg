@@ -252,14 +252,14 @@ _set_cpu_scheduler() {
   _sched_description_array=(
     ["pds"]="Project C / PDS"
     ["bmq"]="Project C / BMQ"
-    ["cfs"]="CFS (Completely Fair Scheduler) Linux kernel's default"
+    ["eevdf"]="EEVDF (Earliest Eligible Virtual Deadline First scheduler) Linux kernel's default [6.6+]"
+    ["cfs"]="CFS (Completely Fair Scheduler) Linux kernel's default [6.5-]"
     ["muqss"]="MuQSS (Multiple Queue Skiplist Scheduler)"
     ["upds"]="Undead PDS (TkG)"
     ["cacule"]="CacULE"
     ["tt"]="TT (TaskType)"
     ["bore"]="BORE (Burst-Oriented Response Enhancer) CPU Scheduler"
     ["bore-eevdf"]="BORE (Burst-Oriented Response Enhancer - EEVDF variant) CPU Scheduler"
-    ["eevdf"]="Earliest Eligible Virtual Deadline First (EEVDF) scheduler"
   )
 
   # CPU SCHED selector - _projectc_unoff=1 sets unofficial Project C revision flag for a given version
@@ -304,7 +304,7 @@ _set_cpu_scheduler() {
   elif [ "$_kver" = "606" ]; then
     _avail_cpu_scheds=("eevdf" "bore")
   else
-    _avail_cpu_scheds=("cfs")
+    _avail_cpu_scheds=("cfs" "eevdf")
   fi
 
   if [ "${_preempt_rt}" = "1" ]; then
@@ -348,7 +348,7 @@ _set_cpu_scheduler() {
   if [ -z "$_cpusched" ]; then
     msg2 "Which CPU sched variant do you want to build/install?"
     msg2 "Project C (pds) / BMQ (bmq) is usually a good balance for gaming."
-    msg2 "Select \"cfs\" (linux kernel's default) if unsure."
+    msg2 "Select \"eevdf\" (linux kernel's default) if unsure."
 
     _default_index="0"
     _prompt_from_array "${_avail_cpu_scheds_text[@]}"
@@ -854,16 +854,20 @@ _tkg_srcprep() {
     _msg="Applying Glitched CFS additions patch"
     tkgpatch="$srcdir/0003-glitched-cfs-additions.patch" && _tkg_patcher
   elif [[ "${_cpusched}" =~ "eevdf" ]]; then
-    _msg="Applying Earliest Eligible Virtual Deadline First (EEVDF) scheduler patch"
-    tkgpatch="$srcdir/0003-eevdf.patch" && _tkg_patcher
+    if [[ $_kver == "604" || $_kver == "605" ]]; then
+      _msg="Applying Earliest Eligible Virtual Deadline First (EEVDF) scheduler patch"
+      tkgpatch="$srcdir/0003-eevdf.patch" && _tkg_patcher
+
+      if [[ "${_cpusched}" != "bore-eevdf" ]]; then
+        _msg="Applying eevdf-Disable-DELAY_DEQUEUE patch"
+        tkgpatch="$srcdir/0004-eevdf-Disable-DELAY_DEQUEUE.patch" && _tkg_patcher
+      fi
+    fi
 
     if [ "${_cpusched}" = "bore-eevdf" ]; then
       _msg="Applying BORE-EEVDF patch"
       curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-bore-eevdf.patch" > "$srcdir"/0001-bore-eevdf.patch
       tkgpatch="$srcdir/0001-bore-eevdf.patch" && _tkg_patcher
-    else
-      _msg="Applying eevdf-Disable-DELAY_DEQUEUE patch"
-      tkgpatch="$srcdir/0004-eevdf-Disable-DELAY_DEQUEUE.patch" && _tkg_patcher
     fi
   fi
 
