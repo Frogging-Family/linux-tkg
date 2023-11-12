@@ -15,7 +15,10 @@ This repository provides scripts to automatically download, patch and compile th
 ### Customization options
 #### Alternative CPU schedulers
 
-[EEVDF](https://lwn.net/Articles/925371/) is the only CPU scheduler available in the "vanilla" kernel sources. Its current implementation doesn't allow for injecting additional schedulers, and requires replacing it. Only one scheduler can be patched in at a time.
+[CFS](https://en.wikipedia.org/wiki/Completely_Fair_Scheduler) is the only CPU scheduler available in the "vanilla" kernel sources ≤ 6.5.
+[EEVDF](https://lwn.net/Articles/925371/) is the only CPU scheduler available in the "vanilla" kernel sources ≥ 6.6.
+
+Its current implementation doesn't allow for injecting additional schedulers, and requires replacing it. Only one scheduler can be patched in at a time.
 
 Alternative schedulers are available to you in linux-tkg:
 - Project C / PDS & BMQ by Alfred Chen: [blog](http://cchalpha.blogspot.com/ ), [code repository](https://gitlab.com/alfredchen/projectc)
