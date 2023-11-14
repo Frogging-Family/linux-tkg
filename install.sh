@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Stop the script at any ecountered error
+set -e
+
+# save current environment before losing it to the script call
+declare -p -x > current_env
+
 # If current run is not using 'script' for logging, do it
 if [ -z "$SCRIPT" ]; then
   export SCRIPT=1
@@ -11,8 +17,7 @@ if [ -z "$SCRIPT" ]; then
   exit $exit_status
 fi
 
-# Stop the script at any ecountered error
-set -e
+###################### Definition of helper variables and functions
 
 _where=`pwd`
 srcdir="$_where"
@@ -42,7 +47,10 @@ plain() {
  echo -e "$1" >&2
 }
 
-declare -p -x > current_env
+####################################################################
+
+################### Config sourcing
+
 source customization.cfg
 
 if [ -e "$_EXT_CONFIG_PATH" ]; then
@@ -53,6 +61,8 @@ fi
 . current_env
 
 source linux-tkg-config/prepare
+
+####################################################################
 
 _distro_prompt() {
   echo "Which linux distribution are you running ?"
@@ -87,12 +97,6 @@ if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]
                     - 'Generic' distro: it uses 'make modules_install' and 'make install', uses 'dracut' to create an initramfs, then updates grub's boot entry.
         - uninstall-help : [RPM and DEB based distros only], lists the installed kernels in this system, then gives hints on how to uninstall them manually."
   exit 0
-fi
-
-# Load external configuration file if present. Available variable values will overwrite customization.cfg ones.
-if [ -e "$_EXT_CONFIG_PATH" ]; then
-  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
-  source "$_EXT_CONFIG_PATH"
 fi
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
