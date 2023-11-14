@@ -49,6 +49,7 @@ The `customization.cfg` file offers many toggles for extra tweaks:
 - `ZFS` FPU symbols (<5.9)
 - Overrides for missing ACS capabilities
 - [Waydroid](https://wiki.archlinux.org/title/Waydroid) support
+- [OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB) support
 - Provide own kernel `.config` file
 - ...
 #### User patches
