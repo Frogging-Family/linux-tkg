@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List of kernels that are maintained upstream
-_current_kernels=("6.6" "6.5" "6.4" "6.1" "5.15")
+_current_kernels=("6.7" "6.6" "6.5" "6.4" "6.1" "5.15")
 
 # List of kernels that are no longer maintained either upstream or locally
 _eol_kernels=("6.3" "6.2" "6.0" "5.19" "5.18" "5.17" "5.16" "5.14" "5.13" "5.12" "5.11" "5.9" "5.8" "5.7" "5.4.230" "5.10.135")
@@ -554,11 +554,11 @@ _tkg_initscript() {
 
 user_patcher() {
     for _f in "$_where"/*."${_userpatch_ext}patch" "$_where"/*."${_userpatch_ext}revert"; do
-      [ -e "${_f}" ] || continue
-      warning "Found userpatch file ${f##*/} in the PKGBUILD directory." #"
-      warning "Userpatches must now be placed in version-specific subdirectories (linux${_basever}-tkg-userpatches for this kernel version)."
-      warning "The patch will not be applied."
-      break
+      if [ -e "${_f}" ]; then
+        warning "Found userpatch file ${f##*/} in the PKGBUILD directory." #"
+        warning "Userpatches must now be placed in version-specific subdirectories (linux${_basever}-tkg-userpatches for this kernel version)."
+        warning "The patch will not be applied."
+      fi
     done
 
     echo -e "linux-tkg user patches, if any:\n" >> "$_where"/logs/prepare.log.txt
@@ -932,9 +932,12 @@ _tkg_srcprep() {
     scripts/config --set-val "RCU_BOOST_DELAY" "0"
   fi
   _disable "NTP_PPS" "ZSWAP_COMPRESSOR_DEFAULT_LZO" "PROFILE_ALL_BRANCHES"
-  _enable "CRYPTO_LZ4" "CRYPTO_LZ4HC" "LZ4_COMPRESS" "LZ4HC_COMPRESS" "ZSWAP_COMPRESSOR_DEFAULT_LZ4" "X86_AMD_PSTATE" "AMD_PINCTRL"
+  _enable "CRYPTO_LZ4" "CRYPTO_LZ4HC" "LZ4_COMPRESS" "LZ4HC_COMPRESS" "X86_AMD_PSTATE" "AMD_PINCTRL"
   _disable "DEBUG_FORCE_FUNCTION_ALIGN_64B" "X86_P6_NOP" "RCU_STRICT_GRACE_PERIOD"
-  scripts/config --set-str "ZSWAP_COMPRESSOR_DEFAULT" "lz4"
+  if [ $_kver -le 605 ]; then
+    _enable "ZSWAP_COMPRESSOR_DEFAULT_LZ4"
+    scripts/config --set-str "ZSWAP_COMPRESSOR_DEFAULT" "lz4"
+  fi
   _enable "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
   _disable "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_DEFAULT_GOV_CONSERVATIVE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF"
   _module "BLK_DEV_LOOP"
