@@ -1,0 +1,93 @@
+diff -Naur vlinux-6.6.1/kernel/sched/fair.c linux-6.6.1/kernel/sched/fair.c
+--- vlinux-6.6.1/kernel/sched/fair.c	2023-11-08 11:56:25.000000000 +0100
++++ linux-6.6.1/kernel/sched/fair.c	2023-11-11 15:51:09.630279108 +0100
+@@ -75,16 +75,24 @@
+  *
+  * (default: 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds)
+  */
++#ifdef CONFIG_ZENIFY
++unsigned int sysctl_sched_base_slice			= 400000ULL;
++static unsigned int normalized_sysctl_sched_base_slice	= 400000ULL;
++#else
+ unsigned int sysctl_sched_base_slice			= 750000ULL;
+ static unsigned int normalized_sysctl_sched_base_slice	= 750000ULL;
+-
++#endif
+ /*
+  * After fork, child runs first. If set to 0 (default) then
+  * parent will (try to) run first.
+  */
+ unsigned int sysctl_sched_child_runs_first __read_mostly;
+ 
++#ifdef CONFIG_ZENIFY
++const_debug unsigned int sysctl_sched_migration_cost	= 250000UL;
++#else
+ const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
++#endif
+ 
+ int sched_thermal_decay_shift;
+ static int __init setup_sched_thermal_decay_shift(char *str)
+@@ -135,8 +143,12 @@
+  *
+  * (default: 5 msec, units: microseconds)
+  */
++#ifdef CONFIG_ZENIFY
++static unsigned int sysctl_sched_cfs_bandwidth_slice		= 3000UL;
++#else
+ static unsigned int sysctl_sched_cfs_bandwidth_slice		= 5000UL;
+ #endif
++#endif
+ 
+ #ifdef CONFIG_NUMA_BALANCING
+ /* Restrict the NUMA promotion throughput (MB/s) for each target node. */
+diff -Naur vlinux-6.6.1/kernel/sched/sched.h linux-6.6.1/kernel/sched/sched.h
+--- vlinux-6.6.1/kernel/sched/sched.h	2023-11-08 11:56:25.000000000 +0100
++++ linux-6.6.1/kernel/sched/sched.h	2023-11-11 15:52:03.241725632 +0100
+@@ -2515,7 +2515,7 @@
+ 
+ extern void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags);
+ 
+-#ifdef CONFIG_PREEMPT_RT
++#if defined(CONFIG_PREEMPT_RT) || defined(CONFIG_ZENIFY)
+ #define SCHED_NR_MIGRATE_BREAK 8
+ #else
+ #define SCHED_NR_MIGRATE_BREAK 32
+diff -Naur vlinux-6.6.1/kernel/sched/topology.c linux-6.6.1/kernel/sched/topology.c
+--- vlinux-6.6.1/kernel/sched/topology.c	2023-11-08 11:56:25.000000000 +0100
++++ linux-6.6.1/kernel/sched/topology.c	2023-11-11 15:56:54.602473894 +0100
+@@ -208,7 +208,7 @@
+ 
+ #if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
+ DEFINE_STATIC_KEY_FALSE(sched_energy_present);
+-static unsigned int sysctl_sched_energy_aware = 1;
++static unsigned int sysctl_sched_energy_aware = 0;
+ static DEFINE_MUTEX(sched_energy_mutex);
+ static bool sched_energy_update;
+ 
+diff -Naur vlinux-6.6.1/mm/page-writeback.c linux-6.6.1/mm/page-writeback.c
+--- vlinux-6.6.1/mm/page-writeback.c	2023-11-08 11:56:25.000000000 +0100
++++ linux-6.6.1/mm/page-writeback.c	2023-11-11 16:07:22.214222902 +0100
+@@ -71,7 +71,11 @@
+ /*
+  * Start background writeback (via writeback threads) at this percentage
+  */
++#ifdef CONFIG_ZENIFY
++static int dirty_background_ratio = 20;
++#else
+ static int dirty_background_ratio = 10;
++#endif
+ 
+ /*
+  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
+@@ -88,7 +92,11 @@
+ /*
+  * The generator of dirty data starts writeback at this percentage
+  */
++#ifdef CONFIG_ZENIFY
++static int vm_dirty_ratio = 50;
++#else
+ static int vm_dirty_ratio = 20;
++#endif
+ 
+ /*
+  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
