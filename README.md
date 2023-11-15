@@ -75,9 +75,7 @@ The script will use a slightly modified Arch config from the `linux-tkg-config` 
 #### DEB (Debian, Ubuntu and derivatives) and RPM (Fedora, SUSE and derivatives) based distributions
 
 **Important notes:**
-- Some issues have been reported by both Fedora (see https://github.com/Frogging-Family/linux-tkg/issues/383) and Ubuntu (see https://github.com/Frogging-Family/linux-tkg/issues/436) users where stock kernels cannot boot any longer, the whereabouts are still not entirely clear (it does not seem to affect every user)
-  - Ubuntu: appears to be an initramfs generation issue
-  - Fedora: needs disabling then re-enabling SELINUX so one can boot
+An issue has been reported for Ubuntu where the stock kernel cannot boot properly any longer, the whereabouts are not entirely clear (only a single user reported that, see https://github.com/Frogging-Family/linux-tkg/issues/436).
 
 The interactive `install.sh` script will create, depending on the selected distro, `.deb` or `.rpm` packages, move them in the the subfolder `DEBS` or `RPMS` then prompts to install them with the distro's package manager.
 ```shell
