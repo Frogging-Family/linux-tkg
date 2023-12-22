@@ -411,14 +411,12 @@ if [ "$1" = "install" ]; then
         sudo emerge @module-rebuild --keep-going
       fi
 
-    else
-
-      msg2 "Creating initramfs"
-      sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
-      msg2 "Updating GRUB"
-      sudo grub-mkconfig -o /boot/grub/grub.cfg
-
     fi
+
+    msg2 "Creating initramfs"
+    sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
+    msg2 "Updating GRUB"
+    sudo grub-mkconfig -o /boot/grub/grub.cfg
 
   fi
 fi
