@@ -7,7 +7,7 @@ set -e
 declare -p -x > current_env
 
 # If current run is not using 'script' for logging, do it
-if [ -z "$SCRIPT" ]; then
+if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   export SCRIPT=1
   /usr/bin/script -q -e -c "$0 $@" shell-output.log
   exit_status="$?"
