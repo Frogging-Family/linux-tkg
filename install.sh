@@ -221,8 +221,11 @@ if [ "$1" = "install" ]; then
     # Move deb files to DEBS folder inside the linux-tkg folder
     mv "$_build_dir"/*.deb "$_where"/DEBS/
 
-    read -p "Do you want to install the new Kernel ? Y/[n]: " _install
-    if [[ "$_install" =~ ^(y|Y|yes|Yes)$ ]]; then
+    if [[ "$_install_after_building" = "prompt" ]]; then
+      read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+    fi
+
+    if [[ "$_install_after_building" =~ ^(Y|y|Yes|yes)$ || "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
       cd "$_where"
       if [[ "$_sub" = rc* ]]; then
         _kernelname=$_basekernel.$_kernel_subver-$_sub-$_kernel_flavor
@@ -264,8 +267,11 @@ if [ "$1" = "install" ]; then
     # Move rpm files to RPMS folder inside the linux-tkg folder
     mv ${_fedora_work_dir}/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
-    read -p "Do you want to install the new Kernel ? Y/[n]: " _install
-    if [[ "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
+    if [[ "$_install_after_building" = "prompt" ]]; then
+      read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+    fi
+
+    if [[ "$_install_after_building" =~ ^(Y|y|Yes|yes)$ || "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
 
       if [[ "$_sub" = rc* ]]; then
         _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor
