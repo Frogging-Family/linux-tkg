@@ -208,6 +208,9 @@ if [ "$1" = "install" ]; then
 
   cd "$_kernel_work_folder_abs"
 
+  msg2 "Add patched files to the diff.patch"
+  git add .
+
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
@@ -252,9 +255,6 @@ if [ "$1" = "install" ]; then
     fi
 
     _fedora_work_dir="$_kernel_work_folder_abs/rpmbuild"
-
-    msg2 "Add patched files to the diff.patch"
-    (cd ${_kernel_work_folder_abs} && git add -- . ':!rpmbuild')
 
     msg2 "Building kernel RPM packages"
     RPMOPTS="--define '_topdir ${_fedora_work_dir}'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
