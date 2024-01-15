@@ -7,7 +7,7 @@ set -e
 declare -p -x > current_env
 
 # If current run is not using 'script' for logging, do it
-if [ -z "$SCRIPT" ]; then
+if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   export SCRIPT=1
   /usr/bin/script -q -e -c "$0 $@" shell-output.log
   exit_status="$?"
@@ -208,6 +208,9 @@ if [ "$1" = "install" ]; then
 
   cd "$_kernel_work_folder_abs"
 
+  msg2 "Add patched files to the diff.patch"
+  git add .
+
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
@@ -221,8 +224,11 @@ if [ "$1" = "install" ]; then
     # Move deb files to DEBS folder inside the linux-tkg folder
     mv "$_build_dir"/*.deb "$_where"/DEBS/
 
-    read -p "Do you want to install the new Kernel ? Y/[n]: " _install
-    if [[ "$_install" =~ ^(y|Y|yes|Yes)$ ]]; then
+    if [[ "$_install_after_building" = "prompt" ]]; then
+      read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+    fi
+
+    if [[ "$_install_after_building" =~ ^(Y|y|Yes|yes)$ || "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
       cd "$_where"
       if [[ "$_sub" = rc* ]]; then
         _kernelname=$_basekernel.$_kernel_subver-$_sub-$_kernel_flavor
@@ -250,9 +256,6 @@ if [ "$1" = "install" ]; then
 
     _fedora_work_dir="$_kernel_work_folder_abs/rpmbuild"
 
-    msg2 "Add patched files to the diff.patch"
-    (cd ${_kernel_work_folder_abs} && git add -- . ':!rpmbuild')
-
     msg2 "Building kernel RPM packages"
     RPMOPTS="--define '_topdir ${_fedora_work_dir}'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
     msg2 "Building successfully finished!"
@@ -264,8 +267,11 @@ if [ "$1" = "install" ]; then
     # Move rpm files to RPMS folder inside the linux-tkg folder
     mv ${_fedora_work_dir}/RPMS/x86_64/*tkg* "$_where"/RPMS/
 
-    read -p "Do you want to install the new Kernel ? Y/[n]: " _install
-    if [[ "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
+    if [[ "$_install_after_building" = "prompt" ]]; then
+      read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+    fi
+
+    if [[ "$_install_after_building" =~ ^(Y|y|Yes|yes)$ || "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
 
       if [[ "$_sub" = rc* ]]; then
         _kernelname=$_basekernel.${_kernel_subver}_${_sub}_$_kernel_flavor

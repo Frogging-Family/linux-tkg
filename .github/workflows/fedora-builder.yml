@@ -1,0 +1,71 @@
+name: Build Fedora kernel
+on:
+  workflow_call:
+    inputs:
+      _cpusched:
+        required: true
+        type: string
+
+
+env:
+  _waydroid: "true"
+  _processor_opt: "generic"
+  _distro: "Fedora"
+  _git_mirror: "github.com"
+  _logging_use_script: "no"
+  _install_after_building: "no"
+  _debugdisable: "true"
+  _noccache: "true"
+  _STRIP: "true"
+  _kernel_on_diet: "true"
+  _kernel_work_folder: "/tmp"
+  _kernel_source_folder: "/tmp"
+  # _modprobeddb: "true"
+  _modprobeddb_db_path: ${{ github.workspace }}/modprobed.db
+
+
+
+jobs:
+  build-kernel:
+    env:
+      _cpusched: ${{ inputs._cpusched }}
+
+    runs-on: ubuntu-latest
+    container: fedora:latest
+
+    steps:
+      - name: Install git (needed for checkout)
+        run: dnf install git -y
+
+      - name: Checkount linux-tkg
+        uses: actions/checkout@v4
+
+      - name: fix git folder ownership
+        run: git config --global --add safe.directory `pwd`
+
+      - name: run git status
+        run: git status
+
+      # - name: "[debug] make dummy modprobed-db file for faster ci"
+      #   run: |
+      #     touch "${_modprobeddb_db_path}"
+      #     echo "${_modprobeddb_db_path}"
+
+      - name: Install deps and compile kernel
+        run: yes '' | ./install.sh install
+        # run: |
+        #   mkdir -p "$PKGDEST"
+        #   echo "test" > "$PKGDEST"/linux-$_cpusched.pkg.tar.zst
+
+      - name: Cleanup useless RPM files
+        run: rm -rf RPMS/*kernel-headers*.rpm
+
+      - name: rename kernel config
+        run: mv kernelconfig.new kernelconfig.fedora.${{ env._cpusched }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora-kernel-packages-${{ env._cpusched }}
+          path: |
+            ${{ github.workspace }}/RPMS/*.rpm
+            kernelconfig*.txt

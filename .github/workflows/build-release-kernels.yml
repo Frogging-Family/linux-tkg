@@ -1,0 +1,82 @@
+name: Build & Release Latest Kernel
+on:
+  schedule:
+    - cron: '17 */12 * * *' # “At minute 17 past every 12th hour.”
+  workflow_dispatch:
+
+jobs:
+
+  check-for-newer-kernel:
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      new_kernel: ${{ steps.check_for_new_kernel.outputs.new_kernel }}
+      latest_kernel: ${{ steps.check_for_new_kernel.outputs.latest_kernel }}
+
+    steps:
+      - name: Checkount linux-tkg
+        uses: actions/checkout@v3.0.2
+
+      # Get latest release in repo, so we compare its version
+      # with the latest kernel available so far
+      - name: Get latest release
+        id: latest_release
+        uses: pozetroninc/github-action-get-latest-release@master
+        with:
+          repository: ${{ github.repository }}
+        # it fails when there's no release
+        continue-on-error: true
+
+      - name: Get latest kernel version
+        id: check_for_new_kernel
+        run: |
+          ./.github/get_latest_kver.sh
+          latest_kernel="$(cat .github/latest-kernel)"
+          echo "latest_kernel=$latest_kernel" >> $GITHUB_OUTPUT
+          new_kernel=0
+          [[ "$latest_kernel" != "$latest_release" ]] || new_kernel=$?
+          echo "new_kernel=$new_kernel" >> $GITHUB_OUTPUT
+        env:
+          latest_release: ${{ steps.latest_release.outputs.release }}
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        _cpusched: [bore, eevdf, pds, bmq]
+        os: [arch, ubuntu, fedora]
+    uses: ./.github/workflows/builder-dispatcher.yml
+    with:
+      _cpusched: ${{ matrix._cpusched }}
+      os: ${{ matrix.os }}
+
+    needs: [check-for-newer-kernel]
+    if: |
+      github.ref == 'refs/heads/master' &&
+      needs.check-for-newer-kernel.outputs.new_kernel == '0'
+
+  make-release:
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - "check-for-newer-kernel"
+      - "build"
+    if: needs.build.result == 'success'
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Make new release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: ${{ needs.check-for-newer-kernel.outputs.latest_kernel }}
+          prerelease: false
+          title: "[experimental] ${{ needs.check-for-newer-kernel.outputs.latest_kernel }}"
+          files: |
+            ${{ github.workspace }}/arch-kernel-packages-*/**
+            ${{ github.workspace }}/ubuntu-kernel-packages-*/**
+            ${{ github.workspace }}/fedora-kernel-packages-*/**

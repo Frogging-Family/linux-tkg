@@ -1,0 +1,77 @@
+name: Build archlinux kernel
+on:
+  workflow_call:
+    inputs:
+      _cpusched:
+        required: true
+        type: string
+
+
+env:
+  _waydroid: "true"
+  _processor_opt: "generic"
+  _git_mirror: "github.com"
+  PKGDEST: "/tmp/linux-tkg"
+  _debugdisable: "true"
+  _noccache: "true"
+  _STRIP: "true"
+  _kernel_on_diet: "true"
+  _kernel_work_folder: "/tmp"
+  _kernel_source_folder: "/tmp"
+  # _modprobeddb: "true"
+  _modprobeddb_db_path: ${{ github.workspace }}/modprobed.db
+
+
+
+jobs:
+  build-kernel:
+    env:
+      _cpusched: ${{ inputs._cpusched }}
+
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+
+    steps:
+      # We need to install git so the checkout is done with it
+      - name: Update mirrorlist
+        run: |
+          pacman -Sy --noconfirm reflector
+          reflector --latest 50 --protocol http,https --sort rate --save /etc/pacman.d/mirrorlist
+
+      - name: Install git
+        run: pacman -Syu --noconfirm git
+
+      - name: Checkount linux-tkg
+        uses: actions/checkout@v4
+
+      # 1. Install deps needed for building and sudo
+      # 2. create a user "user" and give it passwordless sudo
+      #    and necessary permissions
+      #    because makepkg absolutely refuses to run as root
+      - name: Prepare for makepkg
+        run: |
+          pacman -Syu --noconfirm base-devel sudo
+          useradd user -G wheel && echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown user -R ..
+          chown user -R /tmp
+
+      # - name: "[debug] make dummy modprobed-db file for faster ci"
+      #   run: |
+      #     touch "${_modprobeddb_db_path}"
+      #     echo "${_modprobeddb_db_path}"
+
+      - name: Compile Kernel
+        run: su user -c "yes '' | makepkg --noconfirm -s"
+        # run: |
+        #   mkdir -p "$PKGDEST"
+        #   echo "test" > "$PKGDEST"/linux-$_cpusched.pkg.tar.zst
+
+      - name: rename kernel config
+        run: mv kernelconfig.new kernelconfig.arch.${{ env._cpusched }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-kernel-packages-${{ env._cpusched }}
+          path: |
+            ${{ env.PKGDEST }}/linux*.pkg.tar.zst
+            kernelconfig*.txt

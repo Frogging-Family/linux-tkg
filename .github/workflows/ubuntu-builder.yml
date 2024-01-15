@@ -1,0 +1,61 @@
+name: Build Ubuntu kernel
+on:
+  workflow_call:
+    inputs:
+      _cpusched:
+        required: true
+        type: string
+
+
+env:
+  _waydroid: "true"
+  _processor_opt: "generic"
+  _distro: "Ubuntu"
+  _git_mirror: "github.com"
+  _logging_use_script: "no"
+  _install_after_building: "no"
+  _debugdisable: "true"
+  _noccache: "true"
+  _STRIP: "true"
+  _kernel_on_diet: "true"
+  _kernel_work_folder: "/tmp"
+  _kernel_source_folder: "/tmp"
+  # _modprobeddb: "true"
+  _modprobeddb_db_path: ${{ github.workspace }}/modprobed.db
+
+
+
+jobs:
+  build-kernel:
+    env:
+      _cpusched: ${{ inputs._cpusched }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkount linux-tkg
+        uses: actions/checkout@v4
+
+      # - name: "[debug] make dummy modprobed-db file for faster ci"
+      #   run: |
+      #     touch "${_modprobeddb_db_path}"
+      #     echo "${_modprobeddb_db_path}"
+
+      - name: Install deps and compile kernel
+        run: yes '' | ./install.sh install
+        # run: |
+        #   mkdir -p "$PKGDEST"
+        #   echo "test" > "$PKGDEST"/linux-$_cpusched.pkg.tar.zst
+
+      - name: Cleanup useless DEB files
+        run: rm -rf DEBS/*dbg*.deb DEBS/*libc-dev*.deb
+
+      - name: rename kernel config
+        run: mv kernelconfig.new kernelconfig.ubuntu.${{ env._cpusched }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-kernel-packages-${{ env._cpusched }}
+          path: |
+            ${{ github.workspace }}/DEBS/*.deb
+            ${{ github.workspace }}/kernelconfig*.txt
