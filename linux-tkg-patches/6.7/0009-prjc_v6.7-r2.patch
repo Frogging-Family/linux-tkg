@@ -1,22 +1,5 @@
-diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 65731b060e3f..56f8c9453e24 100644
---- a/Documentation/admin-guide/kernel-parameters.txt
-+++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -5714,6 +5714,12 @@
- 	sa1100ir	[NET]
- 			See drivers/net/irda/sa1100_ir.c.
- 
-+	sched_timeslice=
-+			[KNL] Time slice in ms for Project C BMQ/PDS scheduler.
-+			Format: integer 2, 4
-+			Default: 4
-+			See Documentation/scheduler/sched-BMQ.txt
-+
- 	sched_verbose	[KNL] Enables verbose scheduler debug messages.
- 
- 	schedstats=	[KNL,X86] Enable or disable scheduled statistics.
 diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
-index 6584a1f9bfe3..e332d9eff0d4 100644
+index 6584a1f9bfe3..226c79dd34cc 100644
 --- a/Documentation/admin-guide/sysctl/kernel.rst
 +++ b/Documentation/admin-guide/sysctl/kernel.rst
 @@ -1646,3 +1646,13 @@ is 10 seconds.
@@ -28,11 +11,11 @@ index 6584a1f9bfe3..e332d9eff0d4 100644
 +===========
 +
 +BMQ/PDS CPU scheduler only. This determines what type of yield calls
-+to sched_yield will perform.
++to sched_yield() will be performed.
 +
 +  0 - No yield.
-+  1 - Deboost and requeue task. (default)
-+  2 - Set run queue skip task.
++  1 - Requeue task. (default)
++  2 - Set run queue skip task. Same as CFS.
 diff --git a/Documentation/scheduler/sched-BMQ.txt b/Documentation/scheduler/sched-BMQ.txt
 new file mode 100644
 index 000000000000..05c84eec0f31
@@ -683,10 +666,10 @@ index 976092b7bd45..31d587c16ec1 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..b0c4ade2788c
+index 000000000000..5b6bdff6e630
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,8715 @@
+@@ -0,0 +1,8944 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -761,7 +744,7 @@ index 000000000000..b0c4ade2788c
 +#define sched_feat(x)	(0)
 +#endif /* CONFIG_SCHED_DEBUG */
 +
-+#define ALT_SCHED_VERSION "v6.7-r0"
++#define ALT_SCHED_VERSION "v6.7-r2"
 +
 +/*
 + * Compile time debug macro
@@ -775,8 +758,11 @@ index 000000000000..b0c4ade2788c
 +
 +#define STOP_PRIO		(MAX_RT_PRIO - 1)
 +
-+/* Default time slice is 4 in ms, can be set via kernel parameter "sched_timeslice" */
-+u64 sched_timeslice_ns __read_mostly = (4 << 20);
++/*
++ * Time slice
++ * (default: 4 msec, units: nanoseconds)
++ */
++unsigned int sysctl_sched_base_slice __read_mostly	= (4 << 20);
 +
 +static inline void requeue_task(struct task_struct *p, struct rq *rq, int idx);
 +
@@ -793,28 +779,14 @@ index 000000000000..b0c4ade2788c
 +	unsigned int flags;
 +};
 +
-+static int __init sched_timeslice(char *str)
-+{
-+	int timeslice_ms;
-+
-+	get_option(&str, &timeslice_ms);
-+	if (2 != timeslice_ms)
-+		timeslice_ms = 4;
-+	sched_timeslice_ns = timeslice_ms << 20;
-+	sched_timeslice_imp(timeslice_ms);
-+
-+	return 0;
-+}
-+early_param("sched_timeslice", sched_timeslice);
-+
 +/* Reschedule if less than this many μs left */
 +#define RESCHED_NS		(100 << 10)
 +
 +/**
-+ * sched_yield_type - Choose what sort of yield sched_yield will perform.
++ * sched_yield_type - Type of sched_yield() will be performed.
 + * 0: No yield.
-+ * 1: Deboost and requeue task. (default)
-+ * 2: Set rq skip task.
++ * 1: Requeue task. (default)
++ * 2: Set rq skip task. (Same as mainline)
 + */
 +int sched_yield_type __read_mostly = 1;
 +
@@ -3937,7 +3909,7 @@ index 000000000000..b0c4ade2788c
 +#endif
 +
 +	if (p->time_slice < RESCHED_NS) {
-+		p->time_slice = sched_timeslice_ns;
++		p->time_slice = sysctl_sched_base_slice;
 +		resched_curr(rq);
 +	}
 +	sched_task_fork(p, rq);
@@ -5330,7 +5302,7 @@ index 000000000000..b0c4ade2788c
 +
 +static inline void time_slice_expired(struct task_struct *p, struct rq *rq)
 +{
-+	p->time_slice = sched_timeslice_ns;
++	p->time_slice = sysctl_sched_base_slice;
 +
 +	sched_task_renew(p, rq);
 +
@@ -5666,7 +5638,7 @@ index 000000000000..b0c4ade2788c
 +{
 +	struct task_struct *tsk = current;
 +
-+#ifdef CONFIG_RT_MUTEXE
++#ifdef CONFIG_RT_MUTEXES
 +	lockdep_assert(!tsk->sched_rt_mutex);
 +#endif
 +
@@ -7073,6 +7045,7 @@ index 000000000000..b0c4ade2788c
 +{
 +	struct rq *rq;
 +	struct rq_flags rf;
++	struct task_struct *p;
 +
 +	if (!sched_yield_type)
 +		return;
@@ -7081,12 +7054,18 @@ index 000000000000..b0c4ade2788c
 +
 +	schedstat_inc(rq->yld_count);
 +
-+	if (1 == sched_yield_type) {
-+		if (!rt_task(current))
-+			do_sched_yield_type_1(current, rq);
-+	} else if (2 == sched_yield_type) {
-+		if (rq->nr_running > 1)
-+			rq->skip = current;
++	p = current;
++	if (rt_task(p)) {
++		if (task_on_rq_queued(p))
++			requeue_task(p, rq, task_sched_prio_idx(p, rq));
++	} else if (rq->nr_running > 1) {
++		if (1 == sched_yield_type) {
++			do_sched_yield_type_1(p, rq);
++			if (task_on_rq_queued(p))
++				requeue_task(p, rq, task_sched_prio_idx(p, rq));
++		} else if (2 == sched_yield_type) {
++			rq->skip = p;
++		}
 +	}
 +
 +	preempt_disable();
@@ -7608,7 +7587,7 @@ index 000000000000..b0c4ade2788c
 +	if (retval)
 +		return retval;
 +
-+	*t = ns_to_timespec64(sched_timeslice_ns);
++	*t = ns_to_timespec64(sysctl_sched_base_slice);
 +	return 0;
 +}
 +
@@ -8289,7 +8268,7 @@ index 000000000000..b0c4ade2788c
 +
 +	for_each_online_cpu(cpu) {
 +		/* take chance to reset time slice for idle tasks */
-+		cpu_rq(cpu)->idle->time_slice = sched_timeslice_ns;
++		cpu_rq(cpu)->idle->time_slice = sysctl_sched_base_slice;
 +
 +		topo = per_cpu(sched_cpu_topo_masks, cpu) + 1;
 +
@@ -8337,7 +8316,7 @@ index 000000000000..b0c4ade2788c
 +#else
 +void __init sched_init_smp(void)
 +{
-+	cpu_rq(0)->idle->time_slice = sched_timeslice_ns;
++	cpu_rq(0)->idle->time_slice = sysctl_sched_base_slice;
 +}
 +#endif /* CONFIG_SMP */
 +
@@ -8841,6 +8820,100 @@ index 000000000000..b0c4ade2788c
 +}
 +#endif
 +
++static s64 cpu_cfs_quota_read_s64(struct cgroup_subsys_state *css,
++				  struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_cfs_quota_write_s64(struct cgroup_subsys_state *css,
++				   struct cftype *cftype, s64 cfs_quota_us)
++{
++	return 0;
++}
++
++static u64 cpu_cfs_period_read_u64(struct cgroup_subsys_state *css,
++				   struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_cfs_period_write_u64(struct cgroup_subsys_state *css,
++				    struct cftype *cftype, u64 cfs_period_us)
++{
++	return 0;
++}
++
++static u64 cpu_cfs_burst_read_u64(struct cgroup_subsys_state *css,
++				  struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_cfs_burst_write_u64(struct cgroup_subsys_state *css,
++				   struct cftype *cftype, u64 cfs_burst_us)
++{
++	return 0;
++}
++
++static int cpu_cfs_stat_show(struct seq_file *sf, void *v)
++{
++	return 0;
++}
++
++static int cpu_cfs_local_stat_show(struct seq_file *sf, void *v)
++{
++	return 0;
++}
++
++static int cpu_rt_runtime_write(struct cgroup_subsys_state *css,
++				struct cftype *cft, s64 val)
++{
++	return 0;
++}
++
++static s64 cpu_rt_runtime_read(struct cgroup_subsys_state *css,
++			       struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_rt_period_write_uint(struct cgroup_subsys_state *css,
++				    struct cftype *cftype, u64 rt_period_us)
++{
++	return 0;
++}
++
++static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
++				   struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_uclamp_min_show(struct seq_file *sf, void *v)
++{
++	return 0;
++}
++
++static int cpu_uclamp_max_show(struct seq_file *sf, void *v)
++{
++	return 0;
++}
++
++static ssize_t cpu_uclamp_min_write(struct kernfs_open_file *of,
++				    char *buf, size_t nbytes,
++				    loff_t off)
++{
++	return nbytes;
++}
++
++static ssize_t cpu_uclamp_max_write(struct kernfs_open_file *of,
++				    char *buf, size_t nbytes,
++				    loff_t off)
++{
++	return nbytes;
++}
++
 +static struct cftype cpu_legacy_files[] = {
 +#ifdef CONFIG_FAIR_GROUP_SCHED
 +	{
@@ -8849,15 +8922,154 @@ index 000000000000..b0c4ade2788c
 +		.write_u64 = cpu_shares_write_u64,
 +	},
 +#endif
++	{
++		.name = "cfs_quota_us",
++		.read_s64 = cpu_cfs_quota_read_s64,
++		.write_s64 = cpu_cfs_quota_write_s64,
++	},
++	{
++		.name = "cfs_period_us",
++		.read_u64 = cpu_cfs_period_read_u64,
++		.write_u64 = cpu_cfs_period_write_u64,
++	},
++	{
++		.name = "cfs_burst_us",
++		.read_u64 = cpu_cfs_burst_read_u64,
++		.write_u64 = cpu_cfs_burst_write_u64,
++	},
++	{
++		.name = "stat",
++		.seq_show = cpu_cfs_stat_show,
++	},
++	{
++		.name = "stat.local",
++		.seq_show = cpu_cfs_local_stat_show,
++	},
++	{
++		.name = "rt_runtime_us",
++		.read_s64 = cpu_rt_runtime_read,
++		.write_s64 = cpu_rt_runtime_write,
++	},
++	{
++		.name = "rt_period_us",
++		.read_u64 = cpu_rt_period_read_uint,
++		.write_u64 = cpu_rt_period_write_uint,
++	},
++	{
++		.name = "uclamp.min",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.seq_show = cpu_uclamp_min_show,
++		.write = cpu_uclamp_min_write,
++	},
++	{
++		.name = "uclamp.max",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.seq_show = cpu_uclamp_max_show,
++		.write = cpu_uclamp_max_write,
++	},
 +	{ }	/* Terminate */
 +};
 +
++static u64 cpu_weight_read_u64(struct cgroup_subsys_state *css,
++			       struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_weight_write_u64(struct cgroup_subsys_state *css,
++				struct cftype *cft, u64 weight)
++{
++	return 0;
++}
++
++static s64 cpu_weight_nice_read_s64(struct cgroup_subsys_state *css,
++				    struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_weight_nice_write_s64(struct cgroup_subsys_state *css,
++				     struct cftype *cft, s64 nice)
++{
++	return 0;
++}
++
++static s64 cpu_idle_read_s64(struct cgroup_subsys_state *css,
++			       struct cftype *cft)
++{
++	return 0;
++}
++
++static int cpu_idle_write_s64(struct cgroup_subsys_state *css,
++				struct cftype *cft, s64 idle)
++{
++	return 0;
++}
++
++static int cpu_max_show(struct seq_file *sf, void *v)
++{
++	return 0;
++}
++
++static ssize_t cpu_max_write(struct kernfs_open_file *of,
++			     char *buf, size_t nbytes, loff_t off)
++{
++	return nbytes;
++}
 +
 +static struct cftype cpu_files[] = {
++	{
++		.name = "weight",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.read_u64 = cpu_weight_read_u64,
++		.write_u64 = cpu_weight_write_u64,
++	},
++	{
++		.name = "weight.nice",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.read_s64 = cpu_weight_nice_read_s64,
++		.write_s64 = cpu_weight_nice_write_s64,
++	},
++	{
++		.name = "idle",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.read_s64 = cpu_idle_read_s64,
++		.write_s64 = cpu_idle_write_s64,
++	},
++	{
++		.name = "max",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.seq_show = cpu_max_show,
++		.write = cpu_max_write,
++	},
++	{
++		.name = "max.burst",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.read_u64 = cpu_cfs_burst_read_u64,
++		.write_u64 = cpu_cfs_burst_write_u64,
++	},
++	{
++		.name = "uclamp.min",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.seq_show = cpu_uclamp_min_show,
++		.write = cpu_uclamp_min_write,
++	},
++	{
++		.name = "uclamp.max",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.seq_show = cpu_uclamp_max_show,
++		.write = cpu_uclamp_max_write,
++	},
 +	{ }	/* terminate */
 +};
 +
 +static int cpu_extra_stat_show(struct seq_file *sf,
++			       struct cgroup_subsys_state *css)
++{
++	return 0;
++}
++
++static int cpu_local_stat_show(struct seq_file *sf,
 +			       struct cgroup_subsys_state *css)
 +{
 +	return 0;
@@ -8869,11 +9081,11 @@ index 000000000000..b0c4ade2788c
 +	.css_released	= cpu_cgroup_css_released,
 +	.css_free	= cpu_cgroup_css_free,
 +	.css_extra_stat_show = cpu_extra_stat_show,
++	.css_local_stat_show = cpu_local_stat_show,
 +#ifdef CONFIG_RT_GROUP_SCHED
 +	.can_attach	= cpu_cgroup_can_attach,
 +#endif
 +	.attach		= cpu_cgroup_attach,
-+	.legacy_cftypes	= cpu_files,
 +	.legacy_cftypes	= cpu_legacy_files,
 +	.dfl_cftypes	= cpu_files,
 +	.early_init	= true,
@@ -9441,10 +9653,10 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..1a4dab2b2bb5
+index 000000000000..0eff5391092c
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
-@@ -0,0 +1,921 @@
+@@ -0,0 +1,923 @@
 +#ifndef ALT_SCHED_H
 +#define ALT_SCHED_H
 +
@@ -9709,6 +9921,8 @@ index 000000000000..1a4dab2b2bb5
 +	/* Scratch cpumask to be temporarily used under rq_lock */
 +	cpumask_var_t		scratch_mask;
 +};
++
++extern unsigned int sysctl_sched_base_slice;
 +
 +extern unsigned long rq_load_util(struct rq *rq, unsigned long max);
 +
@@ -10368,17 +10582,17 @@ index 000000000000..1a4dab2b2bb5
 +#endif /* ALT_SCHED_H */
 diff --git a/kernel/sched/bmq.h b/kernel/sched/bmq.h
 new file mode 100644
-index 000000000000..d8f6381c27a9
+index 000000000000..840009dc1e8d
 --- /dev/null
 +++ b/kernel/sched/bmq.h
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,99 @@
 +#define ALT_SCHED_NAME "BMQ"
 +
 +/*
 + * BMQ only routines
 + */
 +#define rq_switch_time(rq)	((rq)->clock - (rq)->last_ts_switch)
-+#define boost_threshold(p)	(sched_timeslice_ns >> ((14 - (p)->boost_prio) / 2))
++#define boost_threshold(p)	(sysctl_sched_base_slice >> ((14 - (p)->boost_prio) / 2))
 +
 +static inline void boost_task(struct task_struct *p)
 +{
@@ -10445,13 +10659,15 @@ index 000000000000..d8f6381c27a9
 +}
 +
 +static inline void sched_update_rq_clock(struct rq *rq) {}
-+static inline void sched_task_renew(struct task_struct *p, const struct rq *rq) {}
-+static inline void sched_task_sanity_check(struct task_struct *p, struct rq *rq) {}
 +
-+static void sched_task_fork(struct task_struct *p, struct rq *rq)
++static inline void sched_task_renew(struct task_struct *p, const struct rq *rq)
 +{
-+	p->boost_prio = MAX_PRIORITY_ADJ;
++	if (rq_switch_time(rq) > sysctl_sched_base_slice)
++		deboost_task(p);
 +}
++
++static inline void sched_task_sanity_check(struct task_struct *p, struct rq *rq) {}
++static void sched_task_fork(struct task_struct *p, struct rq *rq) {}
 +
 +static inline void do_sched_yield_type_1(struct task_struct *p, struct rq *rq)
 +{
@@ -10460,18 +10676,14 @@ index 000000000000..d8f6381c27a9
 +
 +static inline void sched_task_ttwu(struct task_struct *p)
 +{
-+	if(this_rq()->clock_task - p->last_ran > sched_timeslice_ns)
++	if(this_rq()->clock_task - p->last_ran > sysctl_sched_base_slice)
 +		boost_task(p);
 +}
 +
 +static inline void sched_task_deactivate(struct task_struct *p, struct rq *rq)
 +{
-+	u64 switch_ns = rq_switch_time(rq);
-+
-+	if (switch_ns < boost_threshold(p))
++	if (rq_switch_time(rq) < boost_threshold(p))
 +		boost_task(p);
-+	else if (switch_ns > sched_timeslice_ns)
-+		deboost_task(p);
 +}
 diff --git a/kernel/sched/build_policy.c b/kernel/sched/build_policy.c
 index d9dc9ab3773f..71a25540d65e 100644
@@ -10605,7 +10817,7 @@ index af7952f12e6c..6461cbbb734d 100644
  
  	if (task_cputime(p, &cputime.utime, &cputime.stime))
 diff --git a/kernel/sched/debug.c b/kernel/sched/debug.c
-index 4580a450700e..21c15b4488fe 100644
+index 4580a450700e..8c8fd7da4617 100644
 --- a/kernel/sched/debug.c
 +++ b/kernel/sched/debug.c
 @@ -7,6 +7,7 @@
@@ -10640,24 +10852,25 @@ index 4580a450700e..21c15b4488fe 100644
  
  static struct dentry *debugfs_sched;
  
-@@ -341,12 +345,16 @@ static __init int sched_init_debug(void)
+@@ -341,14 +345,17 @@ static __init int sched_init_debug(void)
  
  	debugfs_sched = debugfs_create_dir("sched", NULL);
  
 +#ifndef CONFIG_SCHED_ALT
  	debugfs_create_file("features", 0644, debugfs_sched, NULL, &sched_feat_fops);
  	debugfs_create_file_unsafe("verbose", 0644, debugfs_sched, &sched_debug_verbose, &sched_verbose_fops);
-+	debugfs_create_bool("verbose", 0644, debugfs_sched, &sched_debug_verbose);
 +#endif /* !CONFIG_SCHED_ALT */
  #ifdef CONFIG_PREEMPT_DYNAMIC
  	debugfs_create_file("preempt", 0644, debugfs_sched, NULL, &sched_dynamic_fops);
  #endif
  
-+#ifndef CONFIG_SCHED_ALT
  	debugfs_create_u32("base_slice_ns", 0644, debugfs_sched, &sysctl_sched_base_slice);
  
++#ifndef CONFIG_SCHED_ALT
  	debugfs_create_u32("latency_warn_ms", 0644, debugfs_sched, &sysctl_resched_latency_warn_ms);
-@@ -373,11 +381,13 @@ static __init int sched_init_debug(void)
+ 	debugfs_create_u32("latency_warn_once", 0644, debugfs_sched, &sysctl_resched_latency_warn_once);
+ 
+@@ -373,11 +380,13 @@ static __init int sched_init_debug(void)
  #endif
  
  	debugfs_create_file("debug", 0444, debugfs_sched, NULL, &sched_debug_fops);
@@ -10671,7 +10884,7 @@ index 4580a450700e..21c15b4488fe 100644
  #ifdef CONFIG_SMP
  
  static cpumask_var_t		sd_sysctl_cpus;
-@@ -1106,6 +1116,7 @@ void proc_sched_set_task(struct task_struct *p)
+@@ -1106,6 +1115,7 @@ void proc_sched_set_task(struct task_struct *p)
  	memset(&p->stats, 0, sizeof(p->stats));
  #endif
  }
@@ -10698,10 +10911,10 @@ index 565f8374ddbb..67d51e05a8ac 100644
 +#endif
 diff --git a/kernel/sched/pds.h b/kernel/sched/pds.h
 new file mode 100644
-index 000000000000..b20226ed47cc
+index 000000000000..c35dfb909f23
 --- /dev/null
 +++ b/kernel/sched/pds.h
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,141 @@
 +#define ALT_SCHED_NAME "PDS"
 +
 +static const u64 RT_MASK = ((1ULL << MIN_SCHED_NORMAL_PRIO) - 1);
@@ -10835,11 +11048,10 @@ index 000000000000..b20226ed47cc
 +	sched_task_renew(p, rq);
 +}
 +
-+static inline void time_slice_expired(struct task_struct *p, struct rq *rq);
-+
 +static inline void do_sched_yield_type_1(struct task_struct *p, struct rq *rq)
 +{
-+	time_slice_expired(p, rq);
++	p->time_slice = sysctl_sched_base_slice;
++	sched_task_renew(p, rq);
 +}
 +
 +static inline void sched_task_ttwu(struct task_struct *p) {}
