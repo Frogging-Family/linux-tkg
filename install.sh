@@ -385,7 +385,7 @@ if [ "$1" = "install" ]; then
       sudo rm -rf "/usr/src/$_headers_folder_name"
     fi
     sudo cp -R . "/usr/src/$_headers_folder_name"
-    sudo rm -rf "/usr/src/$_headers_folder_name/.git"
+    sudo rm -rf "/usr/src/$_headers_folder_name"/.git*
     cd "/usr/src/$_headers_folder_name"
 
     msg2 "Installing modules"
