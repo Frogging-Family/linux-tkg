@@ -114,6 +114,7 @@ sudo grub-mkconfig -o /boot/grub/grub.cfg
 - If you only want the script to patch the sources in `linux-src-git`, you can use `./install.sh config`
 - `${kernel_flavor}` is a default naming scheme but can be customized with the variable `_kernel_localversion` in `customization.cfg`.
 - `_dracut_options` is a variable that can be changed in `customization.cfg`.
+- `_libunwind_replace` is a variable that can be changed in `customization.cfg` for replacing `libunwind` with `llvm-libunwind`.
 - The script uses Arch's `.config` file as a base. A custom one can be provided through `_configfile` in `customization.cfg`.
 - The installed files will not be tracked by your package manager and uninstalling requires manual intervention. `./install.sh uninstall-help` can help with useful information if your install procedure follows the `Generic` approach.
 
@@ -125,8 +126,4 @@ cd linux-tkg
 # Optional: edit the "customization.cfg" file
 ./install.sh install
 ```
-**Notes:**
-- If you're running openrc, you'll want to set `_configfile="running-kernel"` to use your current kernel's defconfig instead of Arch's. Else the resulting kernel won't boot.
-- The script will prompt for using `llvm-libunwind`, it can only work with the `llvm-libunwind` `USE` flag in `sys-devel/clang` but it is experimental:
-  - Manual intervention is needed on the `net-fs/samba` EBUILD, see [here](https://bugs.gentoo.org/791349)
-  - The `-unwind` `USE` flag is needed in `app-emulation/wine*` EBUILDs
+**Note:** If you're running openrc, you'll want to set `_configfile="running-kernel"` to use your current kernel's defconfig instead of Arch's. Else the resulting kernel won't boot.
