@@ -1,0 +1,312 @@
+From: Michal Suchanek <msuchanek@suse.de>
+Date: Wed, 7 Feb 2018 15:16:04 +0100
+Subject: Add ksym-provides tool.
+
+References: bsc#1077692
+Patch-mainline: no, not needed
+
+Signed-off-by: Michal Suchanek <msuchanek@suse.de>
+---
+ scripts/mod/Makefile        |   6 +-
+ scripts/mod/ksym-provides.c | 124 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 129 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/mod/ksym-provides.c
+
+--- a/scripts/mod/Makefile
++++ b/scripts/mod/Makefile
+@@ -2,11 +2,15 @@
+ OBJECT_FILES_NON_STANDARD := y
+ CFLAGS_REMOVE_empty.o += $(CC_FLAGS_LTO)
+ 
+-hostprogs-always-y	+= modpost mk_elfconfig
++hostprogs-always-y	+= modpost mk_elfconfig ksym-provides
+ always-y		+= empty.o
+ 
+ modpost-objs	:= modpost.o file2alias.o sumversion.o
+ 
++ksym-provides-objs	:= ksym-provides.o
++
++HOSTLDLIBS_ksym-provides := -lelf
++
+ devicetable-offsets-file := devicetable-offsets.h
+ 
+ $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+--- /dev/null
++++ b/scripts/mod/ksym-provides.c
+@@ -0,0 +1,124 @@
++#include <stdio.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <gelf.h>
++#include <string.h>
++
++int main(int argc, char *argv[])
++{
++	int fd;
++	Elf *elf;
++	Elf_Scn *scn;
++	GElf_Shdr shdr;
++	size_t strndx;
++	int ndx;
++	Elf_Data *symdata, *data;
++	GElf_Sym sym;
++	char *name;
++	const char * flavor = argv[1];
++	const char * prefix = "__crc_";
++	size_t prefixlen = strlen(prefix);
++	const char * symformat = "ksym(%s:%s) = %lx\n";
++
++	if (argc != 3) {
++		fprintf(stderr, "Usage: %s <flavor> <filename>\n", argv[0]);
++		return 1;
++	}
++
++	if (elf_version(EV_CURRENT) == EV_NONE) {
++		fprintf(stderr, "libelf initialization failed: %s\n",
++			elf_errmsg(-1));
++		return 1;
++	}
++
++	fd = open(argv[2], O_RDONLY);
++	if (fd < 0) {
++		perror("open failed");
++		return 1;
++	}
++
++	elf = elf_begin(fd, ELF_C_READ, NULL);
++	if (!elf) {
++		fprintf(stderr, "elf_begin failed: %s\n", elf_errmsg(-1));
++		goto err_close;
++	}
++
++	scn = NULL;
++	while ((scn = elf_nextscn(elf, scn)) != NULL) {
++		if (!gelf_getshdr(scn, &shdr)) {
++			fprintf(stderr, "gelf_getshdr failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++
++		if (shdr.sh_type == SHT_SYMTAB)
++			break;
++	}
++	if (!scn) {
++		fputs("symbol table not found\n", stderr);
++		goto err_end;
++	}
++	strndx = shdr.sh_link;
++
++	symdata = elf_getdata(scn, NULL);
++	if (!symdata) {
++		fprintf(stderr, "elf_getdata failed: %s\n", elf_errmsg(-1));
++		goto err_end;
++	}
++
++	for (ndx = 0; gelf_getsym(symdata, ndx, &sym) != NULL; ++ndx) {
++
++		name = elf_strptr(elf, strndx, sym.st_name);
++		if (!name) {
++			fprintf(stderr, "elf_strptr failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++		if (strncmp(prefix, name, prefixlen))
++			continue;
++
++		if (sym.st_shndx >= SHN_LORESERVE) {
++			printf(symformat, flavor, name + prefixlen,
++				sym.st_value);
++			continue;
++		}
++
++		scn = elf_getscn(elf, sym.st_shndx);
++		if (!scn) {
++			fprintf(stderr, "elf_getscn failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++		if (!gelf_getshdr(scn, &shdr)) {
++			fprintf(stderr, "gelf_getshdr failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++
++		if (shdr.sh_type != SHT_PROGBITS)
++			continue;
++
++		data = elf_getdata_rawchunk(
++			elf, shdr.sh_offset + sym.st_value - shdr.sh_addr,
++			sizeof(GElf_Word), ELF_T_WORD);
++		if (!data) {
++			fprintf(stderr, "elf_getdata_rawchunk failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++		printf(symformat, flavor, name + prefixlen,
++		       (unsigned long) *(GElf_Word*)data->d_buf);
++	}
++
++	elf_end(elf);
++	close(fd);
++	return 0;
++
++ err_end:
++	elf_end(elf);
++ err_close:
++	close(fd);
++	return 1;
++}
+
+From bb1a83cf109eee56c8dee26f7910c772f8c246fc Mon Sep 17 00:00:00 2001
+From: Michal Suchanek <msuchanek@suse.de>
+Date: Thu, 29 Jun 2023 17:47:16 +0200
+Subject: [PATCH] depmod: Handle installing modules under a prefix
+
+References: bsc#1212835
+Patch-mainline: Never, upstream rejected
+
+Some distributions aim at shipping all files in /usr.
+
+The path under which kernel modules are installed is hardcoded to /lib
+which conflicts with this goal.
+
+When kmod provides the config command, use it to determine the correct
+module installation path.
+
+With kmod that does not provide the config command /lib/modules is used
+as before.
+
+Note: users can use
+
+make MODLIB='$(INSTALL_MOD_PATH)/usr/lib/modules/$(KERNELRELEASE)'
+
+to install modules from mainline kernel on usrmerged system.
+Not great for KMPs, though
+
+Signed-off-by: Michal Suchanek <msuchanek@suse.de>
+Nacked-by: Masahiro Yamada <masahiroy@kernel.org>
+---
+v2: Avoid error on systems with kmod that does not support config
+command
+v3: More verbose commit message
+v4:
+  - Document jq requirement
+  - fix bashism
+  - Update to getting full module path, not just additional prefix
+v5: switch to pkgconfig
+---
+ Makefile | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 658ec2b8aa74..5a1889fc43c7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1165,7 +1165,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
+ # makefile but the argument can be passed to make if needed.
+ #
+
+-MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
++export KERNEL_MODULE_DIRECTORY := $(shell pkg-config --print-variables kmod 2>/dev/null | grep '^module_directory$$' >/dev/null && pkg-config --variable=module_directory kmod || echo /lib/modules)
++
++MODLIB	= $(INSTALL_MOD_PATH)$(KERNEL_MODULE_DIRECTORY)/$(KERNELRELEASE)
+ export MODLIB
+
+ PHONY += prepare0
+--
+2.41.0
+
+From 23133fe6745d567db5b93dc9e6aecc32d31354bd Mon Sep 17 00:00:00 2001
+From: Jeff Mahoney <jeffm@suse.de>
+Date: Tue, 31 Mar 2009 09:46:30 -0400
+Subject: [PATCH] - doc/README.KSYMS: Add to repo.
+
+---
+ doc/README.KSYMS      | 6 ++++++
+ 1 file changed, 6 insertions(+)
+ create mode 100644 doc/README.KSYMS
+
+diff --git a/doc/README.KSYMS b/doc/README.KSYMS
+new file mode 100644
+index 00000000000..39fe7878174
+--- /dev/null
++++ b/doc/README.KSYMS
+@@ -0,0 +1,6 @@
++This file is a place holder for the kernel-syms{,-rt} package. It is used
++to group build dependencies for all kernel flavors.
++
++The KMP build process will build KMPs against all installed kernel flavors
++automatically. If you don't need to build against other flavors than the
++ones you've already installed - it is safe to uninstall this package.
+
+From 917d74574856a402e5679d8162407af122c9b8db Mon Sep 17 00:00:00 2001
+From: Etienne JUVIGNY <ti3nou@gmail.com>
+Date: Tue, 12 Sep 2023 03:42:23 +0200
+Subject: Suse: Add kernel-syms package and adapt for /usr/lib usage in Suse instead of the standard /lib symlink.
+
+
+diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
+index ac3f2ee6d..e96ffc9a7 100644
+--- a/scripts/package/kernel.spec
++++ b/scripts/package/kernel.spec
+@@ -17,7 +17,7 @@ Source0: linux.tar.gz
+ Source1: config
+ Source2: diff.patch
+ Provides: kernel-%{KERNELRELEASE}
+-BuildRequires: bc binutils bison dwarves
++BuildRequires: bc binutils bison dwarves coreutils
+ BuildRequires: (elfutils-libelf-devel or libelf-devel) flex
+ BuildRequires: gcc make openssl openssl-devel perl python3 rsync
+
+@@ -36,6 +36,19 @@ header files define structures and constants that are needed for
+ building most standard programs and are also needed for rebuilding the
+ glibc package.
+
++%package syms
++Summary:        Kernel Symbol Versions (modversions) for the $__KERNELRELEASE kernel
++Group:          Development/Sources
++AutoReqProv:    no
++Provides:       kernel-syms = %{version}
++Requires:       kernel-devel = %{version}
++%description -n kernel-syms
++Kernel symbols, such as functions and variables, have version
++information attached to them. This package contains the symbol versions
++for the standard kernels.
++This package is needed for compiling kernel module packages with proper
++package dependencies.
++
+ %if %{with_devel}
+ %package devel
+ Summary: Development package for building kernel modules to match the %{version} kernel
+@@ -67,7 +80,7 @@ cp $(%{make} %{makeflags} -s image_name) %{buildroot}/boot/vmlinuz-%{KERNELRELEA
+ %{make} %{makeflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
+ cp System.map %{buildroot}/boot/System.map-%{KERNELRELEASE}
+ cp .config %{buildroot}/boot/config-%{KERNELRELEASE}
+-ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/lib/modules/%{KERNELRELEASE}/build
++ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/build
+ %if %{with_devel}
+ %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='${srctree}/scripts/package/install-extmod-build %{buildroot}/usr/src/kernels/%{KERNELRELEASE}'
+ %endif
+@@ -99,8 +112,8 @@ fi
+
+ %files
+ %defattr (-, root, root)
+-/lib/modules/%{KERNELRELEASE}
+-%exclude /lib/modules/%{KERNELRELEASE}/build
++/usr/lib/modules/%{KERNELRELEASE}
++%exclude /usr/lib/modules/%{KERNELRELEASE}/build
+ /boot/*
+
+ %files headers
+@@ -112,5 +125,8 @@ fi
+ %files devel
+ %defattr (-, root, root)
+ /usr/src/kernels/%{KERNELRELEASE}
+-/lib/modules/%{KERNELRELEASE}/build
++/usr/lib/modules/%{KERNELRELEASE}/build
+ %endif
++
++%files syms
++%defattr (-, root, root)
