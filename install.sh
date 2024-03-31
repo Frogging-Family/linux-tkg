@@ -214,7 +214,7 @@ if [ "$1" = "install" ]; then
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
-    make ${llvm_opt} -j ${_thread_num} deb-pkg LOCALVERSION=-${_kernel_flavor}
+    make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor}
     msg2 "Building successfully finished!"
 
     # Create DEBS folder if it doesn't exist
@@ -223,6 +223,13 @@ if [ "$1" = "install" ]; then
 
     # Move deb files to DEBS folder inside the linux-tkg folder
     mv "$_build_dir"/*.deb "$_where"/DEBS/
+
+    # Install only the winesync header in whatever kernel src there is, if there is
+    if [ -e "${_where}/winesync.rules" ]; then
+      sudo mkdir -p /usr/include/linux/
+      # install winesync header
+      sudo cp "$_kernel_work_folder_abs"/include/uapi/linux/winesync.h /usr/include/linux/winesync.h
+    fi
 
     if [[ "$_install_after_building" = "prompt" ]]; then
       read -p "Do you want to install the new Kernel ? Y/[n]: " _install
@@ -257,7 +264,7 @@ if [ "$1" = "install" ]; then
     _fedora_work_dir="$_kernel_work_folder_abs/rpmbuild"
 
     msg2 "Building kernel RPM packages"
-    RPMOPTS="--define '_topdir ${_fedora_work_dir}'" make ${llvm_opt} -j ${_thread_num} rpm-pkg EXTRAVERSION="${_extra_ver_str}"
+    RPMOPTS="--define '_topdir ${_fedora_work_dir}'" make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"
     msg2 "Building successfully finished!"
 
     # Create RPMS folder if it doesn't exist
@@ -266,6 +273,13 @@ if [ "$1" = "install" ]; then
 
     # Move rpm files to RPMS folder inside the linux-tkg folder
     mv ${_fedora_work_dir}/RPMS/x86_64/*tkg* "$_where"/RPMS/
+
+    # Install only the winesync header in whatever kernel src there is, if there is
+    if [ -e "${_where}/winesync.rules" ]; then
+      sudo mkdir -p /usr/include/linux/
+      # install winesync header
+      sudo cp "$_kernel_work_folder_abs"/include/uapi/linux/winesync.h /usr/include/linux/winesync.h
+    fi
 
     if [[ "$_install_after_building" = "prompt" ]]; then
       read -p "Do you want to install the new Kernel ? Y/[n]: " _install
