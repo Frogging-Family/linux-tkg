@@ -112,9 +112,7 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
-  if [[ "${_compiler}" = "llvm" && "${_distro}" =~ ^(Generic|Gentoo)$ ]]; then
-    read -p "Replace \"libunwind\" with \"llvm-libunwind\" ? Y/[n]:" _libunwind_replace
-    if [[ "${_libunwind_replace}" =~ ^(y|yes|Yes|Y)$ ]]; then
+  if [[ "${_compiler}" = "llvm" && "${_distro}" =~ ^(Generic|Gentoo)$ && "${_libunwind_replace}" = "true" ]]; then
       export LDFLAGS_MODULE="-unwindlib=libunwind"
       export HOSTLDFLAGS="-unwindlib=libunwind"
     fi
@@ -399,7 +397,7 @@ if [ "$1" = "install" ]; then
       sudo rm -rf "/usr/src/$_headers_folder_name"
     fi
     sudo cp -R . "/usr/src/$_headers_folder_name"
-    sudo rm -rf "/usr/src/$_headers_folder_name/.git"
+    sudo rm -rf "/usr/src/$_headers_folder_name"/.git*
     cd "/usr/src/$_headers_folder_name"
 
     msg2 "Installing modules"
