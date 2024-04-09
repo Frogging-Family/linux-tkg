@@ -115,7 +115,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [[ "${_compiler}" = "llvm" && "${_distro}" =~ ^(Generic|Gentoo)$ && "${_libunwind_replace}" = "true" ]]; then
       export LDFLAGS_MODULE="-unwindlib=libunwind"
       export HOSTLDFLAGS="-unwindlib=libunwind"
-    fi
   fi
 
   if [[ "$1" = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Gentoo|Generic)$ ]]; then
