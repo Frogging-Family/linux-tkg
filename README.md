@@ -18,7 +18,9 @@ This repository provides scripts to automatically download, patch and compile th
 [CFS](https://en.wikipedia.org/wiki/Completely_Fair_Scheduler) is the only CPU scheduler available in the "vanilla" kernel sources ≤ 6.5.
 [EEVDF](https://lwn.net/Articles/925371/) is the only CPU scheduler available in the "vanilla" kernel sources ≥ 6.6.
 
-Its current implementation doesn't allow for injecting additional schedulers, and requires replacing it. Only one scheduler can be patched in at a time.
+Its current implementation doesn't allow for injecting additional schedulers at kernel level, and requires replacing it. Only one scheduler can be patched in at a time.
+However, using [Sched-ext](https://github.com/sched-ext/scx), it's possible to inject CPU schedulers at runtime. We offer support for it on ≥ 6.6 by default.
+Arch users can find scx schedulers on the [AUR](https://aur.archlinux.org/packages/scx-scheds) thanks to @sirlucjan (for persistence, set scheduler in "/etc/default/scx" and enable the `scx` service).
 
 Alternative schedulers are available to you in linux-tkg:
 - Project C / PDS & BMQ by Alfred Chen: [blog](http://cchalpha.blogspot.com/ ), [code repository](https://gitlab.com/alfredchen/projectc)
