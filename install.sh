@@ -147,13 +147,13 @@ fi
 
 if [ "$1" = "install" ]; then
 
-  if [ -e "${_where}/winesync.rules" ]; then
-    msg2 "Installing udev rule for winesync"
-    sudo cp "${_where}"/winesync.rules /etc/udev/rules.d/winesync.rules
-    sudo chmod 644 /etc/udev/rules.d/winesync.rules
+  if [ -e "${_where}/ntsync.rules" ]; then
+    msg2 "Installing udev rule for ntsync"
+    sudo cp "${_where}"/ntsync.rules /etc/udev/rules.d/ntsync.rules
+    sudo chmod 644 /etc/udev/rules.d/ntsync.rules
 
-    msg2 "Adding winesync to '/etc/modules-load.d' for auto-loading by systemd - Password prompt incoming!"
-    sudo sh -c 'echo "winesync" >/etc/modules-load.d/winesync.conf'
+    msg2 "Adding ntsync to '/etc/modules-load.d' for auto-loading by systemd - Password prompt incoming!"
+    sudo sh -c 'echo "ntsync" >/etc/modules-load.d/ntsync.conf'
   fi
 
   # Use custom compiler paths if defined
