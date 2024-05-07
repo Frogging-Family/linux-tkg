@@ -89,7 +89,7 @@ _install_dependencies() {
 
 if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
   msg2 "Argument not recognised, options are:
-        - config : interactive script that shallow clones the linux 5.x.y git tree into the folder \$_kernel_work_folder, then applies extra patches and prepares the .config file
+        - config : interactive script that shallow clones the linux kernel git tree into the folder \$_kernel_work_folder, then applies extra patches and prepares the .config file
                    by copying the one from the currently running linux system and updates it.
         - install : does the config step, proceeds to compile, then prompts to install
                     - 'DEB' distros: it creates .deb packages that will be installed then stored in the DEBS folder.
