@@ -149,8 +149,8 @@ hackbase() {
               'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
               'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
               'update-grub: Simple wrapper around grub-mkconfig.')
-  if [ -e "${srcdir}/winesync.rules" ]; then
-    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE WINESYNC-MODULE winesync-header)
+  if [ -e "${srcdir}/ntsync.rules" ]; then
+    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE NTSYNC-MODULE ntsync-header)
   else
     provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
   fi
@@ -186,22 +186,22 @@ hackbase() {
   # install customization file, for reference
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 
-  # workaround for missing header with winesync
-  if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/winesync.h" ]; then
-    msg2 "Workaround missing winesync header"
-    install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/winesync.h "${pkgdir}/usr/include/linux/winesync.h"
+  # workaround for missing header with ntsync
+  if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/ntsync.h" ]; then
+    msg2 "Workaround missing ntsync header"
+    install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/ntsync.h "${pkgdir}/usr/include/linux/ntsync.h"
   fi
 
-  # load winesync module at boot
-  if [ -e "${srcdir}/winesync.conf" ]; then
-    msg2 "Set the winesync module to be loaded at boot through /etc/modules-load.d"
-    install -Dm644 "${srcdir}"/winesync.conf "${pkgdir}/etc/modules-load.d/winesync.conf"
+  # load ntsync module at boot
+  if [ -e "${srcdir}/ntsync.conf" ]; then
+    msg2 "Set the ntsync module to be loaded at boot through /etc/modules-load.d"
+    install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/etc/modules-load.d/ntsync.conf"
   fi
 
-  # install udev rule for winesync
-  if [ -e "${srcdir}/winesync.rules" ]; then
-    msg2 "Installing udev rule for winesync"
-    install -Dm644 "${srcdir}"/winesync.rules "${pkgdir}/etc/udev/rules.d/winesync.rules"
+  # install udev rule for ntsync
+  if [ -e "${srcdir}/ntsync.rules" ]; then
+    msg2 "Installing udev rule for ntsync"
+    install -Dm644 "${srcdir}"/ntsync.rules "${pkgdir}/etc/udev/rules.d/ntsync.rules"
   fi
 }
 
