@@ -3,20 +3,6 @@
 # Stop the script at any ecountered error
 set -e
 
-# save current environment before losing it to the script call
-declare -p -x > current_env
-
-# If current run is not using 'script' for logging, do it
-if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
-  export SCRIPT=1
-  /usr/bin/script -q -e -c "$0 $@" shell-output.log
-  exit_status="$?"
-  sed -i 's/\x1b\[[0-9;]*m//g' shell-output.log
-  sed -i 's/\x1b(B//g' shell-output.log
-  mv -f shell-output.log logs/shell-output.log.txt
-  exit $exit_status
-fi
-
 ###################### Definition of helper variables and functions
 
 _where=`pwd`
@@ -51,6 +37,13 @@ plain() {
 
 ################### Config sourcing
 
+# We are either not using script or not within the script sub-command yet
+# we don't export the environment in the script sub-command so sourcing current_env will
+# get us the actual environment
+if [[ -z "$SCRIPT" ]]; then
+  declare -p -x > current_env
+fi
+
 source customization.cfg
 
 if [ -e "$_EXT_CONFIG_PATH" ]; then
@@ -59,6 +52,14 @@ if [ -e "$_EXT_CONFIG_PATH" ]; then
 fi
 
 . current_env
+
+if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
+  # using script is enabled, but we are not within the script sub-command
+  export SCRIPT=1
+  msg2 "Using script"
+  /usr/bin/script -q -e -c "$0 $@" shell-output.log
+  exit
+fi
 
 source linux-tkg-config/prepare
 
