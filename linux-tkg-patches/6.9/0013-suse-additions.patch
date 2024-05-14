@@ -22,7 +22,7 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 +hostprogs-always-y	+= modpost mk_elfconfig ksym-provides
  always-y		+= empty.o
  
- modpost-objs	:= modpost.o file2alias.o sumversion.o
+ modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
  
 +ksym-provides-objs	:= ksym-provides.o
 +
@@ -251,7 +251,7 @@ diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
 index ac3f2ee6d..e96ffc9a7 100644
 --- a/scripts/package/kernel.spec
 +++ b/scripts/package/kernel.spec
-@@ -17,7 +17,7 @@ Source0: linux.tar.gz
+@@ -17,7 +17,7 @@
  Source1: config
  Source2: diff.patch
  Provides: kernel-%{KERNELRELEASE}
@@ -260,7 +260,7 @@ index ac3f2ee6d..e96ffc9a7 100644
  BuildRequires: (elfutils-libelf-devel or libelf-devel) flex
  BuildRequires: gcc make openssl openssl-devel perl python3 rsync
 
-@@ -36,6 +36,19 @@ header files define structures and constants that are needed for
+@@ -36,6 +36,19 @@
  building most standard programs and are also needed for rebuilding the
  glibc package.
 
@@ -280,27 +280,88 @@ index ac3f2ee6d..e96ffc9a7 100644
  %if %{with_devel}
  %package devel
  Summary: Development package for building kernel modules to match the %{version} kernel
-@@ -67,7 +80,7 @@ cp $(%{make} %{makeflags} -s image_name) %{buildroot}/boot/vmlinuz-%{KERNELRELEA
+@@ -55,16 +68,16 @@
+ %{make} %{makeflags} KERNELRELEASE=%{KERNELRELEASE} KBUILD_BUILD_VERSION=%{release}
+
+ %install
+-mkdir -p %{buildroot}/lib/modules/%{KERNELRELEASE}
+-cp $(%{make} %{makeflags} -s image_name) %{buildroot}/lib/modules/%{KERNELRELEASE}/vmlinuz
++mkdir -p %{buildroot}/usr/lib/modules/%{KERNELRELEASE}
++cp $(%{make} %{makeflags} -s image_name) %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/vmlinuz
+ %{make} %{makeflags} INSTALL_MOD_PATH=%{buildroot} modules_install
  %{make} %{makeflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
- cp System.map %{buildroot}/boot/System.map-%{KERNELRELEASE}
- cp .config %{buildroot}/boot/config-%{KERNELRELEASE}
+-cp System.map %{buildroot}/lib/modules/%{KERNELRELEASE}
+-cp .config %{buildroot}/lib/modules/%{KERNELRELEASE}/config
++cp System.map %{buildroot}/usr/lib/modules/%{KERNELRELEASE}
++cp .config %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/config
+ if %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='test -d ${srctree}/arch/${SRCARCH}/boot/dts' 2>/dev/null; then
+-	%{make} %{makeflags} INSTALL_DTBS_PATH=%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb dtbs_install
++	%{make} %{makeflags} INSTALL_DTBS_PATH=%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb dtbs_install
+ fi
 -ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/lib/modules/%{KERNELRELEASE}/build
 +ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/build
  %if %{with_devel}
  %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='${srctree}/scripts/package/install-extmod-build %{buildroot}/usr/src/kernels/%{KERNELRELEASE}'
  %endif
-@@ -99,8 +112,8 @@ fi
+@@ -72,24 +85,24 @@
+ {
+ 	for x in System.map config kernel modules.builtin \
+ 			modules.builtin.modinfo modules.order vmlinuz; do
+-		echo "/lib/modules/%{KERNELRELEASE}/${x}"
++		echo "/usr/lib/modules/%{KERNELRELEASE}/${x}"
+ 	done
 
- %files
- %defattr (-, root, root)
--/lib/modules/%{KERNELRELEASE}
--%exclude /lib/modules/%{KERNELRELEASE}/build
-+/usr/lib/modules/%{KERNELRELEASE}
-+%exclude /usr/lib/modules/%{KERNELRELEASE}/build
- /boot/*
+ 	for x in alias alias.bin builtin.alias.bin builtin.bin dep dep.bin \
+ 					devname softdep symbols symbols.bin; do
+-		echo "%ghost /lib/modules/%{KERNELRELEASE}/modules.${x}"
++		echo "%ghost /usr/lib/modules/%{KERNELRELEASE}/modules.${x}"
+ 	done
 
- %files headers
-@@ -112,5 +125,8 @@ fi
+ 	for x in System.map config vmlinuz; do
+ 		echo "%ghost /boot/${x}-%{KERNELRELEASE}"
+ 	done
+
+-	if [ -d "%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb" ];then
+-		echo "/lib/modules/%{KERNELRELEASE}/dtb"
+-		find "%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb" -printf "%%%ghost /boot/dtb-%{KERNELRELEASE}/%%P\n"
++	if [ -d "%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb" ];then
++		echo "/usr/lib/modules/%{KERNELRELEASE}/dtb"
++		find "%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb" -printf "%%%ghost /boot/dtb-%{KERNELRELEASE}/%%P\n"
+ 	fi
+
+-	echo "%exclude /lib/modules/%{KERNELRELEASE}/build"
++	echo "%exclude /usr/lib/modules/%{KERNELRELEASE}/build"
+ } > %{buildroot}/kernel.list
+
+ %clean
+@@ -97,19 +110,19 @@
+
+ %post
+ if [ -x /usr/bin/kernel-install ]; then
+-	/usr/bin/kernel-install add %{KERNELRELEASE} /lib/modules/%{KERNELRELEASE}/vmlinuz
++	/usr/bin/kernel-install add %{KERNELRELEASE} /usr/lib/modules/%{KERNELRELEASE}/vmlinuz
+ fi
+ for file in vmlinuz System.map config; do
+-	if ! cmp --silent "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
+-		cp "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
++	if ! cmp --silent "/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
++		cp "/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
+ 	fi
+ done
+-if [ -d "/lib/modules/%{KERNELRELEASE}/dtb" ] && \
+-   ! diff -rq "/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}" >/dev/null 2>&1; then
++if [ -d "/usr/lib/modules/%{KERNELRELEASE}/dtb" ] && \
++   ! diff -rq "/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}" >/dev/null 2>&1; then
+ 	rm -rf "/boot/dtb-%{KERNELRELEASE}"
+-	cp -r "/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}"
++	cp -r "/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}"
+ fi
+-if [ ! -e "/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
++if [ ! -e "/usr/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
+ 	/usr/sbin/depmod %{KERNELRELEASE}
+ fi
+
+@@ -130,5 +143,8 @@
  %files devel
  %defattr (-, root, root)
  /usr/src/kernels/%{KERNELRELEASE}
