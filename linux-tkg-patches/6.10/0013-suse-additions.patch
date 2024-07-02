@@ -17,19 +17,19 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 @@ -2,11 +2,15 @@
  OBJECT_FILES_NON_STANDARD := y
  CFLAGS_REMOVE_empty.o += $(CC_FLAGS_LTO)
- 
+
 -hostprogs-always-y	+= modpost mk_elfconfig
 +hostprogs-always-y	+= modpost mk_elfconfig ksym-provides
  always-y		+= empty.o
- 
+
  modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
- 
+
 +ksym-provides-objs	:= ksym-provides.o
 +
 +HOSTLDLIBS_ksym-provides := -lelf
 +
  devicetable-offsets-file := devicetable-offsets.h
- 
+
  $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
 --- /dev/null
 +++ b/scripts/mod/ksym-provides.c
@@ -248,10 +248,10 @@ Subject: Suse: Add kernel-syms package and adapt for /usr/lib usage in Suse inst
 
 
 diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
-index ac3f2ee6d..e96ffc9a7 100644
+index fffc8af..c529f3e 100644
 --- a/scripts/package/kernel.spec
 +++ b/scripts/package/kernel.spec
-@@ -17,7 +17,7 @@
+@@ -17,7 +17,7 @@ Source0: linux.tar.gz
  Source1: config
  Source2: diff.patch
  Provides: kernel-%{KERNELRELEASE}
@@ -260,10 +260,10 @@ index ac3f2ee6d..e96ffc9a7 100644
  BuildRequires: (elfutils-libelf-devel or libelf-devel) flex
  BuildRequires: gcc make openssl openssl-devel perl python3 rsync
 
-@@ -36,6 +36,19 @@
+@@ -35,6 +35,19 @@ between the Linux kernel and userspace libraries and programs.  The
+ header files define structures and constants that are needed for
  building most standard programs and are also needed for rebuilding the
  glibc package.
-
 +%package syms
 +Summary:        Kernel Symbol Versions (modversions) for the $__KERNELRELEASE kernel
 +Group:          Development/Sources
@@ -277,10 +277,10 @@ index ac3f2ee6d..e96ffc9a7 100644
 +This package is needed for compiling kernel module packages with proper
 +package dependencies.
 +
+
  %if %{with_devel}
  %package devel
- Summary: Development package for building kernel modules to match the %{version} kernel
-@@ -55,16 +68,16 @@
+@@ -55,39 +68,39 @@ patch -p1 < %{SOURCE2}
  %{make} %{makeflags} KERNELRELEASE=%{KERNELRELEASE} KBUILD_BUILD_VERSION=%{release}
 
  %install
@@ -288,7 +288,8 @@ index ac3f2ee6d..e96ffc9a7 100644
 -cp $(%{make} %{makeflags} -s image_name) %{buildroot}/lib/modules/%{KERNELRELEASE}/vmlinuz
 +mkdir -p %{buildroot}/usr/lib/modules/%{KERNELRELEASE}
 +cp $(%{make} %{makeflags} -s image_name) %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/vmlinuz
- %{make} %{makeflags} INSTALL_MOD_PATH=%{buildroot} modules_install
+ # DEPMOD=true makes depmod no-op. We do not package depmod-generated files.
+ %{make} %{makeflags} INSTALL_MOD_PATH=%{buildroot} DEPMOD=true modules_install
  %{make} %{makeflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
 -cp System.map %{buildroot}/lib/modules/%{KERNELRELEASE}
 -cp .config %{buildroot}/lib/modules/%{KERNELRELEASE}/config
@@ -303,13 +304,10 @@ index ac3f2ee6d..e96ffc9a7 100644
  %if %{with_devel}
  %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='${srctree}/scripts/package/install-extmod-build %{buildroot}/usr/src/kernels/%{KERNELRELEASE}'
  %endif
-@@ -72,24 +85,24 @@
+
  {
- 	for x in System.map config kernel modules.builtin \
- 			modules.builtin.modinfo modules.order vmlinuz; do
--		echo "/lib/modules/%{KERNELRELEASE}/${x}"
-+		echo "/usr/lib/modules/%{KERNELRELEASE}/${x}"
- 	done
+-	echo "/lib/modules/%{KERNELRELEASE}"
++	echo "/usr/lib/modules/%{KERNELRELEASE}"
 
  	for x in alias alias.bin builtin.alias.bin builtin.bin dep dep.bin \
  					devname softdep symbols symbols.bin; do
@@ -334,7 +332,7 @@ index ac3f2ee6d..e96ffc9a7 100644
  } > %{buildroot}/kernel.list
 
  %clean
-@@ -97,19 +110,19 @@
+@@ -95,19 +108,19 @@ rm -rf %{buildroot}
 
  %post
  if [ -x /usr/bin/kernel-install ]; then
@@ -361,7 +359,7 @@ index ac3f2ee6d..e96ffc9a7 100644
  	/usr/sbin/depmod %{KERNELRELEASE}
  fi
 
-@@ -130,5 +143,8 @@
+@@ -128,5 +141,8 @@ fi
  %files devel
  %defattr (-, root, root)
  /usr/src/kernels/%{KERNELRELEASE}
