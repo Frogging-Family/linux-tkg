@@ -186,14 +186,14 @@ hackbase() {
   # install customization file, for reference
   install -Dm644 "${srcdir}"/customization-full.cfg "${pkgdir}/usr/share/doc/${pkgbase}/customization.cfg"
 
-  # workaround for missing header with ntsync
-  if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/ntsync.h" ]; then
-    msg2 "Workaround missing ntsync header"
-    install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/ntsync.h "${pkgdir}/usr/include/linux/ntsync.h"
-  fi
-
-  # load ntsync module at boot
+  # ntsync
   if [ -e "${srcdir}/ntsync.conf" ]; then
+    # workaround for missing header with ntsync
+    if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/ntsync.h" ] && [ ! -e "/usr/include/linux/ntsync.h" ]; then
+      msg2 "Workaround missing ntsync header"
+      install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/ntsync.h "${pkgdir}/usr/include/linux/ntsync.h"
+    fi
+    # load ntsync module at boot
     msg2 "Set the ntsync module to be loaded at boot through /etc/modules-load.d"
     install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/etc/modules-load.d/ntsync.conf"
   fi
