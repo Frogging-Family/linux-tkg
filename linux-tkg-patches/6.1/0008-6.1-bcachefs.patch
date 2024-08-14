@@ -38398,7 +38398,7 @@ index 000000000000..f3ffdbc38485
 +	}
 +
 +	__set_current_state(TASK_RUNNING);
-+	del_singleshot_timer_sync(&wait.cpu_timer);
++	del_timer_sync(&wait.cpu_timer);
 +	destroy_timer_on_stack(&wait.cpu_timer);
 +	bch2_io_timer_del(clock, &wait.io_timer);
 +}
@@ -87152,14 +87152,6 @@ diff --git a/include/linux/generic-radix-tree.h b/include/linux/generic-radix-tr
 index 107613f7d792..c74b7376990d 100644
 --- a/include/linux/generic-radix-tree.h
 +++ b/include/linux/generic-radix-tree.h
-@@ -38,6 +38,7 @@
- 
- #include <asm/page.h>
- #include <linux/bug.h>
-+#include <linux/limits.h>
- #include <linux/log2.h>
- #include <linux/math.h>
- #include <linux/types.h>
 @@ -116,6 +117,11 @@ static inline size_t __idx_to_offset(size_t idx, size_t obj_size)
  
  #define __genradix_cast(_radix)		(typeof((_radix)->type[0]) *)
@@ -87172,7 +87164,7 @@ index 107613f7d792..c74b7376990d 100644
  #define __genradix_idx_to_offset(_radix, _idx)			\
  	__idx_to_offset(_idx, __genradix_obj_size(_radix))
  
-@@ -179,11 +185,35 @@ void *__genradix_iter_peek(struct genradix_iter *, struct __genradix *, size_t);
+@@ -179,7 +185,25 @@ void *__genradix_iter_peek(struct genradix_iter *, struct __genradix *, size_t);
  #define genradix_iter_peek(_iter, _radix)			\
  	(__genradix_cast(_radix)				\
  	 __genradix_iter_peek(_iter, &(_radix)->tree,		\
@@ -87199,16 +87191,6 @@ index 107613f7d792..c74b7376990d 100644
  
  static inline void __genradix_iter_advance(struct genradix_iter *iter,
  					   size_t obj_size)
- {
-+	if (iter->offset + obj_size < iter->offset) {
-+		iter->offset	= SIZE_MAX;
-+		iter->pos	= SIZE_MAX;
-+		return;
-+	}
-+
- 	iter->offset += obj_size;
- 
- 	if (!is_power_of_2(obj_size) &&
 @@ -196,6 +226,25 @@ static inline void __genradix_iter_advance(struct genradix_iter *iter,
  #define genradix_iter_advance(_iter, _radix)			\
  	__genradix_iter_advance(_iter, __genradix_obj_size(_radix))
@@ -91437,38 +91419,6 @@ index f25eb111c051..41f1bcdc4488 100644
  #include <linux/export.h>
  #include <linux/generic-radix-tree.h>
  #include <linux/gfp.h>
-@@ -166,6 +167,10 @@ void *__genradix_iter_peek(struct genradix_iter *iter,
- 	struct genradix_root *r;
- 	struct genradix_node *n;
- 	unsigned level, i;
-+
-+	if (iter->offset == SIZE_MAX)
-+		return NULL;
-+
- restart:
- 	r = READ_ONCE(radix->root);
- 	if (!r)
-@@ -184,10 +189,17 @@ void *__genradix_iter_peek(struct genradix_iter *iter,
- 			(GENRADIX_ARY - 1);
- 
- 		while (!n->children[i]) {
-+			size_t objs_per_ptr = genradix_depth_size(level);
-+
-+			if (iter->offset + objs_per_ptr < iter->offset) {
-+				iter->offset	= SIZE_MAX;
-+				iter->pos	= SIZE_MAX;
-+				return NULL;
-+			}
-+
- 			i++;
--			iter->offset = round_down(iter->offset +
--					   genradix_depth_size(level),
--					   genradix_depth_size(level));
-+			iter->offset = round_down(iter->offset + objs_per_ptr,
-+						  objs_per_ptr);
- 			iter->pos = (iter->offset >> PAGE_SHIFT) *
- 				objs_per_page;
- 			if (i == GENRADIX_ARY)
 @@ -201,6 +213,64 @@ void *__genradix_iter_peek(struct genradix_iter *iter,
  }
  EXPORT_SYMBOL(__genradix_iter_peek);
@@ -95306,9 +95256,9 @@ index 24f37bab8bc1..1233bbcfdf5e 100644
  {
  	int depth;
  
-@@ -2095,39 +1955,30 @@ char *fwnode_full_name_string(struct fwnode_handle *fwnode, char *buf,
- 		struct fwnode_handle *__fwnode =
- 			fwnode_get_nth_parent(fwnode, depth);
+@@ -2095,40 +1955,31 @@ char *fwnode_full_name_string(struct fwnode_handle *fwnode, char *buf,
+ 		struct fwnode_handle *__fwnode = depth ?
+ 			fwnode_get_nth_parent(fwnode, depth) : fwnode;
  
 -		buf = string(buf, end, fwnode_get_name_prefix(__fwnode),
 -			     default_str_spec);
@@ -95317,7 +95267,8 @@ index 24f37bab8bc1..1233bbcfdf5e 100644
 +		string(out, fwnode_get_name_prefix(__fwnode));
 +		string(out, fwnode_get_name(__fwnode));
  
- 		fwnode_handle_put(__fwnode);
+ 		if (depth)
+ 			fwnode_handle_put(__fwnode);
  	}
 -
 -	return buf;
