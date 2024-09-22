@@ -702,7 +702,7 @@ _tkg_srcprep() {
   tkgpatch="${_patch_location}/${_patch_name}.patch"
   if [ -e "$tkgpatch" ]; then
     _msg="Applying graysky's cpu opts patch" && _tkg_patcher
-    if grep -wq "MINTEL_CPU_V3" "$tkgpatch"; then
+    if grep -wq "X86_64_VERSION" "$tkgpatch"; then
       _graysky_legacy="false"
     fi
   else
@@ -1052,9 +1052,7 @@ _tkg_srcprep() {
 
   # cpu opt
   _cpu_marchs=("generic_cpu")
-  if [ "$_graysky_legacy" = "false" ]; then
-    _cpu_marchs+=("amd_cpu_v2" "amd_cpu_v3" "intel_cpu_v2" "intel_cpu_v3")
-  else
+  if [ "$_graysky_legacy" != "false" ]; then
     _cpu_marchs+=("generic_cpu2" "generic_cpu3" "generic_cpu4")
   fi
   _cpu_marchs+=("native_amd" "native_intel")
@@ -1107,6 +1105,26 @@ _tkg_srcprep() {
     fi
   done
 
+  # x86_64 Compiler ISA level
+  if [ "$_processor_opt" = "generic_cpu" ]; then
+    if [[ -z "$_x86_64_isalvl" || ! "$_x86_64_isalvl" =~ ^(1|2|3)$ ]]; then
+      plain "Please select the desired x86_64 compiler ISA level"
+      plain "You can find the best version for your CPU by running one of the following:"
+      msg2 "/lib/ld-linux-x86-64.so.2 --help | grep supported"
+      msg2 "/lib64/ld-linux-x86-64.so.2 --help | grep supported"
+      _x86_64_isalvl_array_text=(
+        "x86-64-v1"
+        "x86-64-v2"
+        "x86-64-v3"
+      )
+      _default_index="0"
+      _prompt_from_array "${_x86_64_isalvl_array_text[@]}"
+      _x86_64_isalvl="$((_selected_index+1))"
+    fi
+    if [[ "$_x86_64_isalvl" =~ ^(1|2|3)$ ]]; then
+      scripts/config --set-val "X86_64_VERSION" "$_x86_64_isalvl"
+    fi
+  fi
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then
