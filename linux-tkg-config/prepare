@@ -712,7 +712,7 @@ _tkg_srcprep() {
   fi
 
   # PREEMPT_RT patch
-  if [ "${_preempt_rt}" = "1" ]; then
+  if [ "${_preempt_rt}" = "1" ] && [[ $_kver -lt 612 ]]; then
     if [ "${_rt_subver_map[$_basekernel]+_}" = "_" ]; then
       preempt_rt_ksubver="${_rt_subver_map[$_basekernel]}"
       # Check if subversion is supported, skip check if forced
@@ -978,6 +978,12 @@ _tkg_srcprep() {
   # Arch tends to set voluntary preemption when moving kernels to LTS, which we don't want as default
   _disable "PREEMPT_VOLUNTARY"
   _enable "PREEMPT"
+  if [ "${_preempt_rt}" = "1" ]; then
+    if [ $_kver -ge 612 ]; then
+      _enable "CONFIG_EXPERT" && _expert="true"
+    fi
+    _enable "PREEMPT_RT"
+  fi
 
   # This leads to all kinds of issues everytime Arch enables it in defconfig. Let's disable it and be happy.
   _disable "SYSFB_SIMPLEFB"
@@ -1615,8 +1621,13 @@ _tkg_srcprep() {
       _msg="Patching futex2 support"
       _tkg_patcher
       _enable "FUTEX2"
-      sed -i -e 's/# CONFIG_EXPERT is not set/CONFIG_EXPERT=y/' ./.config
-      echo -e "\r# start of config expert\r
+      _enable "EXPERT" && _expert="true"
+    fi
+  fi
+
+  if [ "$_expert" = "true" ]; then
+    echo -e "\r# start of config expert\r
+# CONFIG_BASE_SMALL is not set\r
 # CONFIG_DEBUG_RSEQ is not set\r
 # CONFIG_PC104 is not set\r
 # CONFIG_SLUB_MEMCG_SYSFS_ON is not set\r
@@ -1628,6 +1639,10 @@ _tkg_srcprep() {
 # CONFIG_PCI_CNB20LE_QUIRK is not set\r
 # CONFIG_ISA_BUS is not set\r
 CONFIG_KVM_WERROR=y\r
+# CONFIG_KVM_SW_PROTECTED_VM is not set\r
+# CONFIG_KVM_INTEL_PROVE_VE is not set\r
+# CONFIG_KVM_PROVE_MMU is not set\r
+# CONFIG_SLUB_TINY is not set\r
 # CONFIG_GCC_PLUGIN_CYC_COMPLEXITY is not set\r
 # CONFIG_CFG80211_CERTIFICATION_ONUS is not set\r
 # CONFIG_PCIE_BUS_TUNE_OFF is not set\r
@@ -1637,6 +1652,7 @@ CONFIG_PCIE_BUS_DEFAULT=y\r
 # CONFIG_PCIE_BUS_PEER2PEER is not set\r
 # CONFIG_PATA_PLATFORM is not set\r
 # CONFIG_TTY_PRINTK is not set\r
+# CONFIG_GPIO_SLOPPY_LOGIC_ANALYZER is not set\r
 # CONFIG_GPIO_SYSFS is not set\r
 # CONFIG_VIDEO_TDA1997X is not set\r
 # CONFIG_VIDEO_TLV320AIC23B is not set\r
@@ -1651,8 +1667,10 @@ CONFIG_PCIE_BUS_DEFAULT=y\r
 # CONFIG_VIDEO_ML86V7667 is not set\r
 # CONFIG_VIDEO_SAA7110 is not set\r
 # CONFIG_VIDEO_TC358743 is not set\r
+# CONFIG_VIDEO_TC358746 is not set\r
 # CONFIG_VIDEO_TVP514X is not set\r
 # CONFIG_VIDEO_TVP7002 is not set\r
+# CONFIG_VIDEO_TW9900 is not set\r
 # CONFIG_VIDEO_TW9910 is not set\r
 # CONFIG_VIDEO_VPX3220 is not set\r
 # CONFIG_VIDEO_SAA7185 is not set\r
@@ -1676,6 +1694,7 @@ CONFIG_PCIE_BUS_DEFAULT=y\r
 # CONFIG_DVB_LNBH29 is not set\r
 # CONFIG_DVB_LGS8GL5 is not set\r
 # CONFIG_DRM_DEBUG_DP_MST_TOPOLOGY_REFS is not set\r
+# CONFIG_DRM_DEBUG_MODESET_LOCK is not set\r
 # CONFIG_DRM_FBDEV_LEAK_PHYS_SMEM is not set\r
 # CONFIG_DRM_I915_WERROR is not set\r
 # CONFIG_DRM_I915_DEBUG is not set\r
@@ -1687,6 +1706,18 @@ CONFIG_PCIE_BUS_DEFAULT=y\r
 # CONFIG_DRM_I915_LOW_LEVEL_TRACEPOINTS is not set\r
 # CONFIG_DRM_I915_DEBUG_VBLANK_EVADE is not set\r
 # CONFIG_DRM_I915_DEBUG_RUNTIME_PM is not set\r
+# CONFIG_DRM_AMDGPU_WERROR is not set\r
+# CONFIG_DRM_XE_WERROR is not set\r
+# CONFIG_DRM_XE_DEBUG is not set\r
+# CONFIG_DRM_XE_DEBUG_VM is not set\r
+# CONFIG_DRM_XE_DEBUG_SRIOV is not set\r
+# CONFIG_DRM_XE_DEBUG_MEM is not set\r
+# CONFIG_DRM_XE_LARGE_GUC_BUFFER is not set\r
+# CONFIG_DRM_XE_USERPTR_INVAL_INJECT is not set\r
+# CONFIG_DRM_MGAG200_DISABLE_WRITECOMBINE is not set\r
+# CONFIG_DRM_WERROR is not set\r
+# CONFIG_RESET_SIMPLE is not set\r
+# CONFIG_KFENCE_STATIC_KEYS is not set\r
 # CONFIG_FB_INTEL is not set\r
 # CONFIG_SND_SOC_SOF_DEVELOPER_SUPPORT is not set\r
 # CONFIG_USB_KBD is not set\r
@@ -1701,8 +1732,7 @@ CONFIG_DEBUG_INFO_BTF_MODULES=y\r
 # CONFIG_TRIM_UNUSED_KSYMS is not set\r
 # CONFIG_VMLINUX_MAP is not set\r
 # end of config expert\n">> ./.config
-    fi
-  fi
+fi
 
   # ntsync support
   tkgpatch="$srcdir/0007-v${_basekernel}-ntsync.patch"
