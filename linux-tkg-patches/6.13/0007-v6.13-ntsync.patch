@@ -1,0 +1,3089 @@
+From d0a6d18c3ce077b9b944a383d001bc4a8b907006 Mon Sep 17 00:00:00 2001
+From: Peter Jung <admin@ptr1337.dev>
+Date: Mon, 15 Jul 2024 13:26:39 +0200
+Subject: [PATCH 08/11] ntsync
+
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
+---
+ Documentation/userspace-api/index.rst         |    1 +
+ Documentation/userspace-api/ntsync.rst        |  398 +++++
+ MAINTAINERS                                   |    9 +
+ drivers/misc/Kconfig                          |    1 -
+ drivers/misc/ntsync.c                         |  989 +++++++++++-
+ include/uapi/linux/ntsync.h                   |   39 +
+ tools/testing/selftests/Makefile              |    1 +
+ .../selftests/drivers/ntsync/.gitignore       |    1 +
+ .../testing/selftests/drivers/ntsync/Makefile |    7 +
+ tools/testing/selftests/drivers/ntsync/config |    1 +
+ .../testing/selftests/drivers/ntsync/ntsync.c | 1407 +++++++++++++++++
+ 11 files changed, 2850 insertions(+), 4 deletions(-)
+ create mode 100644 Documentation/userspace-api/ntsync.rst
+ create mode 100644 tools/testing/selftests/drivers/ntsync/.gitignore
+ create mode 100644 tools/testing/selftests/drivers/ntsync/Makefile
+ create mode 100644 tools/testing/selftests/drivers/ntsync/config
+ create mode 100644 tools/testing/selftests/drivers/ntsync/ntsync.c
+
+diff --git a/Documentation/userspace-api/index.rst b/Documentation/userspace-api/index.rst
+index 8a251d71fa6e..02bea81fb4bf 100644
+--- a/Documentation/userspace-api/index.rst
++++ b/Documentation/userspace-api/index.rst
+@@ -64,6 +64,7 @@ Everything else
+    vduse
+    futex2
+    perf_ring_buffer
++   ntsync
+ 
+ .. only::  subproject and html
+ 
+diff --git a/Documentation/userspace-api/ntsync.rst b/Documentation/userspace-api/ntsync.rst
+new file mode 100644
+index 000000000000..767844637a7d
+--- /dev/null
++++ b/Documentation/userspace-api/ntsync.rst
+@@ -0,0 +1,398 @@
++===================================
++NT synchronization primitive driver
++===================================
++
++This page documents the user-space API for the ntsync driver.
++
++ntsync is a support driver for emulation of NT synchronization
++primitives by user-space NT emulators. It exists because implementation
++in user-space, using existing tools, cannot match Windows performance
++while offering accurate semantics. It is implemented entirely in
++software, and does not drive any hardware device.
++
++This interface is meant as a compatibility tool only, and should not
++be used for general synchronization. Instead use generic, versatile
++interfaces such as futex(2) and poll(2).
++
++Synchronization primitives
++==========================
++
++The ntsync driver exposes three types of synchronization primitives:
++semaphores, mutexes, and events.
++
++A semaphore holds a single volatile 32-bit counter, and a static 32-bit
++integer denoting the maximum value. It is considered signaled (that is,
++can be acquired without contention, or will wake up a waiting thread)
++when the counter is nonzero. The counter is decremented by one when a
++wait is satisfied. Both the initial and maximum count are established
++when the semaphore is created.
++
++A mutex holds a volatile 32-bit recursion count, and a volatile 32-bit
++identifier denoting its owner. A mutex is considered signaled when its
++owner is zero (indicating that it is not owned). The recursion count is
++incremented when a wait is satisfied, and ownership is set to the given
++identifier.
++
++A mutex also holds an internal flag denoting whether its previous owner
++has died; such a mutex is said to be abandoned. Owner death is not
++tracked automatically based on thread death, but rather must be
++communicated using ``NTSYNC_IOC_MUTEX_KILL``. An abandoned mutex is
++inherently considered unowned.
++
++Except for the "unowned" semantics of zero, the actual value of the
++owner identifier is not interpreted by the ntsync driver at all. The
++intended use is to store a thread identifier; however, the ntsync
++driver does not actually validate that a calling thread provides
++consistent or unique identifiers.
++
++An event is similar to a semaphore with a maximum count of one. It holds
++a volatile boolean state denoting whether it is signaled or not. There
++are two types of events, auto-reset and manual-reset. An auto-reset
++event is designaled when a wait is satisfied; a manual-reset event is
++not. The event type is specified when the event is created.
++
++Unless specified otherwise, all operations on an object are atomic and
++totally ordered with respect to other operations on the same object.
++
++Objects are represented by files. When all file descriptors to an
++object are closed, that object is deleted.
++
++Char device
++===========
++
++The ntsync driver creates a single char device /dev/ntsync. Each file
++description opened on the device represents a unique instance intended
++to back an individual NT virtual machine. Objects created by one ntsync
++instance may only be used with other objects created by the same
++instance.
++
++ioctl reference
++===============
++
++All operations on the device are done through ioctls. There are four
++structures used in ioctl calls::
++
++   struct ntsync_sem_args {
++   	__u32 sem;
++   	__u32 count;
++   	__u32 max;
++   };
++
++   struct ntsync_mutex_args {
++   	__u32 mutex;
++   	__u32 owner;
++   	__u32 count;
++   };
++
++   struct ntsync_event_args {
++   	__u32 event;
++   	__u32 signaled;
++   	__u32 manual;
++   };
++
++   struct ntsync_wait_args {
++   	__u64 timeout;
++   	__u64 objs;
++   	__u32 count;
++   	__u32 owner;
++   	__u32 index;
++   	__u32 alert;
++   	__u32 flags;
++   	__u32 pad;
++   };
++
++Depending on the ioctl, members of the structure may be used as input,
++output, or not at all. All ioctls return 0 on success.
++
++The ioctls on the device file are as follows:
++
++.. c:macro:: NTSYNC_IOC_CREATE_SEM
++
++  Create a semaphore object. Takes a pointer to struct
++  :c:type:`ntsync_sem_args`, which is used as follows:
++
++  .. list-table::
++
++     * - ``sem``
++       - On output, contains a file descriptor to the created semaphore.
++     * - ``count``
++       - Initial count of the semaphore.
++     * - ``max``
++       - Maximum count of the semaphore.
++
++  Fails with ``EINVAL`` if ``count`` is greater than ``max``.
++
++.. c:macro:: NTSYNC_IOC_CREATE_MUTEX
++
++  Create a mutex object. Takes a pointer to struct
++  :c:type:`ntsync_mutex_args`, which is used as follows:
++
++  .. list-table::
++
++     * - ``mutex``
++       - On output, contains a file descriptor to the created mutex.
++     * - ``count``
++       - Initial recursion count of the mutex.
++     * - ``owner``
++       - Initial owner of the mutex.
++
++  If ``owner`` is nonzero and ``count`` is zero, or if ``owner`` is
++  zero and ``count`` is nonzero, the function fails with ``EINVAL``.
++
++.. c:macro:: NTSYNC_IOC_CREATE_EVENT
++
++  Create an event object. Takes a pointer to struct
++  :c:type:`ntsync_event_args`, which is used as follows:
++
++  .. list-table::
++
++     * - ``event``
++       - On output, contains a file descriptor to the created event.
++     * - ``signaled``
++       - If nonzero, the event is initially signaled, otherwise
++         nonsignaled.
++     * - ``manual``
++       - If nonzero, the event is a manual-reset event, otherwise
++         auto-reset.
++
++The ioctls on the individual objects are as follows:
++
++.. c:macro:: NTSYNC_IOC_SEM_POST
++
++  Post to a semaphore object. Takes a pointer to a 32-bit integer,
++  which on input holds the count to be added to the semaphore, and on
++  output contains its previous count.
++
++  If adding to the semaphore's current count would raise the latter
++  past the semaphore's maximum count, the ioctl fails with
++  ``EOVERFLOW`` and the semaphore is not affected. If raising the
++  semaphore's count causes it to become signaled, eligible threads
++  waiting on this semaphore will be woken and the semaphore's count
++  decremented appropriately.
++
++.. c:macro:: NTSYNC_IOC_MUTEX_UNLOCK
++
++  Release a mutex object. Takes a pointer to struct
++  :c:type:`ntsync_mutex_args`, which is used as follows:
++
++  .. list-table::
++
++     * - ``mutex``
++       - Ignored.
++     * - ``owner``
++       - Specifies the owner trying to release this mutex.
++     * - ``count``
++       - On output, contains the previous recursion count.
++
++  If ``owner`` is zero, the ioctl fails with ``EINVAL``. If ``owner``
++  is not the current owner of the mutex, the ioctl fails with
++  ``EPERM``.
++
++  The mutex's count will be decremented by one. If decrementing the
++  mutex's count causes it to become zero, the mutex is marked as
++  unowned and signaled, and eligible threads waiting on it will be
++  woken as appropriate.
++
++.. c:macro:: NTSYNC_IOC_SET_EVENT
++
++  Signal an event object. Takes a pointer to a 32-bit integer, which on
++  output contains the previous state of the event.
++
++  Eligible threads will be woken, and auto-reset events will be
++  designaled appropriately.
++
++.. c:macro:: NTSYNC_IOC_RESET_EVENT
++
++  Designal an event object. Takes a pointer to a 32-bit integer, which
++  on output contains the previous state of the event.
++
++.. c:macro:: NTSYNC_IOC_PULSE_EVENT
++
++  Wake threads waiting on an event object while leaving it in an
++  unsignaled state. Takes a pointer to a 32-bit integer, which on
++  output contains the previous state of the event.
++
++  A pulse operation can be thought of as a set followed by a reset,
++  performed as a single atomic operation. If two threads are waiting on
++  an auto-reset event which is pulsed, only one will be woken. If two
++  threads are waiting a manual-reset event which is pulsed, both will
++  be woken. However, in both cases, the event will be unsignaled
++  afterwards, and a simultaneous read operation will always report the
++  event as unsignaled.
++
++.. c:macro:: NTSYNC_IOC_READ_SEM
++
++  Read the current state of a semaphore object. Takes a pointer to
++  struct :c:type:`ntsync_sem_args`, which is used as follows:
++
++  .. list-table::
++
++     * - ``sem``
++       - Ignored.
++     * - ``count``
++       - On output, contains the current count of the semaphore.
++     * - ``max``
++       - On output, contains the maximum count of the semaphore.
++
++.. c:macro:: NTSYNC_IOC_READ_MUTEX
++
++  Read the current state of a mutex object. Takes a pointer to struct
++  :c:type:`ntsync_mutex_args`, which is used as follows:
++
++  .. list-table::
++
++     * - ``mutex``
++       - Ignored.
++     * - ``owner``
++       - On output, contains the current owner of the mutex, or zero
++         if the mutex is not currently owned.
++     * - ``count``
++       - On output, contains the current recursion count of the mutex.
++
++  If the mutex is marked as abandoned, the function fails with
++  ``EOWNERDEAD``. In this case, ``count`` and ``owner`` are set to
++  zero.
++
++.. c:macro:: NTSYNC_IOC_READ_EVENT
++
++  Read the current state of an event object. Takes a pointer to struct
++  :c:type:`ntsync_event_args`, which is used as follows:
++
++  .. list-table::
++
++     * - ``event``
++       - Ignored.
++     * - ``signaled``
++       - On output, contains the current state of the event.
++     * - ``manual``
++       - On output, contains 1 if the event is a manual-reset event,
++         and 0 otherwise.
++
++.. c:macro:: NTSYNC_IOC_KILL_OWNER
++
++  Mark a mutex as unowned and abandoned if it is owned by the given
++  owner. Takes an input-only pointer to a 32-bit integer denoting the
++  owner. If the owner is zero, the ioctl fails with ``EINVAL``. If the
++  owner does not own the mutex, the function fails with ``EPERM``.
++
++  Eligible threads waiting on the mutex will be woken as appropriate
++  (and such waits will fail with ``EOWNERDEAD``, as described below).
++
++.. c:macro:: NTSYNC_IOC_WAIT_ANY
++
++  Poll on any of a list of objects, atomically acquiring at most one.
++  Takes a pointer to struct :c:type:`ntsync_wait_args`, which is
++  used as follows:
++
++  .. list-table::
++
++     * - ``timeout``
++       - Absolute timeout in nanoseconds. If ``NTSYNC_WAIT_REALTIME``
++         is set, the timeout is measured against the REALTIME clock;
++         otherwise it is measured against the MONOTONIC clock. If the
++         timeout is equal to or earlier than the current time, the
++         function returns immediately without sleeping. If ``timeout``
++         is U64_MAX, the function will sleep until an object is
++         signaled, and will not fail with ``ETIMEDOUT``.
++     * - ``objs``
++       - Pointer to an array of ``count`` file descriptors
++         (specified as an integer so that the structure has the same
++         size regardless of architecture). If any object is
++         invalid, the function fails with ``EINVAL``.
++     * - ``count``
++       - Number of objects specified in the ``objs`` array.
++         If greater than ``NTSYNC_MAX_WAIT_COUNT``, the function fails
++         with ``EINVAL``.
++     * - ``owner``
++       - Mutex owner identifier. If any object in ``objs`` is a mutex,
++         the ioctl will attempt to acquire that mutex on behalf of
++         ``owner``. If ``owner`` is zero, the ioctl fails with
++         ``EINVAL``.
++     * - ``index``
++       - On success, contains the index (into ``objs``) of the object
++         which was signaled. If ``alert`` was signaled instead,
++         this contains ``count``.
++     * - ``alert``
++       - Optional event object file descriptor. If nonzero, this
++         specifies an "alert" event object which, if signaled, will
++         terminate the wait. If nonzero, the identifier must point to a
++         valid event.
++     * - ``flags``
++       - Zero or more flags. Currently the only flag is
++         ``NTSYNC_WAIT_REALTIME``, which causes the timeout to be
++         measured against the REALTIME clock instead of MONOTONIC.
++     * - ``pad``
++       - Unused, must be set to zero.
++
++  This function attempts to acquire one of the given objects. If unable
++  to do so, it sleeps until an object becomes signaled, subsequently
++  acquiring it, or the timeout expires. In the latter case the ioctl
++  fails with ``ETIMEDOUT``. The function only acquires one object, even
++  if multiple objects are signaled.
++
++  A semaphore is considered to be signaled if its count is nonzero, and
++  is acquired by decrementing its count by one. A mutex is considered
++  to be signaled if it is unowned or if its owner matches the ``owner``
++  argument, and is acquired by incrementing its recursion count by one
++  and setting its owner to the ``owner`` argument. An auto-reset event
++  is acquired by designaling it; a manual-reset event is not affected
++  by acquisition.
++
++  Acquisition is atomic and totally ordered with respect to other
++  operations on the same object. If two wait operations (with different
++  ``owner`` identifiers) are queued on the same mutex, only one is
++  signaled. If two wait operations are queued on the same semaphore,
++  and a value of one is posted to it, only one is signaled.
++
++  If an abandoned mutex is acquired, the ioctl fails with
++  ``EOWNERDEAD``. Although this is a failure return, the function may
++  otherwise be considered successful. The mutex is marked as owned by
++  the given owner (with a recursion count of 1) and as no longer
++  abandoned, and ``index`` is still set to the index of the mutex.
++
++  The ``alert`` argument is an "extra" event which can terminate the
++  wait, independently of all other objects.
++
++  It is valid to pass the same object more than once, including by
++  passing the same event in the ``objs`` array and in ``alert``. If a
++  wakeup occurs due to that object being signaled, ``index`` is set to
++  the lowest index corresponding to that object.
++
++  The function may fail with ``EINTR`` if a signal is received.
++
++.. c:macro:: NTSYNC_IOC_WAIT_ALL
++
++  Poll on a list of objects, atomically acquiring all of them. Takes a
++  pointer to struct :c:type:`ntsync_wait_args`, which is used
++  identically to ``NTSYNC_IOC_WAIT_ANY``, except that ``index`` is
++  always filled with zero on success if not woken via alert.
++
++  This function attempts to simultaneously acquire all of the given
++  objects. If unable to do so, it sleeps until all objects become
++  simultaneously signaled, subsequently acquiring them, or the timeout
++  expires. In the latter case the ioctl fails with ``ETIMEDOUT`` and no
++  objects are modified.
++
++  Objects may become signaled and subsequently designaled (through
++  acquisition by other threads) while this thread is sleeping. Only
++  once all objects are simultaneously signaled does the ioctl acquire
++  them and return. The entire acquisition is atomic and totally ordered
++  with respect to other operations on any of the given objects.
++
++  If an abandoned mutex is acquired, the ioctl fails with
++  ``EOWNERDEAD``. Similarly to ``NTSYNC_IOC_WAIT_ANY``, all objects are
++  nevertheless marked as acquired. Note that if multiple mutex objects
++  are specified, there is no way to know which were marked as
++  abandoned.
++
++  As with "any" waits, the ``alert`` argument is an "extra" event which
++  can terminate the wait. Critically, however, an "all" wait will
++  succeed if all members in ``objs`` are signaled, *or* if ``alert`` is
++  signaled. In the latter case ``index`` will be set to ``count``. As
++  with "any" waits, if both conditions are filled, the former takes
++  priority, and objects in ``objs`` will be acquired.
++
++  Unlike ``NTSYNC_IOC_WAIT_ANY``, it is not valid to pass the same
++  object more than once, nor is it valid to pass the same object in
++  ``objs`` and in ``alert``. If this is attempted, the function fails
++  with ``EINVAL``.
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 958e935449e5..b25b2a731512 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -15976,6 +15976,15 @@ T:	git https://github.com/Paragon-Software-Group/linux-ntfs3.git
+ F:	Documentation/filesystems/ntfs3.rst
+ F:	fs/ntfs3/
+ 
++NTSYNC SYNCHRONIZATION PRIMITIVE DRIVER
++M:	Elizabeth Figura <zfigura@codeweavers.com>
++L:	wine-devel@winehq.org
++S:	Supported
++F:	Documentation/userspace-api/ntsync.rst
++F:	drivers/misc/ntsync.c
++F:	include/uapi/linux/ntsync.h
++F:	tools/testing/selftests/drivers/ntsync/
++
+ NUBUS SUBSYSTEM
+ M:	Finn Thain <fthain@linux-m68k.org>
+ L:	linux-m68k@lists.linux-m68k.org
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index faf983680040..2907b5c23368 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -507,7 +507,6 @@ config OPEN_DICE
+ 
+ config NTSYNC
+ 	tristate "NT synchronization primitive emulation"
+-	depends on BROKEN
+ 	help
+ 	  This module provides kernel support for emulation of Windows NT
+ 	  synchronization primitives. It is not a hardware driver.
+diff --git a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
+index 3c2f743c58b0..87a24798a5c7 100644
+--- a/drivers/misc/ntsync.c
++++ b/drivers/misc/ntsync.c
+@@ -6,11 +6,17 @@
+  */
+ 
+ #include <linux/anon_inodes.h>
++#include <linux/atomic.h>
+ #include <linux/file.h>
+ #include <linux/fs.h>
++#include <linux/hrtimer.h>
++#include <linux/ktime.h>
+ #include <linux/miscdevice.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/overflow.h>
++#include <linux/sched.h>
++#include <linux/sched/signal.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
+ #include <uapi/linux/ntsync.h>
+@@ -19,6 +25,8 @@
+ 
+ enum ntsync_type {
+ 	NTSYNC_TYPE_SEM,
++	NTSYNC_TYPE_MUTEX,
++	NTSYNC_TYPE_EVENT,
+ };
+ 
+ /*
+@@ -30,10 +38,13 @@ enum ntsync_type {
+  *
+  * Both rely on struct file for reference counting. Individual
+  * ntsync_obj objects take a reference to the device when created.
++ * Wait operations take a reference to each object being waited on for
++ * the duration of the wait.
+  */
+ 
+ struct ntsync_obj {
+ 	spinlock_t lock;
++	int dev_locked;
+ 
+ 	enum ntsync_type type;
+ 
+@@ -46,13 +57,335 @@ struct ntsync_obj {
+ 			__u32 count;
+ 			__u32 max;
+ 		} sem;
++		struct {
++			__u32 count;
++			pid_t owner;
++			bool ownerdead;
++		} mutex;
++		struct {
++			bool manual;
++			bool signaled;
++		} event;
+ 	} u;
++
++	/*
++	 * any_waiters is protected by the object lock, but all_waiters is
++	 * protected by the device wait_all_lock.
++	 */
++	struct list_head any_waiters;
++	struct list_head all_waiters;
++
++	/*
++	 * Hint describing how many tasks are queued on this object in a
++	 * wait-all operation.
++	 *
++	 * Any time we do a wake, we may need to wake "all" waiters as well as
++	 * "any" waiters. In order to atomically wake "all" waiters, we must
++	 * lock all of the objects, and that means grabbing the wait_all_lock
++	 * below (and, due to lock ordering rules, before locking this object).
++	 * However, wait-all is a rare operation, and grabbing the wait-all
++	 * lock for every wake would create unnecessary contention.
++	 * Therefore we first check whether all_hint is zero, and, if it is,
++	 * we skip trying to wake "all" waiters.
++	 *
++	 * Since wait requests must originate from user-space threads, we're
++	 * limited here by PID_MAX_LIMIT, so there's no risk of overflow.
++	 */
++	atomic_t all_hint;
++};
++
++struct ntsync_q_entry {
++	struct list_head node;
++	struct ntsync_q *q;
++	struct ntsync_obj *obj;
++	__u32 index;
++};
++
++struct ntsync_q {
++	struct task_struct *task;
++	__u32 owner;
++
++	/*
++	 * Protected via atomic_try_cmpxchg(). Only the thread that wins the
++	 * compare-and-swap may actually change object states and wake this
++	 * task.
++	 */
++	atomic_t signaled;
++
++	bool all;
++	bool ownerdead;
++	__u32 count;
++	struct ntsync_q_entry entries[];
+ };
+ 
+ struct ntsync_device {
++	/*
++	 * Wait-all operations must atomically grab all objects, and be totally
++	 * ordered with respect to each other and wait-any operations.
++	 * If one thread is trying to acquire several objects, another thread
++	 * cannot touch the object at the same time.
++	 *
++	 * This device-wide lock is used to serialize wait-for-all
++	 * operations, and operations on an object that is involved in a
++	 * wait-for-all.
++	 */
++	struct mutex wait_all_lock;
++
+ 	struct file *file;
+ };
+ 
++/*
++ * Single objects are locked using obj->lock.
++ *
++ * Multiple objects are 'locked' while holding dev->wait_all_lock.
++ * In this case however, individual objects are not locked by holding
++ * obj->lock, but by setting obj->dev_locked.
++ *
++ * This means that in order to lock a single object, the sequence is slightly
++ * more complicated than usual. Specifically it needs to check obj->dev_locked
++ * after acquiring obj->lock, if set, it needs to drop the lock and acquire
++ * dev->wait_all_lock in order to serialize against the multi-object operation.
++ */
++
++static void dev_lock_obj(struct ntsync_device *dev, struct ntsync_obj *obj)
++{
++	lockdep_assert_held(&dev->wait_all_lock);
++	lockdep_assert(obj->dev == dev);
++	spin_lock(&obj->lock);
++	/*
++	 * By setting obj->dev_locked inside obj->lock, it is ensured that
++	 * anyone holding obj->lock must see the value.
++	 */
++	obj->dev_locked = 1;
++	spin_unlock(&obj->lock);
++}
++
++static void dev_unlock_obj(struct ntsync_device *dev, struct ntsync_obj *obj)
++{
++	lockdep_assert_held(&dev->wait_all_lock);
++	lockdep_assert(obj->dev == dev);
++	spin_lock(&obj->lock);
++	obj->dev_locked = 0;
++	spin_unlock(&obj->lock);
++}
++
++static void obj_lock(struct ntsync_obj *obj)
++{
++	struct ntsync_device *dev = obj->dev;
++
++	for (;;) {
++		spin_lock(&obj->lock);
++		if (likely(!obj->dev_locked))
++			break;
++
++		spin_unlock(&obj->lock);
++		mutex_lock(&dev->wait_all_lock);
++		spin_lock(&obj->lock);
++		/*
++		 * obj->dev_locked should be set and released under the same
++		 * wait_all_lock section, since we now own this lock, it should
++		 * be clear.
++		 */
++		lockdep_assert(!obj->dev_locked);
++		spin_unlock(&obj->lock);
++		mutex_unlock(&dev->wait_all_lock);
++	}
++}
++
++static void obj_unlock(struct ntsync_obj *obj)
++{
++	spin_unlock(&obj->lock);
++}
++
++static bool ntsync_lock_obj(struct ntsync_device *dev, struct ntsync_obj *obj)
++{
++	bool all;
++
++	obj_lock(obj);
++	all = atomic_read(&obj->all_hint);
++	if (unlikely(all)) {
++		obj_unlock(obj);
++		mutex_lock(&dev->wait_all_lock);
++		dev_lock_obj(dev, obj);
++	}
++
++	return all;
++}
++
++static void ntsync_unlock_obj(struct ntsync_device *dev, struct ntsync_obj *obj, bool all)
++{
++	if (all) {
++		dev_unlock_obj(dev, obj);
++		mutex_unlock(&dev->wait_all_lock);
++	} else {
++		obj_unlock(obj);
++	}
++}
++
++#define ntsync_assert_held(obj) \
++	lockdep_assert((lockdep_is_held(&(obj)->lock) != LOCK_STATE_NOT_HELD) || \
++		       ((lockdep_is_held(&(obj)->dev->wait_all_lock) != LOCK_STATE_NOT_HELD) && \
++			(obj)->dev_locked))
++
++static bool is_signaled(struct ntsync_obj *obj, __u32 owner)
++{
++	ntsync_assert_held(obj);
++
++	switch (obj->type) {
++	case NTSYNC_TYPE_SEM:
++		return !!obj->u.sem.count;
++	case NTSYNC_TYPE_MUTEX:
++		if (obj->u.mutex.owner && obj->u.mutex.owner != owner)
++			return false;
++		return obj->u.mutex.count < UINT_MAX;
++	case NTSYNC_TYPE_EVENT:
++		return obj->u.event.signaled;
++	}
++
++	WARN(1, "bad object type %#x\n", obj->type);
++	return false;
++}
++
++/*
++ * "locked_obj" is an optional pointer to an object which is already locked and
++ * should not be locked again. This is necessary so that changing an object's
++ * state and waking it can be a single atomic operation.
++ */
++static void try_wake_all(struct ntsync_device *dev, struct ntsync_q *q,
++			 struct ntsync_obj *locked_obj)
++{
++	__u32 count = q->count;
++	bool can_wake = true;
++	int signaled = -1;
++	__u32 i;
++
++	lockdep_assert_held(&dev->wait_all_lock);
++	if (locked_obj)
++		lockdep_assert(locked_obj->dev_locked);
++
++	for (i = 0; i < count; i++) {
++		if (q->entries[i].obj != locked_obj)
++			dev_lock_obj(dev, q->entries[i].obj);
++	}
++
++	for (i = 0; i < count; i++) {
++		if (!is_signaled(q->entries[i].obj, q->owner)) {
++			can_wake = false;
++			break;
++		}
++	}
++
++	if (can_wake && atomic_try_cmpxchg(&q->signaled, &signaled, 0)) {
++		for (i = 0; i < count; i++) {
++			struct ntsync_obj *obj = q->entries[i].obj;
++
++			switch (obj->type) {
++			case NTSYNC_TYPE_SEM:
++				obj->u.sem.count--;
++				break;
++			case NTSYNC_TYPE_MUTEX:
++				if (obj->u.mutex.ownerdead)
++					q->ownerdead = true;
++				obj->u.mutex.ownerdead = false;
++				obj->u.mutex.count++;
++				obj->u.mutex.owner = q->owner;
++				break;
++			case NTSYNC_TYPE_EVENT:
++				if (!obj->u.event.manual)
++					obj->u.event.signaled = false;
++				break;
++			}
++		}
++		wake_up_process(q->task);
++	}
++
++	for (i = 0; i < count; i++) {
++		if (q->entries[i].obj != locked_obj)
++			dev_unlock_obj(dev, q->entries[i].obj);
++	}
++}
++
++static void try_wake_all_obj(struct ntsync_device *dev, struct ntsync_obj *obj)
++{
++	struct ntsync_q_entry *entry;
++
++	lockdep_assert_held(&dev->wait_all_lock);
++	lockdep_assert(obj->dev_locked);
++
++	list_for_each_entry(entry, &obj->all_waiters, node)
++		try_wake_all(dev, entry->q, obj);
++}
++
++static void try_wake_any_sem(struct ntsync_obj *sem)
++{
++	struct ntsync_q_entry *entry;
++
++	ntsync_assert_held(sem);
++	lockdep_assert(sem->type == NTSYNC_TYPE_SEM);
++
++	list_for_each_entry(entry, &sem->any_waiters, node) {
++		struct ntsync_q *q = entry->q;
++		int signaled = -1;
++
++		if (!sem->u.sem.count)
++			break;
++
++		if (atomic_try_cmpxchg(&q->signaled, &signaled, entry->index)) {
++			sem->u.sem.count--;
++			wake_up_process(q->task);
++		}
++	}
++}
++
++static void try_wake_any_mutex(struct ntsync_obj *mutex)
++{
++	struct ntsync_q_entry *entry;
++
++	ntsync_assert_held(mutex);
++	lockdep_assert(mutex->type == NTSYNC_TYPE_MUTEX);
++
++	list_for_each_entry(entry, &mutex->any_waiters, node) {
++		struct ntsync_q *q = entry->q;
++		int signaled = -1;
++
++		if (mutex->u.mutex.count == UINT_MAX)
++			break;
++		if (mutex->u.mutex.owner && mutex->u.mutex.owner != q->owner)
++			continue;
++
++		if (atomic_try_cmpxchg(&q->signaled, &signaled, entry->index)) {
++			if (mutex->u.mutex.ownerdead)
++				q->ownerdead = true;
++			mutex->u.mutex.ownerdead = false;
++			mutex->u.mutex.count++;
++			mutex->u.mutex.owner = q->owner;
++			wake_up_process(q->task);
++		}
++	}
++}
++
++static void try_wake_any_event(struct ntsync_obj *event)
++{
++	struct ntsync_q_entry *entry;
++
++	ntsync_assert_held(event);
++	lockdep_assert(event->type == NTSYNC_TYPE_EVENT);
++
++	list_for_each_entry(entry, &event->any_waiters, node) {
++		struct ntsync_q *q = entry->q;
++		int signaled = -1;
++
++		if (!event->u.event.signaled)
++			break;
++
++		if (atomic_try_cmpxchg(&q->signaled, &signaled, entry->index)) {
++			if (!event->u.event.manual)
++				event->u.event.signaled = false;
++			wake_up_process(q->task);
++		}
++	}
++}
++
+ /*
+  * Actually change the semaphore state, returning -EOVERFLOW if it is made
+  * invalid.
+@@ -61,7 +394,7 @@ static int post_sem_state(struct ntsync_obj *sem, __u32 count)
+ {
+ 	__u32 sum;
+ 
+-	lockdep_assert_held(&sem->lock);
++	ntsync_assert_held(sem);
+ 
+ 	if (check_add_overflow(sem->u.sem.count, count, &sum) ||
+ 	    sum > sem->u.sem.max)
+@@ -73,9 +406,11 @@ static int post_sem_state(struct ntsync_obj *sem, __u32 count)
+ 
+ static int ntsync_sem_post(struct ntsync_obj *sem, void __user *argp)
+ {
++	struct ntsync_device *dev = sem->dev;
+ 	__u32 __user *user_args = argp;
+ 	__u32 prev_count;
+ 	__u32 args;
++	bool all;
+ 	int ret;
+ 
+ 	if (copy_from_user(&args, argp, sizeof(args)))
+@@ -84,12 +419,17 @@ static int ntsync_sem_post(struct ntsync_obj *sem, void __user *argp)
+ 	if (sem->type != NTSYNC_TYPE_SEM)
+ 		return -EINVAL;
+ 
+-	spin_lock(&sem->lock);
++	all = ntsync_lock_obj(dev, sem);
+ 
+ 	prev_count = sem->u.sem.count;
+ 	ret = post_sem_state(sem, args);
++	if (!ret) {
++		if (all)
++			try_wake_all_obj(dev, sem);
++		try_wake_any_sem(sem);
++	}
+ 
+-	spin_unlock(&sem->lock);
++	ntsync_unlock_obj(dev, sem, all);
+ 
+ 	if (!ret && put_user(prev_count, user_args))
+ 		ret = -EFAULT;
+@@ -97,6 +437,226 @@ static int ntsync_sem_post(struct ntsync_obj *sem, void __user *argp)
+ 	return ret;
+ }
+ 
++/*
++ * Actually change the mutex state, returning -EPERM if not the owner.
++ */
++static int unlock_mutex_state(struct ntsync_obj *mutex,
++			      const struct ntsync_mutex_args *args)
++{
++	ntsync_assert_held(mutex);
++
++	if (mutex->u.mutex.owner != args->owner)
++		return -EPERM;
++
++	if (!--mutex->u.mutex.count)
++		mutex->u.mutex.owner = 0;
++	return 0;
++}
++
++static int ntsync_mutex_unlock(struct ntsync_obj *mutex, void __user *argp)
++{
++	struct ntsync_mutex_args __user *user_args = argp;
++	struct ntsync_device *dev = mutex->dev;
++	struct ntsync_mutex_args args;
++	__u32 prev_count;
++	bool all;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++	if (!args.owner)
++		return -EINVAL;
++
++	if (mutex->type != NTSYNC_TYPE_MUTEX)
++		return -EINVAL;
++
++	all = ntsync_lock_obj(dev, mutex);
++
++	prev_count = mutex->u.mutex.count;
++	ret = unlock_mutex_state(mutex, &args);
++	if (!ret) {
++		if (all)
++			try_wake_all_obj(dev, mutex);
++		try_wake_any_mutex(mutex);
++	}
++
++	ntsync_unlock_obj(dev, mutex, all);
++
++	if (!ret && put_user(prev_count, &user_args->count))
++		ret = -EFAULT;
++
++	return ret;
++}
++
++/*
++ * Actually change the mutex state to mark its owner as dead,
++ * returning -EPERM if not the owner.
++ */
++static int kill_mutex_state(struct ntsync_obj *mutex, __u32 owner)
++{
++	ntsync_assert_held(mutex);
++
++	if (mutex->u.mutex.owner != owner)
++		return -EPERM;
++
++	mutex->u.mutex.ownerdead = true;
++	mutex->u.mutex.owner = 0;
++	mutex->u.mutex.count = 0;
++	return 0;
++}
++
++static int ntsync_mutex_kill(struct ntsync_obj *mutex, void __user *argp)
++{
++	struct ntsync_device *dev = mutex->dev;
++	__u32 owner;
++	bool all;
++	int ret;
++
++	if (get_user(owner, (__u32 __user *)argp))
++		return -EFAULT;
++	if (!owner)
++		return -EINVAL;
++
++	if (mutex->type != NTSYNC_TYPE_MUTEX)
++		return -EINVAL;
++
++	all = ntsync_lock_obj(dev, mutex);
++
++	ret = kill_mutex_state(mutex, owner);
++	if (!ret) {
++		if (all)
++			try_wake_all_obj(dev, mutex);
++		try_wake_any_mutex(mutex);
++	}
++
++	ntsync_unlock_obj(dev, mutex, all);
++
++	return ret;
++}
++
++static int ntsync_event_set(struct ntsync_obj *event, void __user *argp, bool pulse)
++{
++	struct ntsync_device *dev = event->dev;
++	__u32 prev_state;
++	bool all;
++
++	if (event->type != NTSYNC_TYPE_EVENT)
++		return -EINVAL;
++
++	all = ntsync_lock_obj(dev, event);
++
++	prev_state = event->u.event.signaled;
++	event->u.event.signaled = true;
++	if (all)
++		try_wake_all_obj(dev, event);
++	try_wake_any_event(event);
++	if (pulse)
++		event->u.event.signaled = false;
++
++	ntsync_unlock_obj(dev, event, all);
++
++	if (put_user(prev_state, (__u32 __user *)argp))
++		return -EFAULT;
++
++	return 0;
++}
++
++static int ntsync_event_reset(struct ntsync_obj *event, void __user *argp)
++{
++	struct ntsync_device *dev = event->dev;
++	__u32 prev_state;
++	bool all;
++
++	if (event->type != NTSYNC_TYPE_EVENT)
++		return -EINVAL;
++
++	all = ntsync_lock_obj(dev, event);
++
++	prev_state = event->u.event.signaled;
++	event->u.event.signaled = false;
++
++	ntsync_unlock_obj(dev, event, all);
++
++	if (put_user(prev_state, (__u32 __user *)argp))
++		return -EFAULT;
++
++	return 0;
++}
++
++static int ntsync_sem_read(struct ntsync_obj *sem, void __user *argp)
++{
++	struct ntsync_sem_args __user *user_args = argp;
++	struct ntsync_device *dev = sem->dev;
++	struct ntsync_sem_args args;
++	bool all;
++
++	if (sem->type != NTSYNC_TYPE_SEM)
++		return -EINVAL;
++
++	args.sem = 0;
++
++	all = ntsync_lock_obj(dev, sem);
++
++	args.count = sem->u.sem.count;
++	args.max = sem->u.sem.max;
++
++	ntsync_unlock_obj(dev, sem, all);
++
++	if (copy_to_user(user_args, &args, sizeof(args)))
++		return -EFAULT;
++	return 0;
++}
++
++static int ntsync_mutex_read(struct ntsync_obj *mutex, void __user *argp)
++{
++	struct ntsync_mutex_args __user *user_args = argp;
++	struct ntsync_device *dev = mutex->dev;
++	struct ntsync_mutex_args args;
++	bool all;
++	int ret;
++
++	if (mutex->type != NTSYNC_TYPE_MUTEX)
++		return -EINVAL;
++
++	args.mutex = 0;
++
++	all = ntsync_lock_obj(dev, mutex);
++
++	args.count = mutex->u.mutex.count;
++	args.owner = mutex->u.mutex.owner;
++	ret = mutex->u.mutex.ownerdead ? -EOWNERDEAD : 0;
++
++	ntsync_unlock_obj(dev, mutex, all);
++
++	if (copy_to_user(user_args, &args, sizeof(args)))
++		return -EFAULT;
++	return ret;
++}
++
++static int ntsync_event_read(struct ntsync_obj *event, void __user *argp)
++{
++	struct ntsync_event_args __user *user_args = argp;
++	struct ntsync_device *dev = event->dev;
++	struct ntsync_event_args args;
++	bool all;
++
++	if (event->type != NTSYNC_TYPE_EVENT)
++		return -EINVAL;
++
++	args.event = 0;
++
++	all = ntsync_lock_obj(dev, event);
++
++	args.manual = event->u.event.manual;
++	args.signaled = event->u.event.signaled;
++
++	ntsync_unlock_obj(dev, event, all);
++
++	if (copy_to_user(user_args, &args, sizeof(args)))
++		return -EFAULT;
++	return 0;
++}
++
+ static int ntsync_obj_release(struct inode *inode, struct file *file)
+ {
+ 	struct ntsync_obj *obj = file->private_data;
+@@ -116,6 +676,22 @@ static long ntsync_obj_ioctl(struct file *file, unsigned int cmd,
+ 	switch (cmd) {
+ 	case NTSYNC_IOC_SEM_POST:
+ 		return ntsync_sem_post(obj, argp);
++	case NTSYNC_IOC_SEM_READ:
++		return ntsync_sem_read(obj, argp);
++	case NTSYNC_IOC_MUTEX_UNLOCK:
++		return ntsync_mutex_unlock(obj, argp);
++	case NTSYNC_IOC_MUTEX_KILL:
++		return ntsync_mutex_kill(obj, argp);
++	case NTSYNC_IOC_MUTEX_READ:
++		return ntsync_mutex_read(obj, argp);
++	case NTSYNC_IOC_EVENT_SET:
++		return ntsync_event_set(obj, argp, false);
++	case NTSYNC_IOC_EVENT_RESET:
++		return ntsync_event_reset(obj, argp);
++	case NTSYNC_IOC_EVENT_PULSE:
++		return ntsync_event_set(obj, argp, true);
++	case NTSYNC_IOC_EVENT_READ:
++		return ntsync_event_read(obj, argp);
+ 	default:
+ 		return -ENOIOCTLCMD;
+ 	}
+@@ -141,6 +717,9 @@ static struct ntsync_obj *ntsync_alloc_obj(struct ntsync_device *dev,
+ 	obj->dev = dev;
+ 	get_file(dev->file);
+ 	spin_lock_init(&obj->lock);
++	INIT_LIST_HEAD(&obj->any_waiters);
++	INIT_LIST_HEAD(&obj->all_waiters);
++	atomic_set(&obj->all_hint, 0);
+ 
+ 	return obj;
+ }
+@@ -191,6 +770,400 @@ static int ntsync_create_sem(struct ntsync_device *dev, void __user *argp)
+ 	return put_user(fd, &user_args->sem);
+ }
+ 
++static int ntsync_create_mutex(struct ntsync_device *dev, void __user *argp)
++{
++	struct ntsync_mutex_args __user *user_args = argp;
++	struct ntsync_mutex_args args;
++	struct ntsync_obj *mutex;
++	int fd;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++
++	if (!args.owner != !args.count)
++		return -EINVAL;
++
++	mutex = ntsync_alloc_obj(dev, NTSYNC_TYPE_MUTEX);
++	if (!mutex)
++		return -ENOMEM;
++	mutex->u.mutex.count = args.count;
++	mutex->u.mutex.owner = args.owner;
++	fd = ntsync_obj_get_fd(mutex);
++	if (fd < 0) {
++		kfree(mutex);
++		return fd;
++	}
++
++	return put_user(fd, &user_args->mutex);
++}
++
++static int ntsync_create_event(struct ntsync_device *dev, void __user *argp)
++{
++	struct ntsync_event_args __user *user_args = argp;
++	struct ntsync_event_args args;
++	struct ntsync_obj *event;
++	int fd;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++
++	event = ntsync_alloc_obj(dev, NTSYNC_TYPE_EVENT);
++	if (!event)
++		return -ENOMEM;
++	event->u.event.manual = args.manual;
++	event->u.event.signaled = args.signaled;
++	fd = ntsync_obj_get_fd(event);
++	if (fd < 0) {
++		kfree(event);
++		return fd;
++	}
++
++	return put_user(fd, &user_args->event);
++}
++
++static struct ntsync_obj *get_obj(struct ntsync_device *dev, int fd)
++{
++	struct file *file = fget(fd);
++	struct ntsync_obj *obj;
++
++	if (!file)
++		return NULL;
++
++	if (file->f_op != &ntsync_obj_fops) {
++		fput(file);
++		return NULL;
++	}
++
++	obj = file->private_data;
++	if (obj->dev != dev) {
++		fput(file);
++		return NULL;
++	}
++
++	return obj;
++}
++
++static void put_obj(struct ntsync_obj *obj)
++{
++	fput(obj->file);
++}
++
++static int ntsync_schedule(const struct ntsync_q *q, const struct ntsync_wait_args *args)
++{
++	ktime_t timeout = ns_to_ktime(args->timeout);
++	clockid_t clock = CLOCK_MONOTONIC;
++	ktime_t *timeout_ptr;
++	int ret = 0;
++
++	timeout_ptr = (args->timeout == U64_MAX ? NULL : &timeout);
++
++	if (args->flags & NTSYNC_WAIT_REALTIME)
++		clock = CLOCK_REALTIME;
++
++	do {
++		if (signal_pending(current)) {
++			ret = -ERESTARTSYS;
++			break;
++		}
++
++		set_current_state(TASK_INTERRUPTIBLE);
++		if (atomic_read(&q->signaled) != -1) {
++			ret = 0;
++			break;
++		}
++		ret = schedule_hrtimeout_range_clock(timeout_ptr, 0, HRTIMER_MODE_ABS, clock);
++	} while (ret < 0);
++	__set_current_state(TASK_RUNNING);
++
++	return ret;
++}
++
++/*
++ * Allocate and initialize the ntsync_q structure, but do not queue us yet.
++ */
++static int setup_wait(struct ntsync_device *dev,
++		      const struct ntsync_wait_args *args, bool all,
++		      struct ntsync_q **ret_q)
++{
++	int fds[NTSYNC_MAX_WAIT_COUNT + 1];
++	const __u32 count = args->count;
++	struct ntsync_q *q;
++	__u32 total_count;
++	__u32 i, j;
++
++	if (args->pad || (args->flags & ~NTSYNC_WAIT_REALTIME))
++		return -EINVAL;
++
++	if (args->count > NTSYNC_MAX_WAIT_COUNT)
++		return -EINVAL;
++
++	total_count = count;
++	if (args->alert)
++		total_count++;
++
++	if (copy_from_user(fds, u64_to_user_ptr(args->objs),
++			   array_size(count, sizeof(*fds))))
++		return -EFAULT;
++	if (args->alert)
++		fds[count] = args->alert;
++
++	q = kmalloc(struct_size(q, entries, total_count), GFP_KERNEL);
++	if (!q)
++		return -ENOMEM;
++	q->task = current;
++	q->owner = args->owner;
++	atomic_set(&q->signaled, -1);
++	q->all = all;
++	q->ownerdead = false;
++	q->count = count;
++
++	for (i = 0; i < total_count; i++) {
++		struct ntsync_q_entry *entry = &q->entries[i];
++		struct ntsync_obj *obj = get_obj(dev, fds[i]);
++
++		if (!obj)
++			goto err;
++
++		if (all) {
++			/* Check that the objects are all distinct. */
++			for (j = 0; j < i; j++) {
++				if (obj == q->entries[j].obj) {
++					put_obj(obj);
++					goto err;
++				}
++			}
++		}
++
++		entry->obj = obj;
++		entry->q = q;
++		entry->index = i;
++	}
++
++	*ret_q = q;
++	return 0;
++
++err:
++	for (j = 0; j < i; j++)
++		put_obj(q->entries[j].obj);
++	kfree(q);
++	return -EINVAL;
++}
++
++static void try_wake_any_obj(struct ntsync_obj *obj)
++{
++	switch (obj->type) {
++	case NTSYNC_TYPE_SEM:
++		try_wake_any_sem(obj);
++		break;
++	case NTSYNC_TYPE_MUTEX:
++		try_wake_any_mutex(obj);
++		break;
++	case NTSYNC_TYPE_EVENT:
++		try_wake_any_event(obj);
++		break;
++	}
++}
++
++static int ntsync_wait_any(struct ntsync_device *dev, void __user *argp)
++{
++	struct ntsync_wait_args args;
++	__u32 i, total_count;
++	struct ntsync_q *q;
++	int signaled;
++	bool all;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++
++	ret = setup_wait(dev, &args, false, &q);
++	if (ret < 0)
++		return ret;
++
++	total_count = args.count;
++	if (args.alert)
++		total_count++;
++
++	/* queue ourselves */
++
++	for (i = 0; i < total_count; i++) {
++		struct ntsync_q_entry *entry = &q->entries[i];
++		struct ntsync_obj *obj = entry->obj;
++
++		all = ntsync_lock_obj(dev, obj);
++		list_add_tail(&entry->node, &obj->any_waiters);
++		ntsync_unlock_obj(dev, obj, all);
++	}
++
++	/*
++	 * Check if we are already signaled.
++	 *
++	 * Note that the API requires that normal objects are checked before
++	 * the alert event. Hence we queue the alert event last, and check
++	 * objects in order.
++	 */
++
++	for (i = 0; i < total_count; i++) {
++		struct ntsync_obj *obj = q->entries[i].obj;
++
++		if (atomic_read(&q->signaled) != -1)
++			break;
++
++		all = ntsync_lock_obj(dev, obj);
++		try_wake_any_obj(obj);
++		ntsync_unlock_obj(dev, obj, all);
++	}
++
++	/* sleep */
++
++	ret = ntsync_schedule(q, &args);
++
++	/* and finally, unqueue */
++
++	for (i = 0; i < total_count; i++) {
++		struct ntsync_q_entry *entry = &q->entries[i];
++		struct ntsync_obj *obj = entry->obj;
++
++		all = ntsync_lock_obj(dev, obj);
++		list_del(&entry->node);
++		ntsync_unlock_obj(dev, obj, all);
++
++		put_obj(obj);
++	}
++
++	signaled = atomic_read(&q->signaled);
++	if (signaled != -1) {
++		struct ntsync_wait_args __user *user_args = argp;
++
++		/* even if we caught a signal, we need to communicate success */
++		ret = q->ownerdead ? -EOWNERDEAD : 0;
++
++		if (put_user(signaled, &user_args->index))
++			ret = -EFAULT;
++	} else if (!ret) {
++		ret = -ETIMEDOUT;
++	}
++
++	kfree(q);
++	return ret;
++}
++
++static int ntsync_wait_all(struct ntsync_device *dev, void __user *argp)
++{
++	struct ntsync_wait_args args;
++	struct ntsync_q *q;
++	int signaled;
++	__u32 i;
++	int ret;
++
++	if (copy_from_user(&args, argp, sizeof(args)))
++		return -EFAULT;
++
++	ret = setup_wait(dev, &args, true, &q);
++	if (ret < 0)
++		return ret;
++
++	/* queue ourselves */
++
++	mutex_lock(&dev->wait_all_lock);
++
++	for (i = 0; i < args.count; i++) {
++		struct ntsync_q_entry *entry = &q->entries[i];
++		struct ntsync_obj *obj = entry->obj;
++
++		atomic_inc(&obj->all_hint);
++
++		/*
++		 * obj->all_waiters is protected by dev->wait_all_lock rather
++		 * than obj->lock, so there is no need to acquire obj->lock
++		 * here.
++		 */
++		list_add_tail(&entry->node, &obj->all_waiters);
++	}
++	if (args.alert) {
++		struct ntsync_q_entry *entry = &q->entries[args.count];
++		struct ntsync_obj *obj = entry->obj;
++
++		dev_lock_obj(dev, obj);
++		list_add_tail(&entry->node, &obj->any_waiters);
++		dev_unlock_obj(dev, obj);
++	}
++
++	/* check if we are already signaled */
++
++	try_wake_all(dev, q, NULL);
++
++	mutex_unlock(&dev->wait_all_lock);
++
++	/*
++	 * Check if the alert event is signaled, making sure to do so only
++	 * after checking if the other objects are signaled.
++	 */
++
++	if (args.alert) {
++		struct ntsync_obj *obj = q->entries[args.count].obj;
++
++		if (atomic_read(&q->signaled) == -1) {
++			bool all = ntsync_lock_obj(dev, obj);
++			try_wake_any_obj(obj);
++			ntsync_unlock_obj(dev, obj, all);
++		}
++	}
++
++	/* sleep */
++
++	ret = ntsync_schedule(q, &args);
++
++	/* and finally, unqueue */
++
++	mutex_lock(&dev->wait_all_lock);
++
++	for (i = 0; i < args.count; i++) {
++		struct ntsync_q_entry *entry = &q->entries[i];
++		struct ntsync_obj *obj = entry->obj;
++
++		/*
++		 * obj->all_waiters is protected by dev->wait_all_lock rather
++		 * than obj->lock, so there is no need to acquire it here.
++		 */
++		list_del(&entry->node);
++
++		atomic_dec(&obj->all_hint);
++
++		put_obj(obj);
++	}
++
++	mutex_unlock(&dev->wait_all_lock);
++
++	if (args.alert) {
++		struct ntsync_q_entry *entry = &q->entries[args.count];
++		struct ntsync_obj *obj = entry->obj;
++		bool all;
++
++		all = ntsync_lock_obj(dev, obj);
++		list_del(&entry->node);
++		ntsync_unlock_obj(dev, obj, all);
++
++		put_obj(obj);
++	}
++
++	signaled = atomic_read(&q->signaled);
++	if (signaled != -1) {
++		struct ntsync_wait_args __user *user_args = argp;
++
++		/* even if we caught a signal, we need to communicate success */
++		ret = q->ownerdead ? -EOWNERDEAD : 0;
++
++		if (put_user(signaled, &user_args->index))
++			ret = -EFAULT;
++	} else if (!ret) {
++		ret = -ETIMEDOUT;
++	}
++
++	kfree(q);
++	return ret;
++}
++
+ static int ntsync_char_open(struct inode *inode, struct file *file)
+ {
+ 	struct ntsync_device *dev;
+@@ -199,6 +1172,8 @@ static int ntsync_char_open(struct inode *inode, struct file *file)
+ 	if (!dev)
+ 		return -ENOMEM;
+ 
++	mutex_init(&dev->wait_all_lock);
++
+ 	file->private_data = dev;
+ 	dev->file = file;
+ 	return nonseekable_open(inode, file);
+@@ -220,8 +1195,16 @@ static long ntsync_char_ioctl(struct file *file, unsigned int cmd,
+ 	void __user *argp = (void __user *)parm;
+ 
+ 	switch (cmd) {
++	case NTSYNC_IOC_CREATE_EVENT:
++		return ntsync_create_event(dev, argp);
++	case NTSYNC_IOC_CREATE_MUTEX:
++		return ntsync_create_mutex(dev, argp);
+ 	case NTSYNC_IOC_CREATE_SEM:
+ 		return ntsync_create_sem(dev, argp);
++	case NTSYNC_IOC_WAIT_ALL:
++		return ntsync_wait_all(dev, argp);
++	case NTSYNC_IOC_WAIT_ANY:
++		return ntsync_wait_any(dev, argp);
+ 	default:
+ 		return -ENOIOCTLCMD;
+ 	}
+diff --git a/include/uapi/linux/ntsync.h b/include/uapi/linux/ntsync.h
+index dcfa38fdc93c..4a8095a3fc34 100644
+--- a/include/uapi/linux/ntsync.h
++++ b/include/uapi/linux/ntsync.h
+@@ -16,8 +16,47 @@ struct ntsync_sem_args {
+ 	__u32 max;
+ };
+ 
++struct ntsync_mutex_args {
++	__u32 mutex;
++	__u32 owner;
++	__u32 count;
++};
++
++struct ntsync_event_args {
++	__u32 event;
++	__u32 manual;
++	__u32 signaled;
++};
++
++#define NTSYNC_WAIT_REALTIME	0x1
++
++struct ntsync_wait_args {
++	__u64 timeout;
++	__u64 objs;
++	__u32 count;
++	__u32 index;
++	__u32 flags;
++	__u32 owner;
++	__u32 alert;
++	__u32 pad;
++};
++
++#define NTSYNC_MAX_WAIT_COUNT 64
++
+ #define NTSYNC_IOC_CREATE_SEM		_IOWR('N', 0x80, struct ntsync_sem_args)
++#define NTSYNC_IOC_WAIT_ANY		_IOWR('N', 0x82, struct ntsync_wait_args)
++#define NTSYNC_IOC_WAIT_ALL		_IOWR('N', 0x83, struct ntsync_wait_args)
++#define NTSYNC_IOC_CREATE_MUTEX		_IOWR('N', 0x84, struct ntsync_sem_args)
++#define NTSYNC_IOC_CREATE_EVENT		_IOWR('N', 0x87, struct ntsync_event_args)
+ 
+ #define NTSYNC_IOC_SEM_POST		_IOWR('N', 0x81, __u32)
++#define NTSYNC_IOC_MUTEX_UNLOCK		_IOWR('N', 0x85, struct ntsync_mutex_args)
++#define NTSYNC_IOC_MUTEX_KILL		_IOW ('N', 0x86, __u32)
++#define NTSYNC_IOC_EVENT_SET		_IOR ('N', 0x88, __u32)
++#define NTSYNC_IOC_EVENT_RESET		_IOR ('N', 0x89, __u32)
++#define NTSYNC_IOC_EVENT_PULSE		_IOR ('N', 0x8a, __u32)
++#define NTSYNC_IOC_SEM_READ		_IOR ('N', 0x8b, struct ntsync_sem_args)
++#define NTSYNC_IOC_MUTEX_READ		_IOR ('N', 0x8c, struct ntsync_mutex_args)
++#define NTSYNC_IOC_EVENT_READ		_IOR ('N', 0x8d, struct ntsync_event_args)
+ 
+ #endif
+diff --git a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
+index 9039f3709aff..d5aeaa8fe3ca 100644
+--- a/tools/testing/selftests/Makefile
++++ b/tools/testing/selftests/Makefile
+@@ -16,6 +16,7 @@ TARGETS += damon
+ TARGETS += devices
+ TARGETS += dmabuf-heaps
+ TARGETS += drivers/dma-buf
++TARGETS += drivers/ntsync
+ TARGETS += drivers/s390x/uvdevice
+ TARGETS += drivers/net
+ TARGETS += drivers/net/bonding
+diff --git a/tools/testing/selftests/drivers/ntsync/.gitignore b/tools/testing/selftests/drivers/ntsync/.gitignore
+new file mode 100644
+index 000000000000..848573a3d3ea
+--- /dev/null
++++ b/tools/testing/selftests/drivers/ntsync/.gitignore
+@@ -0,0 +1 @@
++ntsync
+diff --git a/tools/testing/selftests/drivers/ntsync/Makefile b/tools/testing/selftests/drivers/ntsync/Makefile
+new file mode 100644
+index 000000000000..dbf2b055c0b2
+--- /dev/null
++++ b/tools/testing/selftests/drivers/ntsync/Makefile
+@@ -0,0 +1,7 @@
++# SPDX-LICENSE-IDENTIFIER: GPL-2.0-only
++TEST_GEN_PROGS := ntsync
++
++CFLAGS += $(KHDR_INCLUDES)
++LDLIBS += -lpthread
++
++include ../../lib.mk
+diff --git a/tools/testing/selftests/drivers/ntsync/config b/tools/testing/selftests/drivers/ntsync/config
+new file mode 100644
+index 000000000000..60539c826d06
+--- /dev/null
++++ b/tools/testing/selftests/drivers/ntsync/config
+@@ -0,0 +1 @@
++CONFIG_WINESYNC=y
+diff --git a/tools/testing/selftests/drivers/ntsync/ntsync.c b/tools/testing/selftests/drivers/ntsync/ntsync.c
+new file mode 100644
+index 000000000000..5fa2c9a0768c
+--- /dev/null
++++ b/tools/testing/selftests/drivers/ntsync/ntsync.c
+@@ -0,0 +1,1407 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * Various unit tests for the "ntsync" synchronization primitive driver.
++ *
++ * Copyright (C) 2021-2022 Elizabeth Figura <zfigura@codeweavers.com>
++ */
++
++#define _GNU_SOURCE
++#include <sys/ioctl.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <time.h>
++#include <pthread.h>
++#include <linux/ntsync.h>
++#include "../../kselftest_harness.h"
++
++static int read_sem_state(int sem, __u32 *count, __u32 *max)
++{
++	struct ntsync_sem_args args;
++	int ret;
++
++	memset(&args, 0xcc, sizeof(args));
++	ret = ioctl(sem, NTSYNC_IOC_SEM_READ, &args);
++	*count = args.count;
++	*max = args.max;
++	return ret;
++}
++
++#define check_sem_state(sem, count, max) \
++	({ \
++		__u32 __count, __max; \
++		int ret = read_sem_state((sem), &__count, &__max); \
++		EXPECT_EQ(0, ret); \
++		EXPECT_EQ((count), __count); \
++		EXPECT_EQ((max), __max); \
++	})
++
++static int post_sem(int sem, __u32 *count)
++{
++	return ioctl(sem, NTSYNC_IOC_SEM_POST, count);
++}
++
++static int read_mutex_state(int mutex, __u32 *count, __u32 *owner)
++{
++	struct ntsync_mutex_args args;
++	int ret;
++
++	memset(&args, 0xcc, sizeof(args));
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_READ, &args);
++	*count = args.count;
++	*owner = args.owner;
++	return ret;
++}
++
++#define check_mutex_state(mutex, count, owner) \
++	({ \
++		__u32 __count, __owner; \
++		int ret = read_mutex_state((mutex), &__count, &__owner); \
++		EXPECT_EQ(0, ret); \
++		EXPECT_EQ((count), __count); \
++		EXPECT_EQ((owner), __owner); \
++	})
++
++static int unlock_mutex(int mutex, __u32 owner, __u32 *count)
++{
++	struct ntsync_mutex_args args;
++	int ret;
++
++	args.owner = owner;
++	args.count = 0xdeadbeef;
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_UNLOCK, &args);
++	*count = args.count;
++	return ret;
++}
++
++static int read_event_state(int event, __u32 *signaled, __u32 *manual)
++{
++	struct ntsync_event_args args;
++	int ret;
++
++	memset(&args, 0xcc, sizeof(args));
++	ret = ioctl(event, NTSYNC_IOC_EVENT_READ, &args);
++	*signaled = args.signaled;
++	*manual = args.manual;
++	return ret;
++}
++
++#define check_event_state(event, signaled, manual) \
++	({ \
++		__u32 __signaled, __manual; \
++		int ret = read_event_state((event), &__signaled, &__manual); \
++		EXPECT_EQ(0, ret); \
++		EXPECT_EQ((signaled), __signaled); \
++		EXPECT_EQ((manual), __manual); \
++	})
++
++static int wait_objs(int fd, unsigned long request, __u32 count,
++		     const int *objs, __u32 owner, int alert, __u32 *index)
++{
++	struct ntsync_wait_args args = {0};
++	struct timespec timeout;
++	int ret;
++
++	clock_gettime(CLOCK_MONOTONIC, &timeout);
++
++	args.timeout = timeout.tv_sec * 1000000000 + timeout.tv_nsec;
++	args.count = count;
++	args.objs = (uintptr_t)objs;
++	args.owner = owner;
++	args.index = 0xdeadbeef;
++	args.alert = alert;
++	ret = ioctl(fd, request, &args);
++	*index = args.index;
++	return ret;
++}
++
++static int wait_any(int fd, __u32 count, const int *objs, __u32 owner, __u32 *index)
++{
++	return wait_objs(fd, NTSYNC_IOC_WAIT_ANY, count, objs, owner, 0, index);
++}
++
++static int wait_all(int fd, __u32 count, const int *objs, __u32 owner, __u32 *index)
++{
++	return wait_objs(fd, NTSYNC_IOC_WAIT_ALL, count, objs, owner, 0, index);
++}
++
++static int wait_any_alert(int fd, __u32 count, const int *objs,
++			  __u32 owner, int alert, __u32 *index)
++{
++	return wait_objs(fd, NTSYNC_IOC_WAIT_ANY,
++			 count, objs, owner, alert, index);
++}
++
++static int wait_all_alert(int fd, __u32 count, const int *objs,
++			  __u32 owner, int alert, __u32 *index)
++{
++	return wait_objs(fd, NTSYNC_IOC_WAIT_ALL,
++			 count, objs, owner, alert, index);
++}
++
++TEST(semaphore_state)
++{
++	struct ntsync_sem_args sem_args;
++	struct timespec timeout;
++	__u32 count, index;
++	int fd, ret, sem;
++
++	clock_gettime(CLOCK_MONOTONIC, &timeout);
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 3;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	sem_args.count = 2;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	sem = sem_args.sem;
++	check_sem_state(sem, 2, 2);
++
++	count = 0;
++	ret = post_sem(sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, count);
++	check_sem_state(sem, 2, 2);
++
++	count = 1;
++	ret = post_sem(sem, &count);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOVERFLOW, errno);
++	check_sem_state(sem, 2, 2);
++
++	ret = wait_any(fd, 1, &sem, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem, 1, 2);
++
++	ret = wait_any(fd, 1, &sem, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem, 0, 2);
++
++	ret = wait_any(fd, 1, &sem, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	count = 3;
++	ret = post_sem(sem, &count);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOVERFLOW, errno);
++	check_sem_state(sem, 0, 2);
++
++	count = 2;
++	ret = post_sem(sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++	check_sem_state(sem, 2, 2);
++
++	ret = wait_any(fd, 1, &sem, 123, &index);
++	EXPECT_EQ(0, ret);
++	ret = wait_any(fd, 1, &sem, 123, &index);
++	EXPECT_EQ(0, ret);
++
++	count = 1;
++	ret = post_sem(sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++	check_sem_state(sem, 1, 2);
++
++	count = ~0u;
++	ret = post_sem(sem, &count);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOVERFLOW, errno);
++	check_sem_state(sem, 1, 2);
++
++	close(sem);
++
++	close(fd);
++}
++
++TEST(mutex_state)
++{
++	struct ntsync_mutex_args mutex_args;
++	__u32 owner, count, index;
++	struct timespec timeout;
++	int fd, ret, mutex;
++
++	clock_gettime(CLOCK_MONOTONIC, &timeout);
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	mutex_args.owner = 123;
++	mutex_args.count = 0;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	mutex_args.owner = 0;
++	mutex_args.count = 2;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	mutex_args.owner = 123;
++	mutex_args.count = 2;
++	mutex_args.mutex = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++	mutex = mutex_args.mutex;
++	check_mutex_state(mutex, 2, 123);
++
++	ret = unlock_mutex(mutex, 0, &count);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	ret = unlock_mutex(mutex, 456, &count);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EPERM, errno);
++	check_mutex_state(mutex, 2, 123);
++
++	ret = unlock_mutex(mutex, 123, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, count);
++	check_mutex_state(mutex, 1, 123);
++
++	ret = unlock_mutex(mutex, 123, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, count);
++	check_mutex_state(mutex, 0, 0);
++
++	ret = unlock_mutex(mutex, 123, &count);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EPERM, errno);
++
++	ret = wait_any(fd, 1, &mutex, 456, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_mutex_state(mutex, 1, 456);
++
++	ret = wait_any(fd, 1, &mutex, 456, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_mutex_state(mutex, 2, 456);
++
++	ret = unlock_mutex(mutex, 456, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, count);
++	check_mutex_state(mutex, 1, 456);
++
++	ret = wait_any(fd, 1, &mutex, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	owner = 0;
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	owner = 123;
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EPERM, errno);
++	check_mutex_state(mutex, 1, 456);
++
++	owner = 456;
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	EXPECT_EQ(0, ret);
++
++	memset(&mutex_args, 0xcc, sizeof(mutex_args));
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_READ, &mutex_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOWNERDEAD, errno);
++	EXPECT_EQ(0, mutex_args.count);
++	EXPECT_EQ(0, mutex_args.owner);
++
++	memset(&mutex_args, 0xcc, sizeof(mutex_args));
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_READ, &mutex_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOWNERDEAD, errno);
++	EXPECT_EQ(0, mutex_args.count);
++	EXPECT_EQ(0, mutex_args.owner);
++
++	ret = wait_any(fd, 1, &mutex, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOWNERDEAD, errno);
++	EXPECT_EQ(0, index);
++	check_mutex_state(mutex, 1, 123);
++
++	owner = 123;
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	EXPECT_EQ(0, ret);
++
++	memset(&mutex_args, 0xcc, sizeof(mutex_args));
++	ret = ioctl(mutex, NTSYNC_IOC_MUTEX_READ, &mutex_args);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOWNERDEAD, errno);
++	EXPECT_EQ(0, mutex_args.count);
++	EXPECT_EQ(0, mutex_args.owner);
++
++	ret = wait_any(fd, 1, &mutex, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOWNERDEAD, errno);
++	EXPECT_EQ(0, index);
++	check_mutex_state(mutex, 1, 123);
++
++	close(mutex);
++
++	mutex_args.owner = 0;
++	mutex_args.count = 0;
++	mutex_args.mutex = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++	mutex = mutex_args.mutex;
++	check_mutex_state(mutex, 0, 0);
++
++	ret = wait_any(fd, 1, &mutex, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_mutex_state(mutex, 1, 123);
++
++	close(mutex);
++
++	mutex_args.owner = 123;
++	mutex_args.count = ~0u;
++	mutex_args.mutex = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++	mutex = mutex_args.mutex;
++	check_mutex_state(mutex, ~0u, 123);
++
++	ret = wait_any(fd, 1, &mutex, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	close(mutex);
++
++	close(fd);
++}
++
++TEST(manual_event_state)
++{
++	struct ntsync_event_args event_args;
++	__u32 index, signaled;
++	int fd, event, ret;
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	event_args.manual = 1;
++	event_args.signaled = 0;
++	event_args.event = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, event_args.event);
++	event = event_args.event;
++	check_event_state(event, 0, 1);
++
++	signaled = 0xdeadbeef;
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event, 1, 1);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++	check_event_state(event, 1, 1);
++
++	ret = wait_any(fd, 1, &event, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_event_state(event, 1, 1);
++
++	signaled = 0xdeadbeef;
++	ret = ioctl(event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++	check_event_state(event, 0, 1);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event, 0, 1);
++
++	ret = wait_any(fd, 1, &event, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++	check_event_state(event, 0, 1);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event, 0, 1);
++
++	close(event);
++
++	close(fd);
++}
++
++TEST(auto_event_state)
++{
++	struct ntsync_event_args event_args;
++	__u32 index, signaled;
++	int fd, event, ret;
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	event_args.manual = 0;
++	event_args.signaled = 1;
++	event_args.event = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, event_args.event);
++	event = event_args.event;
++
++	check_event_state(event, 1, 0);
++
++	signaled = 0xdeadbeef;
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++	check_event_state(event, 1, 0);
++
++	ret = wait_any(fd, 1, &event, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_event_state(event, 0, 0);
++
++	signaled = 0xdeadbeef;
++	ret = ioctl(event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event, 0, 0);
++
++	ret = wait_any(fd, 1, &event, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++	check_event_state(event, 0, 0);
++
++	ret = ioctl(event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event, 0, 0);
++
++	close(event);
++
++	close(fd);
++}
++
++TEST(test_wait_any)
++{
++	int objs[NTSYNC_MAX_WAIT_COUNT + 1], fd, ret;
++	struct ntsync_mutex_args mutex_args = {0};
++	struct ntsync_sem_args sem_args = {0};
++	__u32 owner, index, count, i;
++	struct timespec timeout;
++
++	clock_gettime(CLOCK_MONOTONIC, &timeout);
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 2;
++	sem_args.max = 3;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++
++	mutex_args.owner = 0;
++	mutex_args.count = 0;
++	mutex_args.mutex = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++
++	objs[0] = sem_args.sem;
++	objs[1] = mutex_args.mutex;
++
++	ret = wait_any(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 1, 3);
++	check_mutex_state(mutex_args.mutex, 0, 0);
++
++	ret = wait_any(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 0, 3);
++	check_mutex_state(mutex_args.mutex, 0, 0);
++
++	ret = wait_any(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, index);
++	check_sem_state(sem_args.sem, 0, 3);
++	check_mutex_state(mutex_args.mutex, 1, 123);
++
++	count = 1;
++	ret = post_sem(sem_args.sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++
++	ret = wait_any(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 0, 3);
++	check_mutex_state(mutex_args.mutex, 1, 123);
++
++	ret = wait_any(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, index);
++	check_sem_state(sem_args.sem, 0, 3);
++	check_mutex_state(mutex_args.mutex, 2, 123);
++
++	ret = wait_any(fd, 2, objs, 456, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	owner = 123;
++	ret = ioctl(mutex_args.mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_any(fd, 2, objs, 456, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOWNERDEAD, errno);
++	EXPECT_EQ(1, index);
++
++	ret = wait_any(fd, 2, objs, 456, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, index);
++
++	/* test waiting on the same object twice */
++	count = 2;
++	ret = post_sem(sem_args.sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++
++	objs[0] = objs[1] = sem_args.sem;
++	ret = wait_any(fd, 2, objs, 456, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 1, 3);
++
++	ret = wait_any(fd, 0, NULL, 456, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	for (i = 0; i < NTSYNC_MAX_WAIT_COUNT + 1; ++i)
++		objs[i] = sem_args.sem;
++
++	ret = wait_any(fd, NTSYNC_MAX_WAIT_COUNT, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++
++	ret = wait_any(fd, NTSYNC_MAX_WAIT_COUNT + 1, objs, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	ret = wait_any(fd, -1, objs, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	close(sem_args.sem);
++	close(mutex_args.mutex);
++
++	close(fd);
++}
++
++TEST(test_wait_all)
++{
++	struct ntsync_event_args event_args = {0};
++	struct ntsync_mutex_args mutex_args = {0};
++	struct ntsync_sem_args sem_args = {0};
++	__u32 owner, index, count;
++	int objs[2], fd, ret;
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 2;
++	sem_args.max = 3;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++
++	mutex_args.owner = 0;
++	mutex_args.count = 0;
++	mutex_args.mutex = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++
++	event_args.manual = true;
++	event_args.signaled = true;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++
++	objs[0] = sem_args.sem;
++	objs[1] = mutex_args.mutex;
++
++	ret = wait_all(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 1, 3);
++	check_mutex_state(mutex_args.mutex, 1, 123);
++
++	ret = wait_all(fd, 2, objs, 456, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++	check_sem_state(sem_args.sem, 1, 3);
++	check_mutex_state(mutex_args.mutex, 1, 123);
++
++	ret = wait_all(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 0, 3);
++	check_mutex_state(mutex_args.mutex, 2, 123);
++
++	ret = wait_all(fd, 2, objs, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++	check_sem_state(sem_args.sem, 0, 3);
++	check_mutex_state(mutex_args.mutex, 2, 123);
++
++	count = 3;
++	ret = post_sem(sem_args.sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++
++	ret = wait_all(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 2, 3);
++	check_mutex_state(mutex_args.mutex, 3, 123);
++
++	owner = 123;
++	ret = ioctl(mutex_args.mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_all(fd, 2, objs, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EOWNERDEAD, errno);
++	check_sem_state(sem_args.sem, 1, 3);
++	check_mutex_state(mutex_args.mutex, 1, 123);
++
++	objs[0] = sem_args.sem;
++	objs[1] = event_args.event;
++	ret = wait_all(fd, 2, objs, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++	check_sem_state(sem_args.sem, 0, 3);
++	check_event_state(event_args.event, 1, 1);
++
++	/* test waiting on the same object twice */
++	objs[0] = objs[1] = sem_args.sem;
++	ret = wait_all(fd, 2, objs, 123, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(EINVAL, errno);
++
++	close(sem_args.sem);
++	close(mutex_args.mutex);
++	close(event_args.event);
++
++	close(fd);
++}
++
++struct wake_args {
++	int fd;
++	int obj;
++};
++
++struct wait_args {
++	int fd;
++	unsigned long request;
++	struct ntsync_wait_args *args;
++	int ret;
++	int err;
++};
++
++static void *wait_thread(void *arg)
++{
++	struct wait_args *args = arg;
++
++	args->ret = ioctl(args->fd, args->request, args->args);
++	args->err = errno;
++	return NULL;
++}
++
++static __u64 get_abs_timeout(unsigned int ms)
++{
++	struct timespec timeout;
++	clock_gettime(CLOCK_MONOTONIC, &timeout);
++	return (timeout.tv_sec * 1000000000) + timeout.tv_nsec + (ms * 1000000);
++}
++
++static int wait_for_thread(pthread_t thread, unsigned int ms)
++{
++	struct timespec timeout;
++
++	clock_gettime(CLOCK_REALTIME, &timeout);
++	timeout.tv_nsec += ms * 1000000;
++	timeout.tv_sec += (timeout.tv_nsec / 1000000000);
++	timeout.tv_nsec %= 1000000000;
++	return pthread_timedjoin_np(thread, NULL, &timeout);
++}
++
++TEST(wake_any)
++{
++	struct ntsync_event_args event_args = {0};
++	struct ntsync_mutex_args mutex_args = {0};
++	struct ntsync_wait_args wait_args = {0};
++	struct ntsync_sem_args sem_args = {0};
++	struct wait_args thread_args;
++	__u32 count, index, signaled;
++	int objs[2], fd, ret;
++	pthread_t thread;
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 0;
++	sem_args.max = 3;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++
++	mutex_args.owner = 123;
++	mutex_args.count = 1;
++	mutex_args.mutex = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++
++	objs[0] = sem_args.sem;
++	objs[1] = mutex_args.mutex;
++
++	/* test waking the semaphore */
++
++	wait_args.timeout = get_abs_timeout(1000);
++	wait_args.objs = (uintptr_t)objs;
++	wait_args.count = 2;
++	wait_args.owner = 456;
++	wait_args.index = 0xdeadbeef;
++	thread_args.fd = fd;
++	thread_args.args = &wait_args;
++	thread_args.request = NTSYNC_IOC_WAIT_ANY;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	count = 1;
++	ret = post_sem(sem_args.sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++	check_sem_state(sem_args.sem, 0, 3);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(0, wait_args.index);
++
++	/* test waking the mutex */
++
++	/* first grab it again for owner 123 */
++	ret = wait_any(fd, 1, &mutex_args.mutex, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++
++	wait_args.timeout = get_abs_timeout(1000);
++	wait_args.owner = 456;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	ret = unlock_mutex(mutex_args.mutex, 123, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, count);
++
++	ret = pthread_tryjoin_np(thread, NULL);
++	EXPECT_EQ(EBUSY, ret);
++
++	ret = unlock_mutex(mutex_args.mutex, 123, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, mutex_args.count);
++	check_mutex_state(mutex_args.mutex, 1, 456);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(1, wait_args.index);
++
++	/* test waking events */
++
++	event_args.manual = false;
++	event_args.signaled = false;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++
++	objs[1] = event_args.event;
++	wait_args.timeout = get_abs_timeout(1000);
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event_args.event, 0, 0);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(1, wait_args.index);
++
++	wait_args.timeout = get_abs_timeout(1000);
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event_args.event, 0, 0);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(1, wait_args.index);
++
++	close(event_args.event);
++
++	event_args.manual = true;
++	event_args.signaled = false;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++
++	objs[1] = event_args.event;
++	wait_args.timeout = get_abs_timeout(1000);
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event_args.event, 1, 1);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(1, wait_args.index);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++
++	wait_args.timeout = get_abs_timeout(1000);
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++	check_event_state(event_args.event, 0, 1);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(1, wait_args.index);
++
++	close(event_args.event);
++
++	/* delete an object while it's being waited on */
++
++	wait_args.timeout = get_abs_timeout(200);
++	wait_args.owner = 123;
++	objs[1] = mutex_args.mutex;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	close(sem_args.sem);
++	close(mutex_args.mutex);
++
++	ret = wait_for_thread(thread, 200);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(-1, thread_args.ret);
++	EXPECT_EQ(ETIMEDOUT, thread_args.err);
++
++	close(fd);
++}
++
++TEST(wake_all)
++{
++	struct ntsync_event_args manual_event_args = {0};
++	struct ntsync_event_args auto_event_args = {0};
++	struct ntsync_mutex_args mutex_args = {0};
++	struct ntsync_wait_args wait_args = {0};
++	struct ntsync_sem_args sem_args = {0};
++	struct wait_args thread_args;
++	__u32 count, index, signaled;
++	int objs[4], fd, ret;
++	pthread_t thread;
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 0;
++	sem_args.max = 3;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++
++	mutex_args.owner = 123;
++	mutex_args.count = 1;
++	mutex_args.mutex = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++
++	manual_event_args.manual = true;
++	manual_event_args.signaled = true;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &manual_event_args);
++	EXPECT_EQ(0, ret);
++
++	auto_event_args.manual = false;
++	auto_event_args.signaled = true;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &auto_event_args);
++	EXPECT_EQ(0, ret);
++
++	objs[0] = sem_args.sem;
++	objs[1] = mutex_args.mutex;
++	objs[2] = manual_event_args.event;
++	objs[3] = auto_event_args.event;
++
++	wait_args.timeout = get_abs_timeout(1000);
++	wait_args.objs = (uintptr_t)objs;
++	wait_args.count = 4;
++	wait_args.owner = 456;
++	thread_args.fd = fd;
++	thread_args.args = &wait_args;
++	thread_args.request = NTSYNC_IOC_WAIT_ALL;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	count = 1;
++	ret = post_sem(sem_args.sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++
++	ret = pthread_tryjoin_np(thread, NULL);
++	EXPECT_EQ(EBUSY, ret);
++
++	check_sem_state(sem_args.sem, 1, 3);
++
++	ret = wait_any(fd, 1, &sem_args.sem, 123, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++
++	ret = unlock_mutex(mutex_args.mutex, 123, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, count);
++
++	ret = pthread_tryjoin_np(thread, NULL);
++	EXPECT_EQ(EBUSY, ret);
++
++	check_mutex_state(mutex_args.mutex, 0, 0);
++
++	ret = ioctl(manual_event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++
++	count = 2;
++	ret = post_sem(sem_args.sem, &count);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, count);
++	check_sem_state(sem_args.sem, 2, 3);
++
++	ret = ioctl(auto_event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, signaled);
++
++	ret = ioctl(manual_event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++
++	ret = ioctl(auto_event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, signaled);
++
++	check_sem_state(sem_args.sem, 1, 3);
++	check_mutex_state(mutex_args.mutex, 1, 456);
++	check_event_state(manual_event_args.event, 1, 1);
++	check_event_state(auto_event_args.event, 0, 0);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++
++	/* delete an object while it's being waited on */
++
++	wait_args.timeout = get_abs_timeout(200);
++	wait_args.owner = 123;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	close(sem_args.sem);
++	close(mutex_args.mutex);
++	close(manual_event_args.event);
++	close(auto_event_args.event);
++
++	ret = wait_for_thread(thread, 200);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(-1, thread_args.ret);
++	EXPECT_EQ(ETIMEDOUT, thread_args.err);
++
++	close(fd);
++}
++
++TEST(alert_any)
++{
++	struct ntsync_event_args event_args = {0};
++	struct ntsync_wait_args wait_args = {0};
++	struct ntsync_sem_args sem_args = {0};
++	__u32 index, count, signaled;
++	struct wait_args thread_args;
++	int objs[2], fd, ret;
++	pthread_t thread;
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 0;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[0] = sem_args.sem;
++
++	sem_args.count = 1;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[1] = sem_args.sem;
++
++	event_args.manual = true;
++	event_args.signaled = true;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_any_alert(fd, 0, NULL, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_any_alert(fd, 0, NULL, 123, event_args.event, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(1, index);
++
++	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, index);
++
++	/* test wakeup via alert */
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++
++	wait_args.timeout = get_abs_timeout(1000);
++	wait_args.objs = (uintptr_t)objs;
++	wait_args.count = 2;
++	wait_args.owner = 123;
++	wait_args.index = 0xdeadbeef;
++	wait_args.alert = event_args.event;
++	thread_args.fd = fd;
++	thread_args.args = &wait_args;
++	thread_args.request = NTSYNC_IOC_WAIT_ANY;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(2, wait_args.index);
++
++	close(event_args.event);
++
++	/* test with an auto-reset event */
++
++	event_args.manual = false;
++	event_args.signaled = true;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++
++	count = 1;
++	ret = post_sem(objs[0], &count);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++
++	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, index);
++
++	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	close(event_args.event);
++
++	close(objs[0]);
++	close(objs[1]);
++
++	close(fd);
++}
++
++TEST(alert_all)
++{
++	struct ntsync_event_args event_args = {0};
++	struct ntsync_wait_args wait_args = {0};
++	struct ntsync_sem_args sem_args = {0};
++	struct wait_args thread_args;
++	__u32 index, count, signaled;
++	int objs[2], fd, ret;
++	pthread_t thread;
++
++	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, fd);
++
++	sem_args.count = 2;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[0] = sem_args.sem;
++
++	sem_args.count = 1;
++	sem_args.max = 2;
++	sem_args.sem = 0xdeadbeef;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(0, ret);
++	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[1] = sem_args.sem;
++
++	event_args.manual = true;
++	event_args.signaled = true;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++
++	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, index);
++
++	/* test wakeup via alert */
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	EXPECT_EQ(0, ret);
++
++	wait_args.timeout = get_abs_timeout(1000);
++	wait_args.objs = (uintptr_t)objs;
++	wait_args.count = 2;
++	wait_args.owner = 123;
++	wait_args.index = 0xdeadbeef;
++	wait_args.alert = event_args.event;
++	thread_args.fd = fd;
++	thread_args.args = &wait_args;
++	thread_args.request = NTSYNC_IOC_WAIT_ALL;
++	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(ETIMEDOUT, ret);
++
++	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_for_thread(thread, 100);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, thread_args.ret);
++	EXPECT_EQ(2, wait_args.index);
++
++	close(event_args.event);
++
++	/* test with an auto-reset event */
++
++	event_args.manual = false;
++	event_args.signaled = true;
++	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++
++	count = 2;
++	ret = post_sem(objs[1], &count);
++	EXPECT_EQ(0, ret);
++
++	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(0, index);
++
++	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(0, ret);
++	EXPECT_EQ(2, index);
++
++	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	EXPECT_EQ(-1, ret);
++	EXPECT_EQ(ETIMEDOUT, errno);
++
++	close(event_args.event);
++
++	close(objs[0]);
++	close(objs[1]);
++
++	close(fd);
++}
++
++#define STRESS_LOOPS 10000
++#define STRESS_THREADS 4
++
++static unsigned int stress_counter;
++static int stress_device, stress_start_event, stress_mutex;
++
++static void *stress_thread(void *arg)
++{
++	struct ntsync_wait_args wait_args = {0};
++	__u32 index, count, i;
++	int ret;
++
++	wait_args.timeout = UINT64_MAX;
++	wait_args.count = 1;
++	wait_args.objs = (uintptr_t)&stress_start_event;
++	wait_args.owner = gettid();
++	wait_args.index = 0xdeadbeef;
++
++	ioctl(stress_device, NTSYNC_IOC_WAIT_ANY, &wait_args);
++
++	wait_args.objs = (uintptr_t)&stress_mutex;
++
++	for (i = 0; i < STRESS_LOOPS; ++i) {
++		ioctl(stress_device, NTSYNC_IOC_WAIT_ANY, &wait_args);
++
++		++stress_counter;
++
++		unlock_mutex(stress_mutex, wait_args.owner, &count);
++	}
++
++	return NULL;
++}
++
++TEST(stress_wait)
++{
++	struct ntsync_event_args event_args;
++	struct ntsync_mutex_args mutex_args;
++	pthread_t threads[STRESS_THREADS];
++	__u32 signaled, i;
++	int ret;
++
++	stress_device = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
++	ASSERT_LE(0, stress_device);
++
++	mutex_args.owner = 0;
++	mutex_args.count = 0;
++	ret = ioctl(stress_device, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(0, ret);
++	stress_mutex = mutex_args.mutex;
++
++	event_args.manual = 1;
++	event_args.signaled = 0;
++	ret = ioctl(stress_device, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_EQ(0, ret);
++	stress_start_event = event_args.event;
++
++	for (i = 0; i < STRESS_THREADS; ++i)
++		pthread_create(&threads[i], NULL, stress_thread, NULL);
++
++	ret = ioctl(stress_start_event, NTSYNC_IOC_EVENT_SET, &signaled);
++	EXPECT_EQ(0, ret);
++
++	for (i = 0; i < STRESS_THREADS; ++i) {
++		ret = pthread_join(threads[i], NULL);
++		EXPECT_EQ(0, ret);
++	}
++
++	EXPECT_EQ(STRESS_LOOPS * STRESS_THREADS, stress_counter);
++
++	close(stress_start_event);
++	close(stress_mutex);
++	close(stress_device);
++}
++
++TEST_HARNESS_MAIN
+-- 
+2.46.0.rc1
+
