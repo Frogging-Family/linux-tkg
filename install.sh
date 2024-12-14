@@ -102,12 +102,9 @@ fi
 
 if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
-  if [ -z "$_distro" ] && [ "$1" = "install" ]; then
+  if [[ -z "$_distro" || ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Gentoo|Generic)$ ]]; then
+    msg2 "Variable \"_distro\" in \"customization.cfg\" has been set to an unkown value. Prompting..."
     _distro_prompt
-  fi
-
-  if [ "$1" = "config" ]; then
-    _distro="Unknown"
   fi
 
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
@@ -118,20 +115,10 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
       export HOSTLDFLAGS="-unwindlib=libunwind"
   fi
 
-  if [[ "$1" = "install" && ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Gentoo|Generic)$ ]]; then
-    msg2 "Variable \"_distro\" in \"customization.cfg\" has been set to an unkown value. Prompting..."
-    _distro_prompt
-  fi
-
   # Install the needed dependencies if the user wants to install the kernel
   # Not needed if the user asks for install.sh config
   if [ "$1" == "install" ]; then
     _install_dependencies
-  fi
-
-  # Force prepare script to avoid Arch specific commands if the user is using `config`
-  if [ "$1" = "config" ]; then
-    _distro=""
   fi
 
   _tkg_srcprep
