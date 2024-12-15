@@ -6,17 +6,17 @@ on:
 
 jobs:
 
-  check-for-newer-kernel:
+  kver-checks:
 
     runs-on: ubuntu-latest
 
     outputs:
-      new_kernel: ${{ steps.check_for_new_kernel.outputs.new_kernel }}
+      latest_release: ${{ steps.latest_release.outputs.release }}
       latest_kernel: ${{ steps.check_for_new_kernel.outputs.latest_kernel }}
 
     steps:
       - name: Checkount linux-tkg
-        uses: actions/checkout@v3.0.2
+        uses: actions/checkout@v4
 
       # Get latest release in repo, so we compare its version
       # with the latest kernel available so far
@@ -34,11 +34,6 @@ jobs:
           ./.github/get_latest_kver.sh
           latest_kernel="$(cat .github/latest-kernel)"
           echo "latest_kernel=$latest_kernel" >> $GITHUB_OUTPUT
-          new_kernel=0
-          [[ "$latest_kernel" != "$latest_release" ]] || new_kernel=$?
-          echo "new_kernel=$new_kernel" >> $GITHUB_OUTPUT
-        env:
-          latest_release: ${{ steps.latest_release.outputs.release }}
 
   build:
     strategy:
@@ -51,18 +46,16 @@ jobs:
       _cpusched: ${{ matrix._cpusched }}
       os: ${{ matrix.os }}
 
-    needs: [check-for-newer-kernel]
-    if: |
-      github.ref == 'refs/heads/master' &&
-      needs.check-for-newer-kernel.outputs.new_kernel == '0'
+    needs: [kver-checks]
+    if: needs.kver-checks.outputs.latest_kernel != needs.kver-checks.outputs.latest_release
 
   make-release:
 
     runs-on: ubuntu-latest
 
     needs:
-      - "check-for-newer-kernel"
-      - "build"
+      - kver-checks
+      - build
     if: needs.build.result == 'success'
 
     steps:
@@ -72,9 +65,9 @@ jobs:
       - name: Make new release
         uses: "softprops/action-gh-release@v2.1.0"
         with:
-          tag_name: ${{ needs.check-for-newer-kernel.outputs.latest_kernel }}
+          tag_name: ${{ needs.kver-checks.outputs.latest_kernel }}
           prerelease: false
-          name: "diet linux-tkg ${{ needs.check-for-newer-kernel.outputs.latest_kernel }}"
+          name: "diet linux-tkg ${{ needs.kver-checks.outputs.latest_kernel }}"
           body: |
             This is a version of linux-tkg built with the option `_kernel_on_diet` enabled.
             If you encounter issues with it, please build the kernel locally with that option disabled.
