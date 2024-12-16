@@ -20,7 +20,7 @@ This repository provides scripts to automatically download, patch and compile th
 
 Its current implementation doesn't allow for injecting additional schedulers at kernel level, and requires replacing it. Only one scheduler can be patched in at a time.
 However, using [Sched-ext](https://github.com/sched-ext/scx), it's possible to inject CPU schedulers at runtime. We offer support for it on ≥ 6.8 by default.
-Arch users can find scx schedulers on the [AUR](https://aur.archlinux.org/packages/scx-scheds) thanks to @sirlucjan (for persistence, set scheduler in "/etc/default/scx" and enable the `scx` service).
+Arch users get scx schedulers from the `scx-scheds` package or on the [AUR](https://aur.archlinux.org/packages/scx-scheds-git) thanks to @sirlucjan (for persistence, set scheduler in "/etc/default/scx" and enable the `scx` service).
 
 Alternative schedulers are available to you in linux-tkg:
 - Project C / PDS & BMQ by Alfred Chen: [blog](http://cchalpha.blogspot.com/ ), [code repository](https://gitlab.com/alfredchen/projectc)
