@@ -50,7 +50,6 @@ The `customization.cfg` file offers many toggles for extra tweaks:
 - "Zenify" patchset using core blk, mm and scheduler tweaks from Zen
 - `ZFS` FPU symbols (<5.9)
 - Overrides for missing ACS capabilities
-- [Waydroid](https://wiki.archlinux.org/title/Waydroid) support
 - [OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB) support
 - Provide own kernel `.config` file
 - ...
