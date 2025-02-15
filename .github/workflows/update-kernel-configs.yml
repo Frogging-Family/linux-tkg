@@ -1,0 +1,51 @@
+name: Update kernel config
+on:
+  schedule:
+    - cron: '17 */12 * * *' # “At minute 17 past every 12th hour.”
+  workflow_dispatch:
+
+jobs:
+
+  update-kernel-config:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        link:
+          - https://gitlab.archlinux.org/archlinux/packaging/packages/linux
+          - https://gitlab.archlinux.org/archlinux/packaging/packages/linux-lts
+
+    steps:
+      - name: Get latest config file version upstream
+        id: upstream-config
+        run: |
+          git -c 'versionsort.suffix=-' \
+          ls-remote --exit-code --refs --sort='version:refname' --tags ${{ matrix.link }}.git '*.*' \
+          | cut --delimiter='/' --fields=3 | tail -n 1 > latest-upstream-config
+          echo "latest=$(cat latest-upstream-config)" >> $GITHUB_OUTPUT
+          echo "kver=$(cat latest-upstream-config | cut -d. -f 1,2 )" >> $GITHUB_OUTPUT
+
+      - name: Checkout linux-tkg
+        uses: actions/checkout@v4
+
+      - name: Update config file
+        id: update-config
+        run: |
+          cd linux-tkg-config/${{ steps.upstream-config.outputs.kver }}
+          wget ${{ matrix.link }}/-/raw/main/config -O config.x86_64
+          if git diff --exit-code config.x86_64
+          then
+            echo "config-updated=0" >> $GITHUB_OUTPUT
+          else
+            echo "config-updated=1" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push changes
+        if: steps.update-config.outputs.config-updated == '1'
+        run: |
+          git config --global user.name 'Frogminer'
+          git config --global user.email 'frogminer@miner.frog'
+          git pull
+          git commit -am "Update ${{ steps.upstream-config.outputs.kver }} kernel config to ${{ steps.upstream-config.outputs.latest }}"
+          git push
