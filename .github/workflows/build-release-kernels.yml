@@ -31,13 +31,22 @@ jobs:
       - name: Get latest kernel version
         id: versions
         run: |
+          get_latest_kernel() {
+            git -c 'versionsort.suffix=-' \
+            ls-remote --exit-code --refs --sort='version:refname' --tags https://github.com/gregkh/linux.git '*.*' \
+            | cut --delimiter='/' --fields=3 | grep "$1" | tail -n 1
+          }
+
           grep "_current_kernels=(" linux-tkg-config/prepare > current_kernels.txt
           source current_kernels.txt
-          current_kernel="${_current_kernels[0]}"
-          git -c 'versionsort.suffix=-' \
-          ls-remote --exit-code --refs --sort='version:refname' --tags https://github.com/gregkh/linux.git '*.*' \
-          | cut --delimiter='/' --fields=3 | grep "$current_kernel" | tail -n 1 > latest-current-kernel
-          echo "latest_kernel=$(cat latest-current-kernel)" >> $GITHUB_OUTPUT
+
+          latest_kernel=`get_latest_kernel "${_current_kernels[0]}"`
+          if [[ "$latest_kernel" =~ "rc" ]]
+          then
+            latest_kernel=`get_latest_kernel "${_current_kernels[1]}"`
+          fi
+
+          echo "latest_kernel=$latest_kernel" >> $GITHUB_OUTPUT
 
   build:
     strategy:
