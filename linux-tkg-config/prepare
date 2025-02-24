@@ -10,29 +10,33 @@ typeset -Ag _kernel_git_remotes
 _kernel_git_remotes=(
   ["kernel.org"]="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
   ["googlesource.com"]="https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable"
-  ["github.com"]="https://github.com/gregkh/linux.git"
+  ["gregkh"]="https://github.com/gregkh/linux.git"
   ["torvalds"]="https://github.com/torvalds/linux.git"
 )
 
 _git_remote_names=( "${!_kernel_git_remotes[@]}" )
 
-if [[ ! "${_git_remote_names[@]}" =~ "$_git_mirror" ]]; then
-  warning "git mirror '$_git_mirror' not recognized"
-  _git_mirror=""
-fi
-
+# fill with kernel.org link if empty
 if [[ -z "$_git_mirror" ]]; then
-  _git_mirror="${_git_remote_names[2]}"
-  if $( ! timeout 5 git ls-remote ${_kernel_git_remotes[$_git_mirror]} >/dev/null ) || [[ "$( git ls-remote ${_kernel_git_remotes[$_git_mirror]} | head -n 1 )" = *502* ]]; then
-    warning "kernel.org unreachable or too long to respond"
-    _git_mirror="${_git_remote_names[0]}"
-  fi
-  echo "Defaulting to ${_git_mirror} git mirror"
+  msg2 "using default kernel.org git remote"
+  _git_mirror="${_kernel_git_remotes['kernel.org']}"
 fi
 
-# Fillout the latest tags map/dictionary
+# if alias, get actual link from map _kernel_git_remotes
+if [[ "${_git_remote_names[@]}" =~ "$_git_mirror" ]]; then
+  msg2 "using git mirror alias $_git_mirror"
+  _git_mirror="${_kernel_git_remotes[$_git_mirror]}"
+fi
+
+if $( ! timeout 5 git ls-remote $_git_mirror >/dev/null ) || \
+  [[ "$( git ls-remote $_git_mirror | head -n 1 )" = *502* ]]; then
+  error "Remote unreachable or took too long to respond"
+  exit 1
+fi
+
+# Fill out the latest tags map/dictionary
 _kernel_tags=$(git -c 'versionsort.suffix=-' \
-  ls-remote --exit-code --refs --sort='version:refname' --tags ${_kernel_git_remotes[$_git_mirror]} '*.*' \
+  ls-remote --exit-code --refs --sort='version:refname' --tags $_git_mirror '*.*' \
   | cut --delimiter='/' --fields=3)
 
 typeset -Ag _kver_latest_tags_map
