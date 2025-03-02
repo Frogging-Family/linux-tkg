@@ -1,22 +1,22 @@
-From d0a6d18c3ce077b9b944a383d001bc4a8b907006 Mon Sep 17 00:00:00 2001
-From: Peter Jung <admin@ptr1337.dev>
-Date: Mon, 15 Jul 2024 13:26:39 +0200
-Subject: [PATCH 08/11] ntsync
+From 0c0623b2147eff5cc84dc9e20079d9e902bdc9c3 Mon Sep 17 00:00:00 2001
+From: Eric Naim <dnaim@cachyos.org>
+Date: Tue, 18 Feb 2025 16:01:37 +0800
+Subject: [PATCH 5/8] ntsync
 
-Signed-off-by: Peter Jung <admin@ptr1337.dev>
+Signed-off-by: Eric Naim <dnaim@cachyos.org>
 ---
  Documentation/userspace-api/index.rst         |    1 +
- Documentation/userspace-api/ntsync.rst        |  398 +++++
+ Documentation/userspace-api/ntsync.rst        |  385 +++++
  MAINTAINERS                                   |    9 +
  drivers/misc/Kconfig                          |    1 -
- drivers/misc/ntsync.c                         |  989 +++++++++++-
- include/uapi/linux/ntsync.h                   |   39 +
+ drivers/misc/ntsync.c                         |  993 +++++++++++-
+ include/uapi/linux/ntsync.h                   |   42 +-
  tools/testing/selftests/Makefile              |    1 +
  .../selftests/drivers/ntsync/.gitignore       |    1 +
  .../testing/selftests/drivers/ntsync/Makefile |    7 +
  tools/testing/selftests/drivers/ntsync/config |    1 +
- .../testing/selftests/drivers/ntsync/ntsync.c | 1407 +++++++++++++++++
- 11 files changed, 2850 insertions(+), 4 deletions(-)
+ .../testing/selftests/drivers/ntsync/ntsync.c | 1343 +++++++++++++++++
+ 11 files changed, 2768 insertions(+), 16 deletions(-)
  create mode 100644 Documentation/userspace-api/ntsync.rst
  create mode 100644 tools/testing/selftests/drivers/ntsync/.gitignore
  create mode 100644 tools/testing/selftests/drivers/ntsync/Makefile
@@ -24,10 +24,10 @@ Signed-off-by: Peter Jung <admin@ptr1337.dev>
  create mode 100644 tools/testing/selftests/drivers/ntsync/ntsync.c
 
 diff --git a/Documentation/userspace-api/index.rst b/Documentation/userspace-api/index.rst
-index 8a251d71fa6e..02bea81fb4bf 100644
+index 274cc7546efc..9c1b15cd89ab 100644
 --- a/Documentation/userspace-api/index.rst
 +++ b/Documentation/userspace-api/index.rst
-@@ -64,6 +64,7 @@ Everything else
+@@ -63,6 +63,7 @@ Everything else
     vduse
     futex2
     perf_ring_buffer
@@ -37,10 +37,10 @@ index 8a251d71fa6e..02bea81fb4bf 100644
  
 diff --git a/Documentation/userspace-api/ntsync.rst b/Documentation/userspace-api/ntsync.rst
 new file mode 100644
-index 000000000000..767844637a7d
+index 000000000000..25e7c4aef968
 --- /dev/null
 +++ b/Documentation/userspace-api/ntsync.rst
-@@ -0,0 +1,398 @@
+@@ -0,0 +1,385 @@
 +===================================
 +NT synchronization primitive driver
 +===================================
@@ -116,19 +116,16 @@ index 000000000000..767844637a7d
 +structures used in ioctl calls::
 +
 +   struct ntsync_sem_args {
-+   	__u32 sem;
 +   	__u32 count;
 +   	__u32 max;
 +   };
 +
 +   struct ntsync_mutex_args {
-+   	__u32 mutex;
 +   	__u32 owner;
 +   	__u32 count;
 +   };
 +
 +   struct ntsync_event_args {
-+   	__u32 event;
 +   	__u32 signaled;
 +   	__u32 manual;
 +   };
@@ -145,7 +142,7 @@ index 000000000000..767844637a7d
 +   };
 +
 +Depending on the ioctl, members of the structure may be used as input,
-+output, or not at all. All ioctls return 0 on success.
++output, or not at all.
 +
 +The ioctls on the device file are as follows:
 +
@@ -156,14 +153,13 @@ index 000000000000..767844637a7d
 +
 +  .. list-table::
 +
-+     * - ``sem``
-+       - On output, contains a file descriptor to the created semaphore.
 +     * - ``count``
 +       - Initial count of the semaphore.
 +     * - ``max``
 +       - Maximum count of the semaphore.
 +
 +  Fails with ``EINVAL`` if ``count`` is greater than ``max``.
++  On success, returns a file descriptor the created semaphore.
 +
 +.. c:macro:: NTSYNC_IOC_CREATE_MUTEX
 +
@@ -172,8 +168,6 @@ index 000000000000..767844637a7d
 +
 +  .. list-table::
 +
-+     * - ``mutex``
-+       - On output, contains a file descriptor to the created mutex.
 +     * - ``count``
 +       - Initial recursion count of the mutex.
 +     * - ``owner``
@@ -181,6 +175,7 @@ index 000000000000..767844637a7d
 +
 +  If ``owner`` is nonzero and ``count`` is zero, or if ``owner`` is
 +  zero and ``count`` is nonzero, the function fails with ``EINVAL``.
++  On success, returns a file descriptor the created mutex.
 +
 +.. c:macro:: NTSYNC_IOC_CREATE_EVENT
 +
@@ -189,14 +184,14 @@ index 000000000000..767844637a7d
 +
 +  .. list-table::
 +
-+     * - ``event``
-+       - On output, contains a file descriptor to the created event.
 +     * - ``signaled``
 +       - If nonzero, the event is initially signaled, otherwise
 +         nonsignaled.
 +     * - ``manual``
 +       - If nonzero, the event is a manual-reset event, otherwise
 +         auto-reset.
++
++  On success, returns a file descriptor the created event.
 +
 +The ioctls on the individual objects are as follows:
 +
@@ -220,8 +215,6 @@ index 000000000000..767844637a7d
 +
 +  .. list-table::
 +
-+     * - ``mutex``
-+       - Ignored.
 +     * - ``owner``
 +       - Specifies the owner trying to release this mutex.
 +     * - ``count``
@@ -270,8 +263,6 @@ index 000000000000..767844637a7d
 +
 +  .. list-table::
 +
-+     * - ``sem``
-+       - Ignored.
 +     * - ``count``
 +       - On output, contains the current count of the semaphore.
 +     * - ``max``
@@ -284,8 +275,6 @@ index 000000000000..767844637a7d
 +
 +  .. list-table::
 +
-+     * - ``mutex``
-+       - Ignored.
 +     * - ``owner``
 +       - On output, contains the current owner of the mutex, or zero
 +         if the mutex is not currently owned.
@@ -303,8 +292,6 @@ index 000000000000..767844637a7d
 +
 +  .. list-table::
 +
-+     * - ``event``
-+       - Ignored.
 +     * - ``signaled``
 +       - On output, contains the current state of the event.
 +     * - ``manual``
@@ -440,10 +427,10 @@ index 000000000000..767844637a7d
 +  ``objs`` and in ``alert``. If this is attempted, the function fails
 +  with ``EINVAL``.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 958e935449e5..b25b2a731512 100644
+index a578178468f1..12d0694339ce 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -15976,6 +15976,15 @@ T:	git https://github.com/Paragon-Software-Group/linux-ntfs3.git
+@@ -16494,6 +16494,15 @@ T:	git https://github.com/Paragon-Software-Group/linux-ntfs3.git
  F:	Documentation/filesystems/ntfs3.rst
  F:	fs/ntfs3/
  
@@ -460,10 +447,10 @@ index 958e935449e5..b25b2a731512 100644
  M:	Finn Thain <fthain@linux-m68k.org>
  L:	linux-m68k@lists.linux-m68k.org
 diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
-index faf983680040..2907b5c23368 100644
+index 3fe7e2a9bd29..6c8b999a5e08 100644
 --- a/drivers/misc/Kconfig
 +++ b/drivers/misc/Kconfig
-@@ -507,7 +507,6 @@ config OPEN_DICE
+@@ -517,7 +517,6 @@ config OPEN_DICE
  
  config NTSYNC
  	tristate "NT synchronization primitive emulation"
@@ -472,7 +459,7 @@ index faf983680040..2907b5c23368 100644
  	  This module provides kernel support for emulation of Windows NT
  	  synchronization primitives. It is not a hardware driver.
 diff --git a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
-index 3c2f743c58b0..87a24798a5c7 100644
+index 4954553b7baa..94b94c4cc579 100644
 --- a/drivers/misc/ntsync.c
 +++ b/drivers/misc/ntsync.c
 @@ -6,11 +6,17 @@
@@ -516,7 +503,7 @@ index 3c2f743c58b0..87a24798a5c7 100644
  
  	enum ntsync_type type;
  
-@@ -46,13 +57,335 @@ struct ntsync_obj {
+@@ -46,22 +57,344 @@ struct ntsync_obj {
  			__u32 count;
  			__u32 max;
  		} sem;
@@ -852,7 +839,9 @@ index 3c2f743c58b0..87a24798a5c7 100644
  /*
   * Actually change the semaphore state, returning -EOVERFLOW if it is made
   * invalid.
-@@ -61,7 +394,7 @@ static int post_sem_state(struct ntsync_obj *sem, __u32 count)
+  */
+-static int post_sem_state(struct ntsync_obj *sem, __u32 count)
++static int release_sem_state(struct ntsync_obj *sem, __u32 count)
  {
  	__u32 sum;
  
@@ -861,9 +850,12 @@ index 3c2f743c58b0..87a24798a5c7 100644
  
  	if (check_add_overflow(sem->u.sem.count, count, &sum) ||
  	    sum > sem->u.sem.max)
-@@ -73,9 +406,11 @@ static int post_sem_state(struct ntsync_obj *sem, __u32 count)
+@@ -71,11 +404,13 @@ static int post_sem_state(struct ntsync_obj *sem, __u32 count)
+ 	return 0;
+ }
  
- static int ntsync_sem_post(struct ntsync_obj *sem, void __user *argp)
+-static int ntsync_sem_post(struct ntsync_obj *sem, void __user *argp)
++static int ntsync_sem_release(struct ntsync_obj *sem, void __user *argp)
  {
 +	struct ntsync_device *dev = sem->dev;
  	__u32 __user *user_args = argp;
@@ -881,7 +873,8 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +	all = ntsync_lock_obj(dev, sem);
  
  	prev_count = sem->u.sem.count;
- 	ret = post_sem_state(sem, args);
+-	ret = post_sem_state(sem, args);
++	ret = release_sem_state(sem, args);
 +	if (!ret) {
 +		if (all)
 +			try_wake_all_obj(dev, sem);
@@ -893,7 +886,7 @@ index 3c2f743c58b0..87a24798a5c7 100644
  
  	if (!ret && put_user(prev_count, user_args))
  		ret = -EFAULT;
-@@ -97,6 +437,226 @@ static int ntsync_sem_post(struct ntsync_obj *sem, void __user *argp)
+@@ -97,6 +437,220 @@ static int ntsync_sem_post(struct ntsync_obj *sem, void __user *argp)
  	return ret;
  }
  
@@ -1053,8 +1046,6 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +	if (sem->type != NTSYNC_TYPE_SEM)
 +		return -EINVAL;
 +
-+	args.sem = 0;
-+
 +	all = ntsync_lock_obj(dev, sem);
 +
 +	args.count = sem->u.sem.count;
@@ -1077,8 +1068,6 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +
 +	if (mutex->type != NTSYNC_TYPE_MUTEX)
 +		return -EINVAL;
-+
-+	args.mutex = 0;
 +
 +	all = ntsync_lock_obj(dev, mutex);
 +
@@ -1103,8 +1092,6 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +	if (event->type != NTSYNC_TYPE_EVENT)
 +		return -EINVAL;
 +
-+	args.event = 0;
-+
 +	all = ntsync_lock_obj(dev, event);
 +
 +	args.manual = event->u.event.manual;
@@ -1120,10 +1107,14 @@ index 3c2f743c58b0..87a24798a5c7 100644
  static int ntsync_obj_release(struct inode *inode, struct file *file)
  {
  	struct ntsync_obj *obj = file->private_data;
-@@ -116,6 +676,22 @@ static long ntsync_obj_ioctl(struct file *file, unsigned int cmd,
+@@ -114,8 +668,24 @@ static long ntsync_obj_ioctl(struct file *file, unsigned int cmd,
+ 	void __user *argp = (void __user *)parm;
+ 
  	switch (cmd) {
- 	case NTSYNC_IOC_SEM_POST:
- 		return ntsync_sem_post(obj, argp);
+-	case NTSYNC_IOC_SEM_POST:
+-		return ntsync_sem_post(obj, argp);
++	case NTSYNC_IOC_SEM_RELEASE:
++		return ntsync_sem_release(obj, argp);
 +	case NTSYNC_IOC_SEM_READ:
 +		return ntsync_sem_read(obj, argp);
 +	case NTSYNC_IOC_MUTEX_UNLOCK:
@@ -1143,7 +1134,7 @@ index 3c2f743c58b0..87a24798a5c7 100644
  	default:
  		return -ENOIOCTLCMD;
  	}
-@@ -141,6 +717,9 @@ static struct ntsync_obj *ntsync_alloc_obj(struct ntsync_device *dev,
+@@ -140,6 +710,9 @@ static struct ntsync_obj *ntsync_alloc_obj(struct ntsync_device *dev,
  	obj->dev = dev;
  	get_file(dev->file);
  	spin_lock_init(&obj->lock);
@@ -1153,13 +1144,28 @@ index 3c2f743c58b0..87a24798a5c7 100644
  
  	return obj;
  }
-@@ -191,6 +770,400 @@ static int ntsync_create_sem(struct ntsync_device *dev, void __user *argp)
- 	return put_user(fd, &user_args->sem);
- }
+@@ -165,7 +738,6 @@ static int ntsync_obj_get_fd(struct ntsync_obj *obj)
  
+ static int ntsync_create_sem(struct ntsync_device *dev, void __user *argp)
+ {
+-	struct ntsync_sem_args __user *user_args = argp;
+ 	struct ntsync_sem_args args;
+ 	struct ntsync_obj *sem;
+ 	int fd;
+@@ -182,12 +754,398 @@ static int ntsync_create_sem(struct ntsync_device *dev, void __user *argp)
+ 	sem->u.sem.count = args.count;
+ 	sem->u.sem.max = args.max;
+ 	fd = ntsync_obj_get_fd(sem);
+-	if (fd < 0) {
++	if (fd < 0)
+ 		kfree(sem);
+-		return fd;
++
++	return fd;
++}
++
 +static int ntsync_create_mutex(struct ntsync_device *dev, void __user *argp)
 +{
-+	struct ntsync_mutex_args __user *user_args = argp;
 +	struct ntsync_mutex_args args;
 +	struct ntsync_obj *mutex;
 +	int fd;
@@ -1176,17 +1182,14 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +	mutex->u.mutex.count = args.count;
 +	mutex->u.mutex.owner = args.owner;
 +	fd = ntsync_obj_get_fd(mutex);
-+	if (fd < 0) {
++	if (fd < 0)
 +		kfree(mutex);
-+		return fd;
-+	}
 +
-+	return put_user(fd, &user_args->mutex);
++	return fd;
 +}
 +
 +static int ntsync_create_event(struct ntsync_device *dev, void __user *argp)
 +{
-+	struct ntsync_event_args __user *user_args = argp;
 +	struct ntsync_event_args args;
 +	struct ntsync_obj *event;
 +	int fd;
@@ -1200,12 +1203,10 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +	event->u.event.manual = args.manual;
 +	event->u.event.signaled = args.signaled;
 +	fd = ntsync_obj_get_fd(event);
-+	if (fd < 0) {
++	if (fd < 0)
 +		kfree(event);
-+		return fd;
-+	}
 +
-+	return put_user(fd, &user_args->event);
++	return fd;
 +}
 +
 +static struct ntsync_obj *get_obj(struct ntsync_device *dev, int fd)
@@ -1219,8 +1220,9 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +	if (file->f_op != &ntsync_obj_fops) {
 +		fput(file);
 +		return NULL;
-+	}
-+
+ 	}
+ 
+-	return put_user(fd, &user_args->sem);
 +	obj = file->private_data;
 +	if (obj->dev != dev) {
 +		fput(file);
@@ -1549,12 +1551,10 @@ index 3c2f743c58b0..87a24798a5c7 100644
 +
 +	kfree(q);
 +	return ret;
-+}
-+
+ }
+ 
  static int ntsync_char_open(struct inode *inode, struct file *file)
- {
- 	struct ntsync_device *dev;
-@@ -199,6 +1172,8 @@ static int ntsync_char_open(struct inode *inode, struct file *file)
+@@ -198,6 +1156,8 @@ static int ntsync_char_open(struct inode *inode, struct file *file)
  	if (!dev)
  		return -ENOMEM;
  
@@ -1563,7 +1563,7 @@ index 3c2f743c58b0..87a24798a5c7 100644
  	file->private_data = dev;
  	dev->file = file;
  	return nonseekable_open(inode, file);
-@@ -220,8 +1195,16 @@ static long ntsync_char_ioctl(struct file *file, unsigned int cmd,
+@@ -219,8 +1179,16 @@ static long ntsync_char_ioctl(struct file *file, unsigned int cmd,
  	void __user *argp = (void __user *)parm;
  
  	switch (cmd) {
@@ -1580,22 +1580,34 @@ index 3c2f743c58b0..87a24798a5c7 100644
  	default:
  		return -ENOIOCTLCMD;
  	}
+@@ -238,6 +1206,7 @@ static struct miscdevice ntsync_misc = {
+ 	.minor		= MISC_DYNAMIC_MINOR,
+ 	.name		= NTSYNC_NAME,
+ 	.fops		= &ntsync_fops,
++	.mode		= 0666, // Setting file permissions to 0666
+ };
+ 
+ module_misc_device(ntsync_misc);
 diff --git a/include/uapi/linux/ntsync.h b/include/uapi/linux/ntsync.h
-index dcfa38fdc93c..4a8095a3fc34 100644
+index dcfa38fdc93c..6d06793512b1 100644
 --- a/include/uapi/linux/ntsync.h
 +++ b/include/uapi/linux/ntsync.h
-@@ -16,8 +16,47 @@ struct ntsync_sem_args {
+@@ -11,13 +11,49 @@
+ #include <linux/types.h>
+ 
+ struct ntsync_sem_args {
+-	__u32 sem;
+ 	__u32 count;
  	__u32 max;
  };
  
+-#define NTSYNC_IOC_CREATE_SEM		_IOWR('N', 0x80, struct ntsync_sem_args)
 +struct ntsync_mutex_args {
-+	__u32 mutex;
 +	__u32 owner;
 +	__u32 count;
 +};
 +
 +struct ntsync_event_args {
-+	__u32 event;
 +	__u32 manual;
 +	__u32 signaled;
 +};
@@ -1615,13 +1627,14 @@ index dcfa38fdc93c..4a8095a3fc34 100644
 +
 +#define NTSYNC_MAX_WAIT_COUNT 64
 +
- #define NTSYNC_IOC_CREATE_SEM		_IOWR('N', 0x80, struct ntsync_sem_args)
++#define NTSYNC_IOC_CREATE_SEM		_IOW ('N', 0x80, struct ntsync_sem_args)
 +#define NTSYNC_IOC_WAIT_ANY		_IOWR('N', 0x82, struct ntsync_wait_args)
 +#define NTSYNC_IOC_WAIT_ALL		_IOWR('N', 0x83, struct ntsync_wait_args)
-+#define NTSYNC_IOC_CREATE_MUTEX		_IOWR('N', 0x84, struct ntsync_sem_args)
-+#define NTSYNC_IOC_CREATE_EVENT		_IOWR('N', 0x87, struct ntsync_event_args)
++#define NTSYNC_IOC_CREATE_MUTEX		_IOW ('N', 0x84, struct ntsync_mutex_args)
++#define NTSYNC_IOC_CREATE_EVENT		_IOW ('N', 0x87, struct ntsync_event_args)
  
- #define NTSYNC_IOC_SEM_POST		_IOWR('N', 0x81, __u32)
+-#define NTSYNC_IOC_SEM_POST		_IOWR('N', 0x81, __u32)
++#define NTSYNC_IOC_SEM_RELEASE		_IOWR('N', 0x81, __u32)
 +#define NTSYNC_IOC_MUTEX_UNLOCK		_IOWR('N', 0x85, struct ntsync_mutex_args)
 +#define NTSYNC_IOC_MUTEX_KILL		_IOW ('N', 0x86, __u32)
 +#define NTSYNC_IOC_EVENT_SET		_IOR ('N', 0x88, __u32)
@@ -1633,11 +1646,11 @@ index dcfa38fdc93c..4a8095a3fc34 100644
  
  #endif
 diff --git a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
-index 9039f3709aff..d5aeaa8fe3ca 100644
+index 363d031a16f7..ff18c0361e38 100644
 --- a/tools/testing/selftests/Makefile
 +++ b/tools/testing/selftests/Makefile
-@@ -16,6 +16,7 @@ TARGETS += damon
- TARGETS += devices
+@@ -18,6 +18,7 @@ TARGETS += devices/error_logs
+ TARGETS += devices/probe
  TARGETS += dmabuf-heaps
  TARGETS += drivers/dma-buf
 +TARGETS += drivers/ntsync
@@ -1673,10 +1686,10 @@ index 000000000000..60539c826d06
 +CONFIG_WINESYNC=y
 diff --git a/tools/testing/selftests/drivers/ntsync/ntsync.c b/tools/testing/selftests/drivers/ntsync/ntsync.c
 new file mode 100644
-index 000000000000..5fa2c9a0768c
+index 000000000000..3aad311574c4
 --- /dev/null
 +++ b/tools/testing/selftests/drivers/ntsync/ntsync.c
-@@ -0,0 +1,1407 @@
+@@ -0,0 +1,1343 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +/*
 + * Various unit tests for the "ntsync" synchronization primitive driver.
@@ -1714,9 +1727,9 @@ index 000000000000..5fa2c9a0768c
 +		EXPECT_EQ((max), __max); \
 +	})
 +
-+static int post_sem(int sem, __u32 *count)
++static int release_sem(int sem, __u32 *count)
 +{
-+	return ioctl(sem, NTSYNC_IOC_SEM_POST, count);
++	return ioctl(sem, NTSYNC_IOC_SEM_RELEASE, count);
 +}
 +
 +static int read_mutex_state(int mutex, __u32 *count, __u32 *owner)
@@ -1831,28 +1844,24 @@ index 000000000000..5fa2c9a0768c
 +
 +	sem_args.count = 3;
 +	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(-1, ret);
++	sem = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_EQ(-1, sem);
 +	EXPECT_EQ(EINVAL, errno);
 +
 +	sem_args.count = 2;
 +	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
-+	sem = sem_args.sem;
++	sem = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, sem);
 +	check_sem_state(sem, 2, 2);
 +
 +	count = 0;
-+	ret = post_sem(sem, &count);
++	ret = release_sem(sem, &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(2, count);
 +	check_sem_state(sem, 2, 2);
 +
 +	count = 1;
-+	ret = post_sem(sem, &count);
++	ret = release_sem(sem, &count);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EOVERFLOW, errno);
 +	check_sem_state(sem, 2, 2);
@@ -1872,13 +1881,13 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(ETIMEDOUT, errno);
 +
 +	count = 3;
-+	ret = post_sem(sem, &count);
++	ret = release_sem(sem, &count);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EOVERFLOW, errno);
 +	check_sem_state(sem, 0, 2);
 +
 +	count = 2;
-+	ret = post_sem(sem, &count);
++	ret = release_sem(sem, &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
 +	check_sem_state(sem, 2, 2);
@@ -1889,13 +1898,13 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(0, ret);
 +
 +	count = 1;
-+	ret = post_sem(sem, &count);
++	ret = release_sem(sem, &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
 +	check_sem_state(sem, 1, 2);
 +
 +	count = ~0u;
-+	ret = post_sem(sem, &count);
++	ret = release_sem(sem, &count);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EOVERFLOW, errno);
 +	check_sem_state(sem, 1, 2);
@@ -1919,23 +1928,20 @@ index 000000000000..5fa2c9a0768c
 +
 +	mutex_args.owner = 123;
 +	mutex_args.count = 0;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(-1, ret);
++	mutex = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(-1, mutex);
 +	EXPECT_EQ(EINVAL, errno);
 +
 +	mutex_args.owner = 0;
 +	mutex_args.count = 2;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(-1, ret);
++	mutex = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_EQ(-1, mutex);
 +	EXPECT_EQ(EINVAL, errno);
 +
 +	mutex_args.owner = 123;
 +	mutex_args.count = 2;
-+	mutex_args.mutex = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
-+	mutex = mutex_args.mutex;
++	mutex = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, mutex);
 +	check_mutex_state(mutex, 2, 123);
 +
 +	ret = unlock_mutex(mutex, 0, &count);
@@ -2036,11 +2042,8 @@ index 000000000000..5fa2c9a0768c
 +
 +	mutex_args.owner = 0;
 +	mutex_args.count = 0;
-+	mutex_args.mutex = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
-+	mutex = mutex_args.mutex;
++	mutex = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, mutex);
 +	check_mutex_state(mutex, 0, 0);
 +
 +	ret = wait_any(fd, 1, &mutex, 123, &index);
@@ -2052,11 +2055,8 @@ index 000000000000..5fa2c9a0768c
 +
 +	mutex_args.owner = 123;
 +	mutex_args.count = ~0u;
-+	mutex_args.mutex = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
-+	mutex = mutex_args.mutex;
++	mutex = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, mutex);
 +	check_mutex_state(mutex, ~0u, 123);
 +
 +	ret = wait_any(fd, 1, &mutex, 123, &index);
@@ -2079,11 +2079,8 @@ index 000000000000..5fa2c9a0768c
 +
 +	event_args.manual = 1;
 +	event_args.signaled = 0;
-+	event_args.event = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, event_args.event);
-+	event = event_args.event;
++	event = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, event);
 +	check_event_state(event, 0, 1);
 +
 +	signaled = 0xdeadbeef;
@@ -2147,11 +2144,8 @@ index 000000000000..5fa2c9a0768c
 +
 +	event_args.manual = 0;
 +	event_args.signaled = 1;
-+	event_args.event = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, event_args.event);
-+	event = event_args.event;
++	event = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, event);
 +
 +	check_event_state(event, 1, 0);
 +
@@ -2210,62 +2204,55 @@ index 000000000000..5fa2c9a0768c
 +
 +	sem_args.count = 2;
 +	sem_args.max = 3;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[0] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[0]);
 +
 +	mutex_args.owner = 0;
 +	mutex_args.count = 0;
-+	mutex_args.mutex = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
-+
-+	objs[0] = sem_args.sem;
-+	objs[1] = mutex_args.mutex;
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, objs[1]);
 +
 +	ret = wait_any(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 1, 3);
-+	check_mutex_state(mutex_args.mutex, 0, 0);
++	check_sem_state(objs[0], 1, 3);
++	check_mutex_state(objs[1], 0, 0);
 +
 +	ret = wait_any(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 0, 3);
-+	check_mutex_state(mutex_args.mutex, 0, 0);
++	check_sem_state(objs[0], 0, 3);
++	check_mutex_state(objs[1], 0, 0);
 +
 +	ret = wait_any(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, index);
-+	check_sem_state(sem_args.sem, 0, 3);
-+	check_mutex_state(mutex_args.mutex, 1, 123);
++	check_sem_state(objs[0], 0, 3);
++	check_mutex_state(objs[1], 1, 123);
 +
 +	count = 1;
-+	ret = post_sem(sem_args.sem, &count);
++	ret = release_sem(objs[0], &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
 +
 +	ret = wait_any(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 0, 3);
-+	check_mutex_state(mutex_args.mutex, 1, 123);
++	check_sem_state(objs[0], 0, 3);
++	check_mutex_state(objs[1], 1, 123);
 +
 +	ret = wait_any(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, index);
-+	check_sem_state(sem_args.sem, 0, 3);
-+	check_mutex_state(mutex_args.mutex, 2, 123);
++	check_sem_state(objs[0], 0, 3);
++	check_mutex_state(objs[1], 2, 123);
 +
 +	ret = wait_any(fd, 2, objs, 456, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(ETIMEDOUT, errno);
 +
 +	owner = 123;
-+	ret = ioctl(mutex_args.mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	ret = ioctl(objs[1], NTSYNC_IOC_MUTEX_KILL, &owner);
 +	EXPECT_EQ(0, ret);
 +
 +	ret = wait_any(fd, 2, objs, 456, &index);
@@ -2277,24 +2264,27 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, index);
 +
++	close(objs[1]);
++
 +	/* test waiting on the same object twice */
++
 +	count = 2;
-+	ret = post_sem(sem_args.sem, &count);
++	ret = release_sem(objs[0], &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
 +
-+	objs[0] = objs[1] = sem_args.sem;
++	objs[1] = objs[0];
 +	ret = wait_any(fd, 2, objs, 456, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 1, 3);
++	check_sem_state(objs[0], 1, 3);
 +
 +	ret = wait_any(fd, 0, NULL, 456, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(ETIMEDOUT, errno);
 +
-+	for (i = 0; i < NTSYNC_MAX_WAIT_COUNT + 1; ++i)
-+		objs[i] = sem_args.sem;
++	for (i = 1; i < NTSYNC_MAX_WAIT_COUNT + 1; ++i)
++		objs[i] = objs[0];
 +
 +	ret = wait_any(fd, NTSYNC_MAX_WAIT_COUNT, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
@@ -2308,8 +2298,7 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EINVAL, errno);
 +
-+	close(sem_args.sem);
-+	close(mutex_args.mutex);
++	close(objs[0]);
 +
 +	close(fd);
 +}
@@ -2327,88 +2316,81 @@ index 000000000000..5fa2c9a0768c
 +
 +	sem_args.count = 2;
 +	sem_args.max = 3;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[0] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[0]);
 +
 +	mutex_args.owner = 0;
 +	mutex_args.count = 0;
-+	mutex_args.mutex = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
-+
-+	event_args.manual = true;
-+	event_args.signaled = true;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
-+
-+	objs[0] = sem_args.sem;
-+	objs[1] = mutex_args.mutex;
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, objs[1]);
 +
 +	ret = wait_all(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 1, 3);
-+	check_mutex_state(mutex_args.mutex, 1, 123);
++	check_sem_state(objs[0], 1, 3);
++	check_mutex_state(objs[1], 1, 123);
 +
 +	ret = wait_all(fd, 2, objs, 456, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(ETIMEDOUT, errno);
-+	check_sem_state(sem_args.sem, 1, 3);
-+	check_mutex_state(mutex_args.mutex, 1, 123);
++	check_sem_state(objs[0], 1, 3);
++	check_mutex_state(objs[1], 1, 123);
 +
 +	ret = wait_all(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 0, 3);
-+	check_mutex_state(mutex_args.mutex, 2, 123);
++	check_sem_state(objs[0], 0, 3);
++	check_mutex_state(objs[1], 2, 123);
 +
 +	ret = wait_all(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(ETIMEDOUT, errno);
-+	check_sem_state(sem_args.sem, 0, 3);
-+	check_mutex_state(mutex_args.mutex, 2, 123);
++	check_sem_state(objs[0], 0, 3);
++	check_mutex_state(objs[1], 2, 123);
 +
 +	count = 3;
-+	ret = post_sem(sem_args.sem, &count);
++	ret = release_sem(objs[0], &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
 +
 +	ret = wait_all(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 2, 3);
-+	check_mutex_state(mutex_args.mutex, 3, 123);
++	check_sem_state(objs[0], 2, 3);
++	check_mutex_state(objs[1], 3, 123);
 +
 +	owner = 123;
-+	ret = ioctl(mutex_args.mutex, NTSYNC_IOC_MUTEX_KILL, &owner);
++	ret = ioctl(objs[1], NTSYNC_IOC_MUTEX_KILL, &owner);
 +	EXPECT_EQ(0, ret);
 +
 +	ret = wait_all(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EOWNERDEAD, errno);
-+	check_sem_state(sem_args.sem, 1, 3);
-+	check_mutex_state(mutex_args.mutex, 1, 123);
++	check_sem_state(objs[0], 1, 3);
++	check_mutex_state(objs[1], 1, 123);
 +
-+	objs[0] = sem_args.sem;
-+	objs[1] = event_args.event;
++	close(objs[1]);
++
++	event_args.manual = true;
++	event_args.signaled = true;
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, objs[1]);
++
 +	ret = wait_all(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
-+	check_sem_state(sem_args.sem, 0, 3);
-+	check_event_state(event_args.event, 1, 1);
++	check_sem_state(objs[0], 0, 3);
++	check_event_state(objs[1], 1, 1);
++
++	close(objs[1]);
 +
 +	/* test waiting on the same object twice */
-+	objs[0] = objs[1] = sem_args.sem;
++	objs[1] = objs[0];
 +	ret = wait_all(fd, 2, objs, 123, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(EINVAL, errno);
 +
-+	close(sem_args.sem);
-+	close(mutex_args.mutex);
-+	close(event_args.event);
++	close(objs[0]);
 +
 +	close(fd);
 +}
@@ -2469,20 +2451,13 @@ index 000000000000..5fa2c9a0768c
 +
 +	sem_args.count = 0;
 +	sem_args.max = 3;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[0] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[0]);
 +
 +	mutex_args.owner = 123;
 +	mutex_args.count = 1;
-+	mutex_args.mutex = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
-+
-+	objs[0] = sem_args.sem;
-+	objs[1] = mutex_args.mutex;
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, objs[1]);
 +
 +	/* test waking the semaphore */
 +
@@ -2501,10 +2476,10 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
 +	count = 1;
-+	ret = post_sem(sem_args.sem, &count);
++	ret = release_sem(objs[0], &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
-+	check_sem_state(sem_args.sem, 0, 3);
++	check_sem_state(objs[0], 0, 3);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(0, ret);
@@ -2514,7 +2489,7 @@ index 000000000000..5fa2c9a0768c
 +	/* test waking the mutex */
 +
 +	/* first grab it again for owner 123 */
-+	ret = wait_any(fd, 1, &mutex_args.mutex, 123, &index);
++	ret = wait_any(fd, 1, &objs[1], 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
 +
@@ -2526,31 +2501,32 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	ret = unlock_mutex(mutex_args.mutex, 123, &count);
++	ret = unlock_mutex(objs[1], 123, &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(2, count);
 +
 +	ret = pthread_tryjoin_np(thread, NULL);
 +	EXPECT_EQ(EBUSY, ret);
 +
-+	ret = unlock_mutex(mutex_args.mutex, 123, &count);
++	ret = unlock_mutex(objs[1], 123, &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, mutex_args.count);
-+	check_mutex_state(mutex_args.mutex, 1, 456);
++	check_mutex_state(objs[1], 1, 456);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, thread_args.ret);
 +	EXPECT_EQ(1, wait_args.index);
++
++	close(objs[1]);
 +
 +	/* test waking events */
 +
 +	event_args.manual = false;
 +	event_args.signaled = false;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, objs[1]);
 +
-+	objs[1] = event_args.event;
 +	wait_args.timeout = get_abs_timeout(1000);
 +	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
 +	EXPECT_EQ(0, ret);
@@ -2558,10 +2534,10 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	ret = ioctl(objs[1], NTSYNC_IOC_EVENT_SET, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, signaled);
-+	check_event_state(event_args.event, 0, 0);
++	check_event_state(objs[1], 0, 0);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(0, ret);
@@ -2575,24 +2551,23 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	ret = ioctl(objs[1], NTSYNC_IOC_EVENT_PULSE, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, signaled);
-+	check_event_state(event_args.event, 0, 0);
++	check_event_state(objs[1], 0, 0);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, thread_args.ret);
 +	EXPECT_EQ(1, wait_args.index);
 +
-+	close(event_args.event);
++	close(objs[1]);
 +
 +	event_args.manual = true;
 +	event_args.signaled = false;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, objs[1]);
 +
-+	objs[1] = event_args.event;
 +	wait_args.timeout = get_abs_timeout(1000);
 +	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
 +	EXPECT_EQ(0, ret);
@@ -2600,17 +2575,17 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	ret = ioctl(objs[1], NTSYNC_IOC_EVENT_SET, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, signaled);
-+	check_event_state(event_args.event, 1, 1);
++	check_event_state(objs[1], 1, 1);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, thread_args.ret);
 +	EXPECT_EQ(1, wait_args.index);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	ret = ioctl(objs[1], NTSYNC_IOC_EVENT_RESET, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, signaled);
 +
@@ -2621,31 +2596,28 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_PULSE, &signaled);
++	ret = ioctl(objs[1], NTSYNC_IOC_EVENT_PULSE, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, signaled);
-+	check_event_state(event_args.event, 0, 1);
++	check_event_state(objs[1], 0, 1);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, thread_args.ret);
 +	EXPECT_EQ(1, wait_args.index);
 +
-+	close(event_args.event);
-+
 +	/* delete an object while it's being waited on */
 +
 +	wait_args.timeout = get_abs_timeout(200);
 +	wait_args.owner = 123;
-+	objs[1] = mutex_args.mutex;
 +	ret = pthread_create(&thread, NULL, wait_thread, &thread_args);
 +	EXPECT_EQ(0, ret);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	close(sem_args.sem);
-+	close(mutex_args.mutex);
++	close(objs[0]);
++	close(objs[1]);
 +
 +	ret = wait_for_thread(thread, 200);
 +	EXPECT_EQ(0, ret);
@@ -2672,32 +2644,23 @@ index 000000000000..5fa2c9a0768c
 +
 +	sem_args.count = 0;
 +	sem_args.max = 3;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
++	objs[0] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[0]);
 +
 +	mutex_args.owner = 123;
 +	mutex_args.count = 1;
-+	mutex_args.mutex = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, mutex_args.mutex);
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, objs[1]);
 +
 +	manual_event_args.manual = true;
 +	manual_event_args.signaled = true;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &manual_event_args);
-+	EXPECT_EQ(0, ret);
++	objs[2] = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &manual_event_args);
++	EXPECT_LE(0, objs[2]);
 +
 +	auto_event_args.manual = false;
 +	auto_event_args.signaled = true;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &auto_event_args);
-+	EXPECT_EQ(0, ret);
-+
-+	objs[0] = sem_args.sem;
-+	objs[1] = mutex_args.mutex;
-+	objs[2] = manual_event_args.event;
-+	objs[3] = auto_event_args.event;
++	objs[3] = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &auto_event_args);
++	EXPECT_EQ(0, objs[3]);
 +
 +	wait_args.timeout = get_abs_timeout(1000);
 +	wait_args.objs = (uintptr_t)objs;
@@ -2713,54 +2676,54 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
 +	count = 1;
-+	ret = post_sem(sem_args.sem, &count);
++	ret = release_sem(objs[0], &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
 +
 +	ret = pthread_tryjoin_np(thread, NULL);
 +	EXPECT_EQ(EBUSY, ret);
 +
-+	check_sem_state(sem_args.sem, 1, 3);
++	check_sem_state(objs[0], 1, 3);
 +
-+	ret = wait_any(fd, 1, &sem_args.sem, 123, &index);
++	ret = wait_any(fd, 1, &objs[0], 123, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
 +
-+	ret = unlock_mutex(mutex_args.mutex, 123, &count);
++	ret = unlock_mutex(objs[1], 123, &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, count);
 +
 +	ret = pthread_tryjoin_np(thread, NULL);
 +	EXPECT_EQ(EBUSY, ret);
 +
-+	check_mutex_state(mutex_args.mutex, 0, 0);
++	check_mutex_state(objs[1], 0, 0);
 +
-+	ret = ioctl(manual_event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	ret = ioctl(objs[2], NTSYNC_IOC_EVENT_RESET, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, signaled);
 +
 +	count = 2;
-+	ret = post_sem(sem_args.sem, &count);
++	ret = release_sem(objs[0], &count);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, count);
-+	check_sem_state(sem_args.sem, 2, 3);
++	check_sem_state(objs[0], 2, 3);
 +
-+	ret = ioctl(auto_event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	ret = ioctl(objs[3], NTSYNC_IOC_EVENT_RESET, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, signaled);
 +
-+	ret = ioctl(manual_event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	ret = ioctl(objs[2], NTSYNC_IOC_EVENT_SET, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, signaled);
 +
-+	ret = ioctl(auto_event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	ret = ioctl(objs[3], NTSYNC_IOC_EVENT_SET, &signaled);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, signaled);
 +
-+	check_sem_state(sem_args.sem, 1, 3);
-+	check_mutex_state(mutex_args.mutex, 1, 456);
-+	check_event_state(manual_event_args.event, 1, 1);
-+	check_event_state(auto_event_args.event, 0, 0);
++	check_sem_state(objs[0], 1, 3);
++	check_mutex_state(objs[1], 1, 456);
++	check_event_state(objs[2], 1, 1);
++	check_event_state(objs[3], 0, 0);
 +
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(0, ret);
@@ -2776,10 +2739,10 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	close(sem_args.sem);
-+	close(mutex_args.mutex);
-+	close(manual_event_args.event);
-+	close(auto_event_args.event);
++	close(objs[0]);
++	close(objs[1]);
++	close(objs[2]);
++	close(objs[3]);
 +
 +	ret = wait_for_thread(thread, 200);
 +	EXPECT_EQ(0, ret);
@@ -2796,7 +2759,7 @@ index 000000000000..5fa2c9a0768c
 +	struct ntsync_sem_args sem_args = {0};
 +	__u32 index, count, signaled;
 +	struct wait_args thread_args;
-+	int objs[2], fd, ret;
++	int objs[2], event, fd, ret;
 +	pthread_t thread;
 +
 +	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
@@ -2804,50 +2767,44 @@ index 000000000000..5fa2c9a0768c
 +
 +	sem_args.count = 0;
 +	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
-+	objs[0] = sem_args.sem;
++	objs[0] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[0]);
 +
 +	sem_args.count = 1;
 +	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
-+	objs[1] = sem_args.sem;
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[1]);
 +
 +	event_args.manual = true;
 +	event_args.signaled = true;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
++	event = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, event);
 +
-+	ret = wait_any_alert(fd, 0, NULL, 123, event_args.event, &index);
++	ret = wait_any_alert(fd, 0, NULL, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	ret = ioctl(event, NTSYNC_IOC_EVENT_RESET, &signaled);
 +	EXPECT_EQ(0, ret);
 +
-+	ret = wait_any_alert(fd, 0, NULL, 123, event_args.event, &index);
++	ret = wait_any_alert(fd, 0, NULL, 123, event, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(ETIMEDOUT, errno);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
 +	EXPECT_EQ(0, ret);
 +
-+	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_any_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(1, index);
 +
-+	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_any_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(2, index);
 +
 +	/* test wakeup via alert */
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	ret = ioctl(event, NTSYNC_IOC_EVENT_RESET, &signaled);
 +	EXPECT_EQ(0, ret);
 +
 +	wait_args.timeout = get_abs_timeout(1000);
@@ -2855,7 +2812,7 @@ index 000000000000..5fa2c9a0768c
 +	wait_args.count = 2;
 +	wait_args.owner = 123;
 +	wait_args.index = 0xdeadbeef;
-+	wait_args.alert = event_args.event;
++	wait_args.alert = event;
 +	thread_args.fd = fd;
 +	thread_args.args = &wait_args;
 +	thread_args.request = NTSYNC_IOC_WAIT_ANY;
@@ -2865,7 +2822,7 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
 +	EXPECT_EQ(0, ret);
 +
 +	ret = wait_for_thread(thread, 100);
@@ -2873,32 +2830,32 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(0, thread_args.ret);
 +	EXPECT_EQ(2, wait_args.index);
 +
-+	close(event_args.event);
++	close(event);
 +
 +	/* test with an auto-reset event */
 +
 +	event_args.manual = false;
 +	event_args.signaled = true;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
++	event = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, event);
 +
 +	count = 1;
-+	ret = post_sem(objs[0], &count);
++	ret = release_sem(objs[0], &count);
 +	EXPECT_EQ(0, ret);
 +
-+	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_any_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
 +
-+	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_any_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(2, index);
 +
-+	ret = wait_any_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_any_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(ETIMEDOUT, errno);
 +
-+	close(event_args.event);
++	close(event);
 +
 +	close(objs[0]);
 +	close(objs[1]);
@@ -2913,7 +2870,7 @@ index 000000000000..5fa2c9a0768c
 +	struct ntsync_sem_args sem_args = {0};
 +	struct wait_args thread_args;
 +	__u32 index, count, signaled;
-+	int objs[2], fd, ret;
++	int objs[2], event, fd, ret;
 +	pthread_t thread;
 +
 +	fd = open("/dev/ntsync", O_CLOEXEC | O_RDONLY);
@@ -2921,36 +2878,30 @@ index 000000000000..5fa2c9a0768c
 +
 +	sem_args.count = 2;
 +	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
-+	objs[0] = sem_args.sem;
++	objs[0] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[0]);
 +
 +	sem_args.count = 1;
 +	sem_args.max = 2;
-+	sem_args.sem = 0xdeadbeef;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
-+	EXPECT_EQ(0, ret);
-+	EXPECT_NE(0xdeadbeef, sem_args.sem);
-+	objs[1] = sem_args.sem;
++	objs[1] = ioctl(fd, NTSYNC_IOC_CREATE_SEM, &sem_args);
++	EXPECT_LE(0, objs[1]);
 +
 +	event_args.manual = true;
 +	event_args.signaled = true;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
++	event = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, event);
 +
-+	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_all_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
 +
-+	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_all_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(2, index);
 +
 +	/* test wakeup via alert */
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_RESET, &signaled);
++	ret = ioctl(event, NTSYNC_IOC_EVENT_RESET, &signaled);
 +	EXPECT_EQ(0, ret);
 +
 +	wait_args.timeout = get_abs_timeout(1000);
@@ -2958,7 +2909,7 @@ index 000000000000..5fa2c9a0768c
 +	wait_args.count = 2;
 +	wait_args.owner = 123;
 +	wait_args.index = 0xdeadbeef;
-+	wait_args.alert = event_args.event;
++	wait_args.alert = event;
 +	thread_args.fd = fd;
 +	thread_args.args = &wait_args;
 +	thread_args.request = NTSYNC_IOC_WAIT_ALL;
@@ -2968,7 +2919,7 @@ index 000000000000..5fa2c9a0768c
 +	ret = wait_for_thread(thread, 100);
 +	EXPECT_EQ(ETIMEDOUT, ret);
 +
-+	ret = ioctl(event_args.event, NTSYNC_IOC_EVENT_SET, &signaled);
++	ret = ioctl(event, NTSYNC_IOC_EVENT_SET, &signaled);
 +	EXPECT_EQ(0, ret);
 +
 +	ret = wait_for_thread(thread, 100);
@@ -2976,32 +2927,32 @@ index 000000000000..5fa2c9a0768c
 +	EXPECT_EQ(0, thread_args.ret);
 +	EXPECT_EQ(2, wait_args.index);
 +
-+	close(event_args.event);
++	close(event);
 +
 +	/* test with an auto-reset event */
 +
 +	event_args.manual = false;
 +	event_args.signaled = true;
-+	ret = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
++	event = ioctl(fd, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, event);
 +
 +	count = 2;
-+	ret = post_sem(objs[1], &count);
++	ret = release_sem(objs[1], &count);
 +	EXPECT_EQ(0, ret);
 +
-+	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_all_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(0, index);
 +
-+	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_all_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(0, ret);
 +	EXPECT_EQ(2, index);
 +
-+	ret = wait_all_alert(fd, 2, objs, 123, event_args.event, &index);
++	ret = wait_all_alert(fd, 2, objs, 123, event, &index);
 +	EXPECT_EQ(-1, ret);
 +	EXPECT_EQ(ETIMEDOUT, errno);
 +
-+	close(event_args.event);
++	close(event);
 +
 +	close(objs[0]);
 +	close(objs[1]);
@@ -3055,15 +3006,13 @@ index 000000000000..5fa2c9a0768c
 +
 +	mutex_args.owner = 0;
 +	mutex_args.count = 0;
-+	ret = ioctl(stress_device, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
-+	EXPECT_EQ(0, ret);
-+	stress_mutex = mutex_args.mutex;
++	stress_mutex = ioctl(stress_device, NTSYNC_IOC_CREATE_MUTEX, &mutex_args);
++	EXPECT_LE(0, stress_mutex);
 +
 +	event_args.manual = 1;
 +	event_args.signaled = 0;
-+	ret = ioctl(stress_device, NTSYNC_IOC_CREATE_EVENT, &event_args);
-+	EXPECT_EQ(0, ret);
-+	stress_start_event = event_args.event;
++	stress_start_event = ioctl(stress_device, NTSYNC_IOC_CREATE_EVENT, &event_args);
++	EXPECT_LE(0, stress_start_event);
 +
 +	for (i = 0; i < STRESS_THREADS; ++i)
 +		pthread_create(&threads[i], NULL, stress_thread, NULL);
@@ -3085,5 +3034,5 @@ index 000000000000..5fa2c9a0768c
 +
 +TEST_HARNESS_MAIN
 -- 
-2.46.0.rc1
+2.48.1
 
