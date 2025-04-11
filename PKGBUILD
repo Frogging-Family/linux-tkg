@@ -25,24 +25,24 @@ plain '       `-+shdNNNNNNNNNNNNNNNdhs+-`'
 plain '             `.-:///////:-.`'
 
 _where="$PWD" # track basedir as different Arch based distros are moving srcdir around
-_ispkgbuild="true"
-_distro="Arch"
 
-declare -p -x > current_env
-
-source "$_where"/customization.cfg # load default configuration from file
-
-if [ -e "$_EXT_CONFIG_PATH" ]; then
-  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
-  source "$_EXT_CONFIG_PATH"
-fi
-
-source current_env
-
-source "$_where"/linux-tkg-config/prepare
-
-# Make sure we're in a clean state
+# Create BIG_UGLY_FROGMINER only on first run and save in it all settings
 if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
+
+  cp "$_where"/customization.cfg "$_where"/BIG_UGLY_FROGMINER
+
+  if [ -e "$_EXT_CONFIG_PATH" ]; then
+    msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
+    cat "$_EXT_CONFIG_PATH" >> "$_where"/BIG_UGLY_FROGMINER
+  fi
+
+  declare -p -x >> "$_where"/BIG_UGLY_FROGMINER
+
+  echo -e "_ispkgbuild=\"true\"\n_distro=\"Arch\"\n_where=\"$PWD\"" >> "$_where"/BIG_UGLY_FROGMINER
+
+  source "$_where"/BIG_UGLY_FROGMINER
+  source "$_where"/linux-tkg-config/prepare
+
   _tkg_initscript
 fi
 
@@ -77,21 +77,19 @@ export KBUILD_BUILD_USER=$pkgbase
 export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
 
 prepare() {
+  source "$_where"/BIG_UGLY_FROGMINER
+  source "$_where"/linux-tkg-config/prepare
+
   rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
-  _define_kernel_abs_paths
-  if [ -e "${srcdir}/customization.cfg" ]; then
-    msg2 "Nuking remnant customization.cfg symlink" && rm -rf "${srcdir}/customization.cfg"
-  fi
-  ln -s "${_where}/customization.cfg" "${srcdir}"
   ln -s "${_kernel_work_folder_abs}" "${srcdir}"
-
-  source "${_where}/current_env"
 
   _tkg_srcprep
 }
 
 build() {
+  source "$_where"/BIG_UGLY_FROGMINER
+
   cd "$_kernel_work_folder_abs"
 
   # Use custom compiler paths if defined
@@ -135,11 +133,13 @@ build() {
       $_ionice -p "$_pid" ||:
     fi
     time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3
-    return $?
+    return 0
   )
 }
 
 hackbase() {
+  source "$_where"/BIG_UGLY_FROGMINER
+
   pkgdesc="The $pkgdesc kernel and modules - https://github.com/Frogging-Family/linux-tkg"
   depends=('coreutils' 'kmod' 'initramfs')
   optdepends=('linux-docs: Kernel hackers manual - HTML documentation that comes with the Linux kernel.'
@@ -156,7 +156,6 @@ hackbase() {
   fi
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
-  _define_kernel_abs_paths
   cd "$_kernel_work_folder_abs"
 
   # get kernel version
@@ -206,6 +205,8 @@ hackbase() {
 }
 
 hackheaders() {
+  source "$_where"/BIG_UGLY_FROGMINER
+
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel - https://github.com/Frogging-Family/linux-tkg"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
   case $_basever in
@@ -216,7 +217,6 @@ hackheaders() {
     ;;
   esac
 
-  _define_kernel_abs_paths
   cd "$_kernel_work_folder_abs"
 
   local builddir="${pkgdir}/usr/lib/modules/$(<version)/build"
