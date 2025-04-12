@@ -29,6 +29,7 @@ _where="$PWD" # track basedir as different Arch based distros are moving srcdir 
 # Create BIG_UGLY_FROGMINER only on first run and save in it all settings
 if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
 
+  source "$_where"/customization.cfg # load default configuration
   cp "$_where"/customization.cfg "$_where"/BIG_UGLY_FROGMINER
 
   if [ -e "$_EXT_CONFIG_PATH" ]; then
