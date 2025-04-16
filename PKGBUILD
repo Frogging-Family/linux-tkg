@@ -190,17 +190,19 @@ hackbase() {
 
   # ntsync
   if [ -e "${srcdir}/ntsync.conf" ]; then
-    # workaround for missing header with ntsync
-    if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/ntsync.h" ] && [ ! -e "/usr/include/linux/ntsync.h" ]; then
-      msg2 "Workaround missing ntsync header"
-      install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/ntsync.h "${pkgdir}/usr/include/linux/ntsync.h"
+    # workaround for missing header on <6.14 with ntsync
+    if [ $_basever -lt 614 ]; then
+      if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/ntsync.h" ] && [ ! -e "/usr/include/linux/ntsync.h" ]; then
+        msg2 "Workaround missing ntsync header"
+        install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/ntsync.h "${pkgdir}/usr/include/linux/ntsync.h"
+      fi
     fi
     # load ntsync module at boot
     msg2 "Set the ntsync module to be loaded at boot through /etc/modules-load.d"
     install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/etc/modules-load.d/ntsync.conf"
   fi
 
-  # install udev rule for ntsync
+  # install udev rule for ntsync if needed (<6.14)
   if [ -e "${srcdir}/ntsync.rules" ]; then
     msg2 "Installing udev rule for ntsync"
     install -Dm644 "${srcdir}"/ntsync.rules "${pkgdir}/etc/udev/rules.d/ntsync.rules"
