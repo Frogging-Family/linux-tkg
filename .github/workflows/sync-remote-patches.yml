@@ -1,0 +1,65 @@
+name: sync remote patches
+on:
+  schedule:
+    - cron: '17 */12 * * *' # “At minute 17 past every 12th hour.”
+  workflow_dispatch:
+
+jobs:
+
+  sync-remote-patch:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - description: Project C patch from CachyOS repo
+            src_file_link: https://github.com/CachyOS/kernel-patches/raw/refs/heads/master/$kver/sched/0001-prjc.patch
+            copy_as: 0009-prjc.patch
+
+    steps:
+      - name: Checkout linux-tkg
+        uses: actions/checkout@v4
+
+      - name: Sync patches
+        id: update-patches
+        run: |
+          set -e
+
+          cd linux-tkg-patches
+
+          for kver in *
+          do
+            [[ ! -d "$kver" ]] && continue
+
+            file_link=$(eval "echo ${{ matrix.src_file_link }}")
+            echo "Checking link $file_link"
+            if wget $file_link -O $kver/"${{ matrix.copy_as }}".new &> /dev/null
+            then
+              echo "Link exists"
+              echo "Overwriting linux-tkg-patches/$kver/${{ matrix.copy_as }} with remote file"
+              mv -f $kver/"${{ matrix.copy_as }}".new $kver/"${{ matrix.copy_as }}"
+            else
+              echo "Link doesn't exist"
+              rm $kver/"${{ matrix.copy_as }}".new
+            fi
+          done
+
+          if git diff --exit-code . > /dev/null
+          then
+            echo "patches-updated=0" >> $GITHUB_OUTPUT
+          else
+            echo "patches-updated=1" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push changes
+        if: steps.update-patches.outputs.patches-updated == '1'
+        run: |
+          git config --global user.name 'Frogminer'
+          git config --global user.email 'frogminer@miner.frog'
+
+          cd linux-tkg-patches
+          git add .
+          git commit -m "Update ${{ matrix.description }}"
+          git pull --rebase
+          git push
