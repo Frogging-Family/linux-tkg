@@ -199,7 +199,7 @@ hackbase() {
     fi
     # load ntsync module at boot
     msg2 "Set the ntsync module to be loaded at boot through /etc/modules-load.d"
-    install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/etc/modules-load.d/ntsync.conf"
+    install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/etc/modules-load.d/ntsync-${pkgbase}.conf"
   fi
 
   # install udev rule for ntsync if needed (<6.14)
