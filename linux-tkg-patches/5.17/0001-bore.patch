@@ -1,0 +1,213 @@
+From aacaefbb749104579a2168c5f087876b5217f964 Mon Sep 17 00:00:00 2001
+From: Masahito S <firelzrd@gmail.com>
+Date: Sun, 15 May 2022 11:27:58 +0900
+Subject: [PATCH] 5.17.y-bore1.3.30.0
+
+---
+ include/linux/sched.h   |  3 +++
+ init/Kconfig            | 20 ++++++++++++++++++++
+ kernel/sched/core.c     |  4 ++++
+ kernel/sched/debug.c    |  5 +++++
+ kernel/sched/fair.c     | 31 +++++++++++++++++++++++++++++++
+ kernel/sched/features.h | 11 +++++++++++
+ kernel/sched/sched.h    |  5 +++++
+ 7 files changed, 79 insertions(+)
+
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 535833c98..90170f0e3 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -576,6 +576,9 @@ struct sched_entity {
+ 	u64				prev_sum_exec_runtime;
+
+ 	u64				nr_migrations;
++#ifdef CONFIG_SCHED_BORE
++	u64				burst_time;
++#endif // CONFIG_SCHED_BORE
+
+ #ifdef CONFIG_FAIR_GROUP_SCHED
+ 	int				depth;
+diff --git a/init/Kconfig b/init/Kconfig
+index d5aebf11d..555e00fbc 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1282,6 +1282,26 @@ config CHECKPOINT_RESTORE
+
+ 	  If unsure, say N here.
+
++config SCHED_BORE
++	bool "Burst-Oriented Response Enhancer"
++	default y
++	help
++	  In Desktop and Mobile computing, one might prefer interactive
++	  tasks to keep responsive no matter what they run in the background.
++
++	  Enabling this kernel feature modifies the scheduler to discriminate
++	  tasks by their burst time (runtime since it last went sleeping or
++	  yielding state) and prioritize those that run less bursty.
++	  Such tasks usually include window compositor, widgets backend,
++	  terminal emulator, video playback, games and so on.
++	  With a little impact to scheduling fairness, it may improve
++	  responsiveness especially under heavy background workload.
++
++	  You can turn it off by writing NO_BURST_PENALTY to sched/features.
++	  Enabling this feature implies NO_GENTLE_FAIR_SLEEPERS by default.
++
++	  If unsure say Y here.
++
+ config SCHED_AUTOGROUP
+ 	bool "Automatic process group scheduling"
+ 	select CGROUPS
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 32c281e1d..45fcab534 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -9321,6 +9321,10 @@ void __init sched_init(void)
+ 	BUG_ON(&dl_sched_class + 1 != &stop_sched_class);
+ #endif
+
++#ifdef CONFIG_SCHED_BORE
++	printk(KERN_INFO "BORE (Burst-Oriented Response Enhancer) CPU Scheduler modification 1.3.30.0 by Masahito Suzuki");
++#endif // CONFIG_SCHED_BORE
++
+ 	wait_bit_init();
+
+ #ifdef CONFIG_FAIR_GROUP_SCHED
+diff --git a/kernel/sched/debug.c b/kernel/sched/debug.c
+index cc06e81a9..61ef8ad70 100644
+--- a/kernel/sched/debug.c
++++ b/kernel/sched/debug.c
+@@ -316,6 +316,11 @@ static __init int sched_init_debug(void)
+
+ 	debugfs_create_u32("latency_warn_ms", 0644, debugfs_sched, &sysctl_resched_latency_warn_ms);
+ 	debugfs_create_u32("latency_warn_once", 0644, debugfs_sched, &sysctl_resched_latency_warn_once);
++#ifdef CONFIG_SCHED_BORE
++	debugfs_create_u16("burst_penalty_scale", 0644, debugfs_sched, &sched_burst_penalty_scale);
++	debugfs_create_u8("burst_granularity", 0644, debugfs_sched, &sched_burst_granularity);
++	debugfs_create_u8("burst_reduction", 0644, debugfs_sched, &sched_burst_reduction);
++#endif // CONFIG_SCHED_BORE
+
+ #ifdef CONFIG_SMP
+ 	debugfs_create_file("tunable_scaling", 0644, debugfs_sched, NULL, &sched_scaling_fops);
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index e0a79e051..4c42e7e44 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -19,6 +19,9 @@
+  *
+  *  Adaptive scheduling granularity, math enhancements by Peter Zijlstra
+  *  Copyright (C) 2007 Red Hat, Inc., Peter Zijlstra
++ *
++ *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
++ *  Copyright (C) 2021 Masahito Suzuki <firelzrd@gmail.com>
+  */
+ #include "sched.h"
+
+@@ -106,6 +109,12 @@ static unsigned int normalized_sysctl_sched_wakeup_granularity	= 1000000UL;
+
+ const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
+
++#ifdef CONFIG_SCHED_BORE
++unsigned short __read_mostly sched_burst_penalty_scale = 1217;
++unsigned char  __read_mostly sched_burst_granularity = 4;
++unsigned char  __read_mostly sched_burst_reduction = 2;
++#endif // CONFIG_SCHED_BORE
++
+ int sched_thermal_decay_shift;
+ static int __init setup_sched_thermal_decay_shift(char *str)
+ {
+@@ -864,6 +873,9 @@ static void update_curr(struct cfs_rq *cfs_rq)
+ 	struct sched_entity *curr = cfs_rq->curr;
+ 	u64 now = rq_clock_task(rq_of(cfs_rq));
+ 	u64 delta_exec;
++#ifdef CONFIG_SCHED_BORE
++	u32 msb, hi, lo, burst_score;
++#endif // CONFIG_SCHED_BORE
+
+ 	if (unlikely(!curr))
+ 		return;
+@@ -885,6 +897,19 @@ static void update_curr(struct cfs_rq *cfs_rq)
+ 	curr->sum_exec_runtime += delta_exec;
+ 	schedstat_add(cfs_rq->exec_clock, delta_exec);
+
++#ifdef CONFIG_SCHED_BORE
++	curr->burst_time += delta_exec;
++	if(sched_feat(BURST_PENALTY)) {
++		msb = fls64(curr->burst_time >> sched_burst_granularity);
++		hi = msb << 10;
++		lo = curr->burst_time << (65 - msb) >> 54;
++		burst_score = min((hi | lo) * sched_burst_penalty_scale >> 20, (u32)39);
++		curr->vruntime += mul_u64_u32_shr(
++			calc_delta_fair(delta_exec, curr),
++			sched_prio_to_wmult[burst_score], 22);
++	}
++	else
++#endif // CONFIG_SCHED_BORE
+ 	curr->vruntime += calc_delta_fair(delta_exec, curr);
+ 	update_min_vruntime(cfs_rq);
+
+@@ -5761,6 +5786,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
+ 	for_each_sched_entity(se) {
+ 		cfs_rq = cfs_rq_of(se);
+ 		dequeue_entity(cfs_rq, se, flags);
++#ifdef CONFIG_SCHED_BORE
++		se->burst_time >>= sched_burst_reduction;
++#endif // CONFIG_SCHED_BORE
+
+ 		cfs_rq->h_nr_running--;
+ 		cfs_rq->idle_h_nr_running -= idle_h_nr_running;
+@@ -7426,6 +7454,9 @@ static void yield_task_fair(struct rq *rq)
+ 	struct task_struct *curr = rq->curr;
+ 	struct cfs_rq *cfs_rq = task_cfs_rq(curr);
+ 	struct sched_entity *se = &curr->se;
++#ifdef CONFIG_SCHED_BORE
++	se->burst_time >>= sched_burst_reduction;
++#endif // CONFIG_SCHED_BORE
+
+ 	/*
+ 	 * Are we the only task in the tree?
+diff --git a/kernel/sched/features.h b/kernel/sched/features.h
+index cfff560e0..71d4bf609 100644
+--- a/kernel/sched/features.h
++++ b/kernel/sched/features.h
+@@ -1,10 +1,21 @@
+ /* SPDX-License-Identifier: GPL-2.0 */
++#ifdef CONFIG_SCHED_BORE
++/*
++ * Discriminate tasks by their burst time and prioritize those
++ * that run less bursty.
++ */
++SCHED_FEAT(BURST_PENALTY, true)
++#endif // CONFIG_SCHED_BORE
+ /*
+  * Only give sleepers 50% of their service deficit. This allows
+  * them to run sooner, but does not allow tons of sleepers to
+  * rip the spread apart.
+  */
++#ifdef CONFIG_SCHED_BORE
++SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)
++#else // CONFIG_SCHED_BORE
+ SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)
++#endif // CONFIG_SCHED_BORE
+
+ /*
+  * Place new tasks ahead so that they do not starve already running
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index e8a554948..5a2bed05c 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -2411,6 +2411,11 @@ extern unsigned int sysctl_sched_idle_min_granularity;
+ extern unsigned int sysctl_sched_wakeup_granularity;
+ extern int sysctl_resched_latency_warn_ms;
+ extern int sysctl_resched_latency_warn_once;
++#ifdef CONFIG_SCHED_BORE
++extern unsigned short sched_burst_penalty_scale;
++extern unsigned char sched_burst_granularity;
++extern unsigned char sched_burst_reduction;
++#endif // CONFIG_SCHED_BORE
+
+ extern unsigned int sysctl_sched_tunable_scaling;
+
+--
+2.30.2
+
