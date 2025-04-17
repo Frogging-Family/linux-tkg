@@ -1,3 +1,57 @@
+From d25f06ab64db3dd57e1bca0224119346f5cd66f2 Mon Sep 17 00:00:00 2001
+From: Piotr Gorski <lucjan.lucjanov@gmail.com>
+Date: Mon, 6 May 2024 12:23:14 +0200
+Subject: [PATCH] prjc
+
+Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
+---
+ Documentation/admin-guide/sysctl/kernel.rst |    9 +
+ Documentation/scheduler/sched-BMQ.txt       |  110 +
+ fs/proc/base.c                              |    2 +-
+ include/asm-generic/resource.h              |    2 +-
+ include/linux/sched.h                       |   32 +-
+ include/linux/sched/deadline.h              |   20 +
+ include/linux/sched/prio.h                  |   22 +
+ include/linux/sched/rt.h                    |    2 +
+ include/linux/sched/topology.h              |    3 +-
+ init/Kconfig                                |   35 +
+ init/init_task.c                            |   17 +
+ kernel/Kconfig.preempt                      |    2 +-
+ kernel/cgroup/cpuset.c                      |   10 +-
+ kernel/delayacct.c                          |    2 +-
+ kernel/exit.c                               |    4 +-
+ kernel/locking/rtmutex.c                    |   16 +-
+ kernel/sched/Makefile                       |    5 +
+ kernel/sched/alt_core.c                     | 8958 +++++++++++++++++++
+ kernel/sched/alt_debug.c                    |   32 +
+ kernel/sched/alt_sched.h                    |  980 ++
+ kernel/sched/bmq.h                          |   98 +
+ kernel/sched/build_policy.c                 |    8 +-
+ kernel/sched/build_utility.c                |    2 +
+ kernel/sched/cpufreq_schedutil.c            |    8 +
+ kernel/sched/cputime.c                      |   10 +-
+ kernel/sched/debug.c                        |   10 +
+ kernel/sched/idle.c                         |    2 +
+ kernel/sched/pds.h                          |  134 +
+ kernel/sched/pelt.c                         |    4 +-
+ kernel/sched/pelt.h                         |    8 +-
+ kernel/sched/sched.h                        |    9 +
+ kernel/sched/stats.c                        |    4 +
+ kernel/sched/stats.h                        |    2 +
+ kernel/sched/topology.c                     |   30 +
+ kernel/sysctl.c                             |   15 +
+ kernel/time/hrtimer.c                       |    4 +-
+ kernel/time/posix-cpu-timers.c              |   10 +-
+ kernel/trace/trace_selftest.c               |    5 +
+ kernel/workqueue.c                          |   15 +
+ 39 files changed, 10618 insertions(+), 23 deletions(-)
+ create mode 100644 Documentation/scheduler/sched-BMQ.txt
+ create mode 100644 kernel/sched/alt_core.c
+ create mode 100644 kernel/sched/alt_debug.c
+ create mode 100644 kernel/sched/alt_sched.h
+ create mode 100644 kernel/sched/bmq.h
+ create mode 100644 kernel/sched/pds.h
+
 diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
 index 7fd439478..a07de351a 100644
 --- a/Documentation/admin-guide/sysctl/kernel.rst
@@ -659,7 +713,7 @@ index 976092b7b..31d587c16 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000..55b9f61fa
+index 000000000..23b285393
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
 @@ -0,0 +1,8958 @@
@@ -11457,7 +11511,7 @@ index e9c5058a8..8c23dc364 100644
  	struct wakeup_test_data *x = data;
  
 diff --git a/kernel/workqueue.c b/kernel/workqueue.c
-index 0066c8f6c..7e0f88754 100644
+index d2dbe0992..5c2b99ab0 100644
 --- a/kernel/workqueue.c
 +++ b/kernel/workqueue.c
 @@ -1256,6 +1256,7 @@ static bool kick_pool(struct worker_pool *pool)
@@ -11468,8 +11522,8 @@ index 0066c8f6c..7e0f88754 100644
  #ifdef CONFIG_SMP
  	/*
  	 * Idle @worker is about to execute @work and waking up provides an
-@@ -1281,6 +1282,8 @@ static bool kick_pool(struct worker_pool *pool)
- 		get_work_pwq(work)->stats[PWQ_STAT_REPATRIATED]++;
+@@ -1285,6 +1286,8 @@ static bool kick_pool(struct worker_pool *pool)
+ 		}
  	}
  #endif
 +#endif /* !CONFIG_SCHED_ALT */
@@ -11477,7 +11531,7 @@ index 0066c8f6c..7e0f88754 100644
  	wake_up_process(p);
  	return true;
  }
-@@ -1409,7 +1412,11 @@ void wq_worker_running(struct task_struct *task)
+@@ -1413,7 +1416,11 @@ void wq_worker_running(struct task_struct *task)
  	 * CPU intensive auto-detection cares about how long a work item hogged
  	 * CPU without sleeping. Reset the starting timestamp on wakeup.
  	 */
@@ -11489,7 +11543,7 @@ index 0066c8f6c..7e0f88754 100644
  
  	WRITE_ONCE(worker->sleeping, 0);
  }
-@@ -1494,7 +1501,11 @@ void wq_worker_tick(struct task_struct *task)
+@@ -1498,7 +1505,11 @@ void wq_worker_tick(struct task_struct *task)
  	 * We probably want to make this prettier in the future.
  	 */
  	if ((worker->flags & WORKER_NOT_RUNNING) || READ_ONCE(worker->sleeping) ||
@@ -11501,7 +11555,7 @@ index 0066c8f6c..7e0f88754 100644
  	    wq_cpu_intensive_thresh_us * NSEC_PER_USEC)
  		return;
  
-@@ -3182,7 +3193,11 @@ __acquires(&pool->lock)
+@@ -3195,7 +3206,11 @@ __acquires(&pool->lock)
  	worker->current_func = work->func;
  	worker->current_pwq = pwq;
  	if (worker->task)
@@ -11513,3 +11567,6 @@ index 0066c8f6c..7e0f88754 100644
  	work_data = *work_data_bits(work);
  	worker->current_color = get_work_color(work_data);
  
+-- 
+2.44.0.325.g11c821f2f2
+
