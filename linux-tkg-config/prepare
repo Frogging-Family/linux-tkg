@@ -521,6 +521,7 @@ _tkg_initscript() {
     "_cacule_rdb"
     "_cacule_rdb_interval"
     "_tt_high_hz"
+    "_x86_64_isalvl"
   )
 
   for _deprecated_var in "${_deprecated_config_vars[@]}"; do
@@ -663,38 +664,6 @@ _tkg_srcprep() {
   fi
 
   if [ -z $_debug ]; then
-
-  # graysky's cpu opts - https://github.com/graysky2/kernel_compiler_patch
-
-  _patch_location="$srcdir"
-
-  if [ "$_kver" = "504" ]; then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-4.19-5.4"
-  elif [ "$_kver" = "507" ]; then
-    _outdated="outdated_versions/"
-    _patch_name="enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.7"
-  elif (( 508 <= "$_kver" &&  "$_kver" <= 514 )); then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-5.8-5.14"
-  elif [[ "$_kver" =~ ^(515|516)$ ]]; then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-5.15-5.16"
-  elif ( [ "$_kver" = "601" ] && [ "$_sub" -lt "79" ] ) || ( [ "$_kver" = "606" ] && [ "$_sub" -lt "18" ] ) || ( [ "$_kver" = "607" ] && [ "$_sub" -lt "6" ] ) || [[ "$_kver" =~ ^(517|518|519|600|602|603|604|605)$ ]]; then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-5.17-6.1.78"
-  elif [ "$_kver" = "615" ]; then
-    warning "Skipping graysky2 kernel compiler patch on this revision"
-  else
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-6.1.79+"
-  fi
-
-  curl "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/${_outdated}${_patch_name}.patch" > "$srcdir"/"${_patch_name}".patch || true
-  tkgpatch="${_patch_location}/${_patch_name}.patch"
-  if [ -e "$tkgpatch" ]; then
-    _msg="Applying graysky's cpu opts patch" && _tkg_patcher
-    if grep -wq "X86_64_VERSION" "$tkgpatch"; then
-      _graysky_legacy="false"
-    fi
-  else
-    msg2 "Couldn't find graysky's cpu opts patch for this version"
-  fi
 
   # PREEMPT_RT patch
   if [ "${_preempt_rt}" = "1" ] && [[ $_kver -lt 612 ]]; then
@@ -1017,96 +986,55 @@ _tkg_srcprep() {
     _enable "FONT_AUTOSELECT"
   fi
 
-  # cpu opt
-  _cpu_marchs=("generic_cpu")
-  if [ "$_graysky_legacy" != "false" ]; then
-    _cpu_marchs+=("generic_cpu2" "generic_cpu3" "generic_cpu4")
-  fi
-  _cpu_marchs+=("native_amd" "native_intel")
-  _cpu_marchs+=("k8" "k8sse3" "k10" "barcelona" "bobcat" "jaguar" "bulldozer" "piledriver")
-  _cpu_marchs+=("steamroller" "excavator" "zen" "zen2" "zen3" "zen4" "zen5" "mpsc" "atom" "core2" "nehalem" "westmere")
-  _cpu_marchs+=("bonnell" "silvermont" "sandybridge" "ivybridge" "haswell" "broadwell" "skylake")
-  _cpu_marchs+=("skylakex" "cannonlake" "goldmont" "goldmontplus" "cascadelake" "emeraldrapids")
-  _cpu_marchs+=("cooperlake" "tigerlake" "sapphirerapids" "rocketlake" "alderlake" "raptorlake" "meteorlake")
-
-  if [[ "$_kver" -ge 601 ]]; then
-    _cpu_marchs+=("icelake_client" "icelake_server")
-
-    # change "icelake" into "icelake_client" to fit with graysky patches for kernels >=6.1
-    [[ "$_processor_opt" == "icelake" ]] && _processor_opt="icelake_client"
-  else
-    _cpu_marchs+=("icelake")
-
-    # channge "icelake_client" to "icelake" to fit with grasky patches for kernels < 6.1
-    [[ "$_processor_opt" == "icelake_client" ]] && _processor_opt="icelake"
-  fi
-
-  typeset -A _generic_march_map
-  _generic_march_map=(
-    ["generic"]="generic_cpu"
-    ["generic_v2"]="generic_cpu2"
-    ["generic_v3"]="generic_cpu3"
-    ["generic_v4"]="generic_cpu4"
+  typeset -Ag _cpu_marchs
+  _cpu_marchs=(
+    ["x86-64"]="Baseline for any any X86 CPU (same as above)"
+    ["x86-64-v2"]="Baseline for X86 CPUs newer than ~2008 (see https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels)"
+    ["x86-64-v3"]="Baseline for X86 CPUS newer than ~2013 (see link above)"
+    ["x86-64-v4"]="Baseline for Intel Skylake or newer, AMD zen4 or newer (see link above)"
+    ["native"]="Automatically tune for the current CPU"
+    ["znver5"]="AMD Ryzen 9000 | Mobile Ryzen AI (MAX) 300 | EPYC 9005"
+    ["znver4"]="AMD Ryzen 8000/7000 | Mobile Ryzen 200 | Threadripper 7000WX | EPYC 9004/8004/4004"
+    ["znver3"]="AMD Ryzen 6000/5000 | Mobile Ryzen 7030/5000 | Threadripper 5000WX | EPYC 7003"
+    ["znver2"]="AMD Ryzen 4000/3000 | Mobile Ryzen 5[3,5,7]00U | Threadripper 3000WX | EPYC 7002"
+    ["znver1"]="AMD Ryzen 1000/2000 | Athlon 200/300/3000 | Threadripper 1000 | EPYC 7001"
+    ["arrowlake-s"]="Intel Desktop Core Ultra 200"
+    ["arrowlake"]="Intel Laptop Core Ultra 200"
+    ["lunarlake"]="Intel Laptop Core Ultra 200V"
+    ["meteorlake"]="Intel Laptop Core Ultra 100"
+    ["raptorlake"]="Intel Core 14th & 13th gen"
+    ["alderlake"]="Intel Core 12th gen"
+    ["rocketlake"]="Intel Core 11th gen (see https://en.wikipedia.org/wiki/Rocket_Lake)"
+    ["tigerlake"]="Intel Laptop Core 11th gen"
+    ["icelake-client"]="Intel Desktop Core 10th gen"
+    ["skylake"]="Intel Desktop Core 6th to 9th gen"
   )
-  if [ -n "$_processor_opt" ]; then
-    # Replace customization.cfg convention with .config convention for generic
-    if [[ "${!_generic_march_map[@]}" =~ "$_processor_opt" ]]; then
-      _processor_opt="${_generic_march_map[$_processor_opt]}"
-    fi
-    if ! [[ "${_cpu_marchs[@]}" =~ "$_processor_opt" ]]; then
-      warning "the setup _processor_opt=\"${_processor_opt}\" not recognized. Prompting..."
+
+  if [ -n "$_processor_opt" ] && ! ( gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p' | grep "$_processor_opt" &> /dev/null ) ; then
+    warning "Processor micro architecture '$_processor_opt' does not exist"
+    if [ "$_nofallback" = "true" ]; then
+      warning "Since _nofallback is enabled, exiting..."
+      exit 1
+    else
+      warning "Please select another"
       _processor_opt=""
     fi
   fi
 
   if [ -z "$_processor_opt" ]; then
     msg2 "Please select the desired CPU micro-architecture"
-    _default_index="0"
-    _prompt_from_array "${_cpu_marchs[@]}"
-    _processor_opt="${_selected_value}"
+    msg2 "To get the full list of microarchitectures supported by your compiler"
+    msg2 "  - Clang: clang -mcpu=help"
+    msg2 "  - GCC: gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p'"
+    msg2 " march strings not offered in this list can be set directly in the '_processor_opt' variable in 'customization.cfg'"
+    _default_key="x86-64"
+    _prompt_from_dict '_cpu_marchs'
+    _processor_opt="${_selected_key}"
   fi
 
-  msg2 "Setting cpu march to $_processor_opt"
+  msg2 "Setting cpu micro architecture to $_processor_opt"
 
-  for _march in "${_cpu_marchs[@]}"
-  do
-    _march_upper=`echo "$_march" | tr '[a-z]' '[A-Z]'`
-    if [ "$_processor_opt" = "$_march" ]; then
-      if [[ "$_march" = "generic"* ]]; then
-        _enable "${_march_upper}"
-      else
-        _enable "M${_march_upper}"
-      fi
-    else
-      if [[ "$_march" = "generic"* ]]; then
-        _disable "${_march_upper}"
-      else
-        _disable "M${_march_upper}"
-      fi
-    fi
-  done
-
-  # x86_64 Compiler ISA level
-  if [ "$_processor_opt" = "generic_cpu" ]; then
-    if [[ -z "$_x86_64_isalvl" || ! "$_x86_64_isalvl" =~ ^(1|2|3)$ ]]; then
-      plain "Please select the desired x86_64 compiler ISA level"
-      plain "You can find the best version for your CPU by running one of the following:"
-      msg2 "/lib/ld-linux-x86-64.so.2 --help | grep supported"
-      msg2 "/lib64/ld-linux-x86-64.so.2 --help | grep supported"
-      _x86_64_isalvl_array_text=(
-        "x86-64-v1"
-        "x86-64-v2"
-        "x86-64-v3"
-      )
-      _default_index="0"
-      _prompt_from_array "${_x86_64_isalvl_array_text[@]}"
-      _x86_64_isalvl="$((_selected_index+1))"
-    fi
-
-    scripts/config --set-val "X86_64_VERSION" "$_x86_64_isalvl"
-
-    msg2 "Setting generic_cpu to x86-64-v$_x86_64_isalvl"
-  fi
+  echo "_processor_opt='$_processor_opt'" >> "$_where"/BIG_UGLY_FROGMINER
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then

@@ -196,6 +196,10 @@ if [ "$1" = "install" ]; then
   msg2 "Add patched files to the diff.patch"
   git add .
 
+  export KCPPFLAGS="-march=$_processor_opt"
+  export KCFLAGS="-march=$_processor_opt"
+  export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt"
+
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
