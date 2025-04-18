@@ -1,11 +1,65 @@
+From 45ccd539d5f29260caabe2bed5ec49302cd43678 Mon Sep 17 00:00:00 2001
+From: Piotr Gorski <lucjan.lucjanov@gmail.com>
+Date: Wed, 17 Aug 2022 19:14:55 +0200
+Subject: [PATCH] PRJC-CachyOS for 5.19.2 and newer
+
+Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
+---
+ .../admin-guide/kernel-parameters.txt         |    6 +
+ Documentation/admin-guide/sysctl/kernel.rst   |   10 +
+ Documentation/scheduler/sched-BMQ.txt         |  110 +
+ fs/proc/base.c                                |    2 +-
+ include/asm-generic/resource.h                |    2 +-
+ include/linux/sched.h                         |   33 +-
+ include/linux/sched/deadline.h                |   20 +
+ include/linux/sched/prio.h                    |   26 +
+ include/linux/sched/rt.h                      |    2 +
+ include/linux/sched/topology.h                |    3 +-
+ init/Kconfig                                  |   34 +
+ init/init_task.c                              |   18 +
+ kernel/Kconfig.preempt                        |    2 +-
+ kernel/cgroup/cpuset.c                        |    4 +-
+ kernel/delayacct.c                            |    2 +-
+ kernel/exit.c                                 |    4 +-
+ kernel/locking/rtmutex.c                      |   16 +-
+ kernel/sched/Makefile                         |    5 +
+ kernel/sched/alt_core.c                       | 7804 +++++++++++++++++
+ kernel/sched/alt_debug.c                      |   31 +
+ kernel/sched/alt_sched.h                      |  645 ++
+ kernel/sched/bmq.h                            |  110 +
+ kernel/sched/build_policy.c                   |    8 +-
+ kernel/sched/build_utility.c                  |    2 +
+ kernel/sched/cpufreq_schedutil.c              |   10 +
+ kernel/sched/cputime.c                        |   10 +-
+ kernel/sched/debug.c                          |   10 +
+ kernel/sched/idle.c                           |    2 +
+ kernel/sched/pds.h                            |  127 +
+ kernel/sched/pelt.c                           |    4 +-
+ kernel/sched/pelt.h                           |    8 +-
+ kernel/sched/sched.h                          |    9 +
+ kernel/sched/stats.c                          |    4 +
+ kernel/sched/stats.h                          |    2 +
+ kernel/sched/topology.c                       |   17 +
+ kernel/sysctl.c                               |   17 +
+ kernel/time/hrtimer.c                         |    2 +
+ kernel/time/posix-cpu-timers.c                |   10 +-
+ kernel/trace/trace_selftest.c                 |    5 +
+ 39 files changed, 9114 insertions(+), 22 deletions(-)
+ create mode 100644 Documentation/scheduler/sched-BMQ.txt
+ create mode 100644 kernel/sched/alt_core.c
+ create mode 100644 kernel/sched/alt_debug.c
+ create mode 100644 kernel/sched/alt_sched.h
+ create mode 100644 kernel/sched/bmq.h
+ create mode 100644 kernel/sched/pds.h
+
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 3f1cc5e317ed..e6f88a16732b 100644
+index e4fe443be..e5e241221 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -5164,6 +5164,12 @@
+@@ -5312,6 +5312,12 @@
  	sa1100ir	[NET]
  			See drivers/net/irda/sa1100_ir.c.
-
+ 
 +	sched_timeslice=
 +			[KNL] Time slice in ms for Project C BMQ/PDS scheduler.
 +			Format: integer 2, 4
@@ -13,14 +67,14 @@ index 3f1cc5e317ed..e6f88a16732b 100644
 +			See Documentation/scheduler/sched-BMQ.txt
 +
  	sched_verbose	[KNL] Enables verbose scheduler debug messages.
-
+ 
  	schedstats=	[KNL,X86] Enable or disable scheduled statistics.
 diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
-index 1144ea3229a3..2accee67d6fb 100644
+index ddccd1077..e24781970 100644
 --- a/Documentation/admin-guide/sysctl/kernel.rst
 +++ b/Documentation/admin-guide/sysctl/kernel.rst
-@@ -1517,3 +1517,13 @@ is 10 seconds.
-
+@@ -1524,3 +1524,13 @@ is 10 seconds.
+ 
  The softlockup threshold is (``2 * watchdog_thresh``). Setting this
  tunable to zero will disable lockup detection altogether.
 +
@@ -35,7 +89,7 @@ index 1144ea3229a3..2accee67d6fb 100644
 +  2 - Set run queue skip task.
 diff --git a/Documentation/scheduler/sched-BMQ.txt b/Documentation/scheduler/sched-BMQ.txt
 new file mode 100644
-index 000000000000..05c84eec0f31
+index 000000000..05c84eec0
 --- /dev/null
 +++ b/Documentation/scheduler/sched-BMQ.txt
 @@ -0,0 +1,110 @@
@@ -150,7 +204,7 @@ index 000000000000..05c84eec0f31
 +priority boost from unblocking while background threads that do most of the
 +processing receive the priority penalty for using their entire timeslice.
 diff --git a/fs/proc/base.c b/fs/proc/base.c
-index c1031843cc6a..f2b0af41a3eb 100644
+index 93f7e3d97..8cdeb0d90 100644
 --- a/fs/proc/base.c
 +++ b/fs/proc/base.c
 @@ -479,7 +479,7 @@ static int proc_pid_schedstat(struct seq_file *m, struct pid_namespace *ns,
@@ -161,9 +215,9 @@ index c1031843cc6a..f2b0af41a3eb 100644
 +		   (unsigned long long)tsk_seruntime(task),
  		   (unsigned long long)task->sched_info.run_delay,
  		   task->sched_info.pcount);
-
+ 
 diff --git a/include/asm-generic/resource.h b/include/asm-generic/resource.h
-index 8874f681b056..59eb72bf7d5f 100644
+index 8874f681b..59eb72bf7 100644
 --- a/include/asm-generic/resource.h
 +++ b/include/asm-generic/resource.h
 @@ -23,7 +23,7 @@
@@ -176,12 +230,12 @@ index 8874f681b056..59eb72bf7d5f 100644
  	[RLIMIT_RTTIME]		= {  RLIM_INFINITY,  RLIM_INFINITY },	\
  }
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index a8911b1f35aa..7a4bf3a0db5a 100644
+index 6d877c7e2..ef78f4962 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -753,8 +753,14 @@ struct task_struct {
+@@ -751,8 +751,14 @@ struct task_struct {
  	unsigned int			ptrace;
-
+ 
  #ifdef CONFIG_SMP
 -	int				on_cpu;
  	struct __call_single_node	wake_entry;
@@ -195,18 +249,18 @@ index a8911b1f35aa..7a4bf3a0db5a 100644
  	unsigned int			wakee_flips;
  	unsigned long			wakee_flip_decay_ts;
  	struct task_struct		*last_wakee;
-@@ -768,6 +774,7 @@ struct task_struct {
+@@ -766,6 +772,7 @@ struct task_struct {
  	 */
  	int				recent_used_cpu;
  	int				wake_cpu;
 +#endif /* !CONFIG_SCHED_ALT */
  #endif
  	int				on_rq;
-
-@@ -776,6 +783,20 @@ struct task_struct {
+ 
+@@ -774,6 +781,20 @@ struct task_struct {
  	int				normal_prio;
  	unsigned int			rt_priority;
-
+ 
 +#ifdef CONFIG_SCHED_ALT
 +	u64				last_ran;
 +	s64				time_slice;
@@ -224,18 +278,18 @@ index a8911b1f35aa..7a4bf3a0db5a 100644
  	struct sched_entity		se;
  	struct sched_rt_entity		rt;
  	struct sched_dl_entity		dl;
-@@ -786,6 +807,7 @@ struct task_struct {
+@@ -784,6 +805,7 @@ struct task_struct {
  	unsigned long			core_cookie;
  	unsigned int			core_occupation;
  #endif
 +#endif /* !CONFIG_SCHED_ALT */
-
+ 
  #ifdef CONFIG_CGROUP_SCHED
  	struct task_group		*sched_task_group;
-@@ -1516,6 +1538,15 @@ struct task_struct {
+@@ -1517,6 +1539,15 @@ struct task_struct {
  	 */
  };
-
+ 
 +#ifdef CONFIG_SCHED_ALT
 +#define tsk_seruntime(t)		((t)->sched_time)
 +/* replace the uncertian rt_timeout with 0UL */
@@ -249,12 +303,12 @@ index a8911b1f35aa..7a4bf3a0db5a 100644
  {
  	return task->thread_pid;
 diff --git a/include/linux/sched/deadline.h b/include/linux/sched/deadline.h
-index 7c83d4d5a971..fa30f98cb2be 100644
+index 7c83d4d5a..fa30f98cb 100644
 --- a/include/linux/sched/deadline.h
 +++ b/include/linux/sched/deadline.h
 @@ -1,5 +1,24 @@
  /* SPDX-License-Identifier: GPL-2.0 */
-
+ 
 +#ifdef CONFIG_SCHED_ALT
 +
 +static inline int dl_task(struct task_struct *p)
@@ -282,17 +336,17 @@ index 7c83d4d5a971..fa30f98cb2be 100644
  	return dl_prio(p->prio);
  }
 +#endif /* CONFIG_SCHED_ALT */
-
+ 
  static inline bool dl_time_before(u64 a, u64 b)
  {
 diff --git a/include/linux/sched/prio.h b/include/linux/sched/prio.h
-index ab83d85e1183..6af9ae681116 100644
+index ab83d85e1..6af9ae681 100644
 --- a/include/linux/sched/prio.h
 +++ b/include/linux/sched/prio.h
 @@ -18,6 +18,32 @@
  #define MAX_PRIO		(MAX_RT_PRIO + NICE_WIDTH)
  #define DEFAULT_PRIO		(MAX_RT_PRIO + NICE_WIDTH / 2)
-
+ 
 +#ifdef CONFIG_SCHED_ALT
 +
 +/* Undefine MAX_PRIO and DEFAULT_PRIO */
@@ -323,11 +377,11 @@ index ab83d85e1183..6af9ae681116 100644
   * Convert user-nice values [ -20 ... 0 ... 19 ]
   * to static priority [ MAX_RT_PRIO..MAX_PRIO-1 ],
 diff --git a/include/linux/sched/rt.h b/include/linux/sched/rt.h
-index e5af028c08b4..0a7565d0d3cf 100644
+index 994c25640..8c050a59e 100644
 --- a/include/linux/sched/rt.h
 +++ b/include/linux/sched/rt.h
 @@ -24,8 +24,10 @@ static inline bool task_is_realtime(struct task_struct *tsk)
-
+ 
  	if (policy == SCHED_FIFO || policy == SCHED_RR)
  		return true;
 +#ifndef CONFIG_SCHED_ALT
@@ -336,15 +390,15 @@ index e5af028c08b4..0a7565d0d3cf 100644
 +#endif
  	return false;
  }
-
+ 
 diff --git a/include/linux/sched/topology.h b/include/linux/sched/topology.h
-index 56cffe42abbc..e020fc572b22 100644
+index 816df6cc4..c8da08e18 100644
 --- a/include/linux/sched/topology.h
 +++ b/include/linux/sched/topology.h
-@@ -233,7 +233,8 @@ static inline bool cpus_share_cache(int this_cpu, int that_cpu)
-
+@@ -234,7 +234,8 @@ static inline bool cpus_share_cache(int this_cpu, int that_cpu)
+ 
  #endif	/* !CONFIG_SMP */
-
+ 
 -#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
 +#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL) && \
 +	!defined(CONFIG_SCHED_ALT)
@@ -352,10 +406,10 @@ index 56cffe42abbc..e020fc572b22 100644
  #else
  static inline void rebuild_sched_domains_energy(void)
 diff --git a/init/Kconfig b/init/Kconfig
-index ddcbefe535e9..85616423dc94 100644
+index c7900e897..d2b593e38 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -821,6 +821,7 @@ menu "Scheduler features"
+@@ -812,6 +812,7 @@ menu "Scheduler features"
  config UCLAMP_TASK
  	bool "Enable utilization clamping for RT/FAIR tasks"
  	depends on CPU_FREQ_GOV_SCHEDUTIL
@@ -363,10 +417,10 @@ index ddcbefe535e9..85616423dc94 100644
  	help
  	  This feature enables the scheduler to track the clamped utilization
  	  of each CPU based on RUNNABLE tasks scheduled on that CPU.
-@@ -867,6 +868,35 @@ config UCLAMP_BUCKETS_COUNT
-
+@@ -858,6 +859,35 @@ config UCLAMP_BUCKETS_COUNT
+ 
  	  If in doubt, use the default value.
-
+ 
 +menuconfig SCHED_ALT
 +	bool "Alternative CPU Schedulers"
 +	default y
@@ -397,7 +451,7 @@ index ddcbefe535e9..85616423dc94 100644
 +endif
 +
  endmenu
-
+ 
  #
 @@ -911,6 +941,7 @@ config NUMA_BALANCING
  	depends on ARCH_SUPPORTS_NUMA_BALANCING
@@ -410,7 +464,7 @@ index ddcbefe535e9..85616423dc94 100644
 @@ -1003,6 +1034,7 @@ config FAIR_GROUP_SCHED
  	depends on CGROUP_SCHED
  	default CGROUP_SCHED
-
+ 
 +if !SCHED_ALT
  config CFS_BANDWIDTH
  	bool "CPU bandwidth provisioning for FAIR_GROUP_SCHED"
@@ -418,13 +472,13 @@ index ddcbefe535e9..85616423dc94 100644
 @@ -1025,6 +1057,7 @@ config RT_GROUP_SCHED
  	  realtime bandwidth for them.
  	  See Documentation/scheduler/sched-rt-group.rst for more information.
-
+ 
 +endif #!SCHED_ALT
  endif #CGROUP_SCHED
-
+ 
  config UCLAMP_TASK_GROUP
 @@ -1268,6 +1301,7 @@ config CHECKPOINT_RESTORE
-
+ 
  config SCHED_AUTOGROUP
  	bool "Automatic process group scheduling"
 +	depends on !SCHED_ALT
@@ -432,7 +486,7 @@ index ddcbefe535e9..85616423dc94 100644
  	select CGROUP_SCHED
  	select FAIR_GROUP_SCHED
 diff --git a/init/init_task.c b/init/init_task.c
-index 73cc8f03511a..2d0bad762895 100644
+index 73cc8f035..2d0bad762 100644
 --- a/init/init_task.c
 +++ b/init/init_task.c
 @@ -75,9 +75,15 @@ struct task_struct init_task
@@ -478,11 +532,11 @@ index 73cc8f03511a..2d0bad762895 100644
  #ifdef CONFIG_SMP
  	.pushable_tasks	= PLIST_NODE_INIT(init_task.pushable_tasks, MAX_PRIO),
 diff --git a/kernel/Kconfig.preempt b/kernel/Kconfig.preempt
-index c2f1fd95a821..41654679b1b2 100644
+index c2f1fd95a..41654679b 100644
 --- a/kernel/Kconfig.preempt
 +++ b/kernel/Kconfig.preempt
 @@ -117,7 +117,7 @@ config PREEMPT_DYNAMIC
-
+ 
  config SCHED_CORE
  	bool "Core Scheduling for SMT"
 -	depends on SCHED_SMT
@@ -491,13 +545,13 @@ index c2f1fd95a821..41654679b1b2 100644
  	  This option permits Core Scheduling, a means of coordinated task
  	  selection across SMT siblings. When enabled -- see
 diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
-index 71a418858a5e..7e3016873db1 100644
+index 58aadfda9..2985c22a5 100644
 --- a/kernel/cgroup/cpuset.c
 +++ b/kernel/cgroup/cpuset.c
 @@ -704,7 +704,7 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
  	return ret;
  }
-
+ 
 -#ifdef CONFIG_SMP
 +#if defined(CONFIG_SMP) && !defined(CONFIG_SCHED_ALT)
  /*
@@ -513,30 +567,30 @@ index 71a418858a5e..7e3016873db1 100644
  {
  }
 diff --git a/kernel/delayacct.c b/kernel/delayacct.c
-index c5e8cea9e05f..8e90b2a3667a 100644
+index 164ed9ef7..c974a84b0 100644
 --- a/kernel/delayacct.c
 +++ b/kernel/delayacct.c
-@@ -130,7 +130,7 @@ int delayacct_add_tsk(struct taskstats *d, struct task_struct *tsk)
+@@ -150,7 +150,7 @@ int delayacct_add_tsk(struct taskstats *d, struct task_struct *tsk)
  	 */
  	t1 = tsk->sched_info.pcount;
  	t2 = tsk->sched_info.run_delay;
 -	t3 = tsk->se.sum_exec_runtime;
 +	t3 = tsk_seruntime(tsk);
-
+ 
  	d->cpu_count += t1;
-
+ 
 diff --git a/kernel/exit.c b/kernel/exit.c
-index f072959fcab7..da97095a2997 100644
+index 64c938ce3..a353f7ef5 100644
 --- a/kernel/exit.c
 +++ b/kernel/exit.c
 @@ -124,7 +124,7 @@ static void __exit_signal(struct task_struct *tsk)
  			sig->curr_target = next_thread(tsk);
  	}
-
+ 
 -	add_device_randomness((const void*) &tsk->se.sum_exec_runtime,
 +	add_device_randomness((const void*) &tsk_seruntime(tsk),
  			      sizeof(unsigned long long));
-
+ 
  	/*
 @@ -145,7 +145,7 @@ static void __exit_signal(struct task_struct *tsk)
  	sig->inblock += task_io_get_inblock(tsk);
@@ -548,24 +602,24 @@ index f072959fcab7..da97095a2997 100644
  	__unhash_process(tsk, group_dead);
  	write_sequnlock(&sig->stats_lock);
 diff --git a/kernel/locking/rtmutex.c b/kernel/locking/rtmutex.c
-index 8555c4efe97c..a2b3bd3fd85c 100644
+index 7779ee8ab..5b9893cdf 100644
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
-@@ -298,21 +298,25 @@ static __always_inline void
+@@ -300,21 +300,25 @@ static __always_inline void
  waiter_update_prio(struct rt_mutex_waiter *waiter, struct task_struct *task)
  {
  	waiter->prio = __waiter_prio(task);
 -	waiter->deadline = task->dl.deadline;
 +	waiter->deadline = __tsk_deadline(task);
  }
-
+ 
  /*
   * Only use with rt_mutex_waiter_{less,equal}()
   */
  #define task_to_waiter(p)	\
 -	&(struct rt_mutex_waiter){ .prio = __waiter_prio(p), .deadline = (p)->dl.deadline }
 +	&(struct rt_mutex_waiter){ .prio = __waiter_prio(p), .deadline = __tsk_deadline(p) }
-
+ 
  static __always_inline int rt_mutex_waiter_less(struct rt_mutex_waiter *left,
  						struct rt_mutex_waiter *right)
  {
@@ -574,21 +628,21 @@ index 8555c4efe97c..a2b3bd3fd85c 100644
 +#else
  	if (left->prio < right->prio)
  		return 1;
-
+ 
 +#ifndef CONFIG_SCHED_BMQ
  	/*
  	 * If both waiters have dl_prio(), we check the deadlines of the
  	 * associated tasks.
-@@ -321,16 +325,22 @@ static __always_inline int rt_mutex_waiter_less(struct rt_mutex_waiter *left,
+@@ -323,16 +327,22 @@ static __always_inline int rt_mutex_waiter_less(struct rt_mutex_waiter *left,
  	 */
  	if (dl_prio(left->prio))
  		return dl_time_before(left->deadline, right->deadline);
 +#endif
-
+ 
  	return 0;
 +#endif
  }
-
+ 
  static __always_inline int rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
  						 struct rt_mutex_waiter *right)
  {
@@ -597,24 +651,24 @@ index 8555c4efe97c..a2b3bd3fd85c 100644
 +#else
  	if (left->prio != right->prio)
  		return 0;
-
+ 
 +#ifndef CONFIG_SCHED_BMQ
  	/*
  	 * If both waiters have dl_prio(), we check the deadlines of the
  	 * associated tasks.
-@@ -339,8 +349,10 @@ static __always_inline int rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
+@@ -341,8 +351,10 @@ static __always_inline int rt_mutex_waiter_equal(struct rt_mutex_waiter *left,
  	 */
  	if (dl_prio(left->prio))
  		return left->deadline == right->deadline;
 +#endif
-
+ 
  	return 1;
 +#endif
  }
-
+ 
  static inline bool rt_mutex_steal(struct rt_mutex_waiter *waiter,
 diff --git a/kernel/sched/Makefile b/kernel/sched/Makefile
-index 976092b7bd45..31d587c16ec1 100644
+index 976092b7b..31d587c16 100644
 --- a/kernel/sched/Makefile
 +++ b/kernel/sched/Makefile
 @@ -28,7 +28,12 @@ endif
@@ -632,10 +686,10 @@ index 976092b7bd45..31d587c16ec1 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..b8e67d568e17
+index 000000000..610309e9d
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7750 @@
+@@ -0,0 +1,7804 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -681,7 +735,7 @@ index 000000000000..b8e67d568e17
 +
 +#include "pelt.h"
 +
-+#include "../../fs/io-wq.h"
++#include "../../io_uring/io-wq.h"
 +#include "../smpboot.h"
 +
 +/*
@@ -705,7 +759,7 @@ index 000000000000..b8e67d568e17
 +#define sched_feat(x)	(0)
 +#endif /* CONFIG_SCHED_DEBUG */
 +
-+#define ALT_SCHED_VERSION "v5.18-r2"
++#define ALT_SCHED_VERSION "v5.19-r0-CachyOS"
 +
 +/* rt_prio(prio) defined in include/linux/sched/rt.h */
 +#define rt_task(p)		rt_prio((p)->prio)
@@ -2231,7 +2285,7 @@ index 000000000000..b8e67d568e17
 +	 * __migrate_task() such that we will not miss enforcing cpus_ptr
 +	 * during wakeups, see set_cpus_allowed_ptr()'s TASK_WAKING test.
 +	 */
-+	flush_smp_call_function_from_idle();
++	flush_smp_call_function_queue();
 +
 +	raw_spin_lock(&p->pi_lock);
 +	raw_spin_lock(&rq->lock);
@@ -3711,8 +3765,8 @@ index 000000000000..b8e67d568e17
 +__setup("schedstats=", setup_schedstats);
 +
 +#ifdef CONFIG_PROC_SYSCTL
-+int sysctl_schedstats(struct ctl_table *table, int write,
-+			 void __user *buffer, size_t *lenp, loff_t *ppos)
++static int sysctl_schedstats(struct ctl_table *table, int write, void *buffer,
++		size_t *lenp, loff_t *ppos)
 +{
 +	struct ctl_table t;
 +	int err;
@@ -3730,6 +3784,25 @@ index 000000000000..b8e67d568e17
 +		set_schedstats(state);
 +	return err;
 +}
++
++static struct ctl_table sched_core_sysctls[] = {
++	{
++		.procname       = "sched_schedstats",
++		.data           = NULL,
++		.maxlen         = sizeof(unsigned int),
++		.mode           = 0644,
++		.proc_handler   = sysctl_schedstats,
++		.extra1         = SYSCTL_ZERO,
++		.extra2         = SYSCTL_ONE,
++	},
++	{}
++};
++static int __init sched_core_sysctl_init(void)
++{
++	register_sysctl_init("kernel", sched_core_sysctls);
++	return 0;
++}
++late_initcall(sched_core_sysctl_init);
 +#endif /* CONFIG_PROC_SYSCTL */
 +#endif /* CONFIG_SCHEDSTATS */
 +
@@ -3911,26 +3984,55 @@ index 000000000000..b8e67d568e17
 +
 +static void balance_push(struct rq *rq);
 +
++/*
++ * balance_push_callback is a right abuse of the callback interface and plays
++ * by significantly different rules.
++ *
++ * Where the normal balance_callback's purpose is to be ran in the same context
++ * that queued it (only later, when it's safe to drop rq->lock again),
++ * balance_push_callback is specifically targeted at __schedule().
++ *
++ * This abuse is tolerated because it places all the unlikely/odd cases behind
++ * a single test, namely: rq->balance_callback == NULL.
++ */
 +struct callback_head balance_push_callback = {
 +	.next = NULL,
 +	.func = (void (*)(struct callback_head *))balance_push,
 +};
 +
-+static inline struct callback_head *splice_balance_callbacks(struct rq *rq)
++static inline struct callback_head *
++__splice_balance_callbacks(struct rq *rq, bool split)
 +{
 +	struct callback_head *head = rq->balance_callback;
 +
-+	if (head) {
-+		lockdep_assert_held(&rq->lock);
++	if (likely(!head))
++		return NULL;
++
++	lockdep_assert_rq_held(rq);
++	/*
++	 * Must not take balance_push_callback off the list when
++	 * splice_balance_callbacks() and balance_callbacks() are not
++	 * in the same rq->lock section.
++	 *
++	 * In that case it would be possible for __schedule() to interleave
++	 * and observe the list empty.
++	 */
++	if (split && head == &balance_push_callback)
++		head = NULL;
++	else
 +		rq->balance_callback = NULL;
-+	}
 +
 +	return head;
 +}
 +
++static inline struct callback_head *splice_balance_callbacks(struct rq *rq)
++{
++	return __splice_balance_callbacks(rq, true);
++}
++
 +static void __balance_callbacks(struct rq *rq)
 +{
-+	do_balance_callbacks(rq, splice_balance_callbacks(rq));
++	do_balance_callbacks(rq, __splice_balance_callbacks(rq, false));
 +}
 +
 +static inline void balance_callbacks(struct rq *rq, struct callback_head *head)
@@ -5135,10 +5237,7 @@ index 000000000000..b8e67d568e17
 +	switch_count = &prev->nivcsw;
 +	/*
 +	 * We must load prev->state once (task_struct::state is volatile), such
-+	 * that:
-+	 *
-+	 *  - we form a control dependency vs deactivate_task() below.
-+	 *  - ptrace_{,un}freeze_traced() can change ->state underneath us.
++	 * that we form a control dependency vs deactivate_task() below.
 +	 */
 +	prev_state = READ_ONCE(prev->__state);
 +	if (!(sched_mode & SM_MASK_PREEMPT) && prev_state) {
@@ -5263,9 +5362,6 @@ index 000000000000..b8e67d568e17
 +		else
 +			io_wq_worker_sleeping(tsk);
 +	}
-+
-+	if (tsk_is_pi_blocked(tsk))
-+		return;
 +
 +	/*
 +	 * If we are going to sleep and we have plugged IO queued,
@@ -6939,6 +7035,18 @@ index 000000000000..b8e67d568e17
 +	}
 +}
 +
++#define PREEMPT_MODEL_ACCESSOR(mode) \
++	bool preempt_model_##mode(void)						 \
++	{									 \
++		WARN_ON_ONCE(preempt_dynamic_mode == preempt_dynamic_undefined); \
++		return preempt_dynamic_mode == preempt_dynamic_##mode;		 \
++	}									 \
++	EXPORT_SYMBOL_GPL(preempt_model_##mode)
++
++PREEMPT_MODEL_ACCESSOR(none);
++PREEMPT_MODEL_ACCESSOR(voluntary);
++PREEMPT_MODEL_ACCESSOR(full);
++
 +#else /* !CONFIG_PREEMPT_DYNAMIC */
 +
 +static inline void preempt_dynamic_init(void) { }
@@ -8388,7 +8496,7 @@ index 000000000000..b8e67d568e17
 +#undef CREATE_TRACE_POINTS
 diff --git a/kernel/sched/alt_debug.c b/kernel/sched/alt_debug.c
 new file mode 100644
-index 000000000000..1212a031700e
+index 000000000..1212a0317
 --- /dev/null
 +++ b/kernel/sched/alt_debug.c
 @@ -0,0 +1,31 @@
@@ -8425,7 +8533,7 @@ index 000000000000..1212a031700e
 +{}
 diff --git a/kernel/sched/alt_sched.h b/kernel/sched/alt_sched.h
 new file mode 100644
-index 000000000000..611424bbfa9b
+index 000000000..a181bf9ce
 --- /dev/null
 +++ b/kernel/sched/alt_sched.h
 @@ -0,0 +1,645 @@
@@ -8721,10 +8829,10 @@ index 000000000000..611424bbfa9b
 +	return __best_mask_cpu(mask, per_cpu(sched_cpu_topo_masks, cpu));
 +}
 +
-+extern void flush_smp_call_function_from_idle(void);
++extern void flush_smp_call_function_queue(void);
 +
 +#else  /* !CONFIG_SMP */
-+static inline void flush_smp_call_function_from_idle(void) { }
++static inline void flush_smp_call_function_queue(void) { }
 +#endif
 +
 +#ifndef arch_scale_freq_tick
@@ -9076,7 +9184,7 @@ index 000000000000..611424bbfa9b
 +#endif /* ALT_SCHED_H */
 diff --git a/kernel/sched/bmq.h b/kernel/sched/bmq.h
 new file mode 100644
-index 000000000000..66b77291b9d0
+index 000000000..66b77291b
 --- /dev/null
 +++ b/kernel/sched/bmq.h
 @@ -0,0 +1,110 @@
@@ -9191,36 +9299,36 @@ index 000000000000..66b77291b9d0
 +
 +static inline void update_rq_time_edge(struct rq *rq) {}
 diff --git a/kernel/sched/build_policy.c b/kernel/sched/build_policy.c
-index e0104b45029a..5eb28f1fdd74 100644
+index d9dc9ab37..71a25540d 100644
 --- a/kernel/sched/build_policy.c
 +++ b/kernel/sched/build_policy.c
-@@ -40,13 +40,19 @@
-
+@@ -42,13 +42,19 @@
+ 
  #include "idle.c"
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  #include "rt.c"
 +#endif
-
+ 
  #ifdef CONFIG_SMP
 +#ifndef CONFIG_SCHED_ALT
  # include "cpudeadline.c"
 +#endif
  # include "pelt.c"
  #endif
-
+ 
  #include "cputime.c"
 -#include "deadline.c"
-
+ 
 +#ifndef CONFIG_SCHED_ALT
 +#include "deadline.c"
 +#endif
 diff --git a/kernel/sched/build_utility.c b/kernel/sched/build_utility.c
-index eec0849b2aae..880f4f819d77 100644
+index 99bdd96f4..23f80a86d 100644
 --- a/kernel/sched/build_utility.c
 +++ b/kernel/sched/build_utility.c
-@@ -84,7 +84,9 @@
-
+@@ -85,7 +85,9 @@
+ 
  #ifdef CONFIG_SMP
  # include "cpupri.c"
 +#ifndef CONFIG_SCHED_ALT
@@ -9228,14 +9336,14 @@ index eec0849b2aae..880f4f819d77 100644
 +#endif
  # include "topology.c"
  #endif
-
+ 
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
-index 3dbf351d12d5..b2590f961139 100644
+index 3dbf351d1..b2590f961 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
 @@ -160,9 +160,14 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu)
  	unsigned long max = arch_scale_cpu_capacity(sg_cpu->cpu);
-
+ 
  	sg_cpu->max = max;
 +#ifndef CONFIG_SCHED_ALT
  	sg_cpu->bw_dl = cpu_bw_dl(rq);
@@ -9246,7 +9354,7 @@ index 3dbf351d12d5..b2590f961139 100644
 +	sg_cpu->util = rq_load_util(rq, max);
 +#endif /* CONFIG_SCHED_ALT */
  }
-
+ 
  /**
 @@ -306,8 +311,10 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
   */
@@ -9257,11 +9365,11 @@ index 3dbf351d12d5..b2590f961139 100644
  		sg_cpu->sg_policy->limits_changed = true;
 +#endif
  }
-
+ 
  static inline bool sugov_update_single_common(struct sugov_cpu *sg_cpu,
 @@ -607,6 +614,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
  	}
-
+ 
  	ret = sched_setattr_nocheck(thread, &attr);
 +
  	if (ret) {
@@ -9276,23 +9384,23 @@ index 3dbf351d12d5..b2590f961139 100644
 +#endif /* CONFIG_SCHED_ALT */
  }
  static DECLARE_WORK(rebuild_sd_work, rebuild_sd_workfn);
-
+ 
 diff --git a/kernel/sched/cputime.c b/kernel/sched/cputime.c
-index 78a233d43757..b3bbc87d4352 100644
+index 78a233d43..b3bbc87d4 100644
 --- a/kernel/sched/cputime.c
 +++ b/kernel/sched/cputime.c
 @@ -122,7 +122,7 @@ void account_user_time(struct task_struct *p, u64 cputime)
  	p->utime += cputime;
  	account_group_user_time(p, cputime);
-
+ 
 -	index = (task_nice(p) > 0) ? CPUTIME_NICE : CPUTIME_USER;
 +	index = task_running_nice(p) ? CPUTIME_NICE : CPUTIME_USER;
-
+ 
  	/* Add user time to cpustat. */
  	task_group_account_field(p, index, cputime);
 @@ -146,7 +146,7 @@ void account_guest_time(struct task_struct *p, u64 cputime)
  	p->gtime += cputime;
-
+ 
  	/* Add guest time to cpustat. */
 -	if (task_nice(p) > 0) {
 +	if (task_running_nice(p)) {
@@ -9310,12 +9418,12 @@ index 78a233d43757..b3bbc87d4352 100644
  static u64 read_sum_exec_runtime(struct task_struct *t)
 @@ -279,7 +279,7 @@ static u64 read_sum_exec_runtime(struct task_struct *t)
  	struct rq *rq;
-
+ 
  	rq = task_rq_lock(t, &rf);
 -	ns = t->se.sum_exec_runtime;
 +	ns = tsk_seruntime(t);
  	task_rq_unlock(rq, t, &rf);
-
+ 
  	return ns;
 @@ -611,7 +611,7 @@ void cputime_adjust(struct task_cputime *curr, struct prev_cputime *prev,
  void task_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
@@ -9324,48 +9432,48 @@ index 78a233d43757..b3bbc87d4352 100644
 -		.sum_exec_runtime = p->se.sum_exec_runtime,
 +		.sum_exec_runtime = tsk_seruntime(p),
  	};
-
+ 
  	if (task_cputime(p, &cputime.utime, &cputime.stime))
 diff --git a/kernel/sched/debug.c b/kernel/sched/debug.c
-index bb3d63bdf4ae..4e1680785704 100644
+index bb3d63bdf..4e1680785 100644
 --- a/kernel/sched/debug.c
 +++ b/kernel/sched/debug.c
 @@ -7,6 +7,7 @@
   * Copyright(C) 2007, Red Hat, Inc., Ingo Molnar
   */
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  /*
   * This allows printing both to /proc/sched_debug and
   * to the console
 @@ -215,6 +216,7 @@ static const struct file_operations sched_scaling_fops = {
  };
-
+ 
  #endif /* SMP */
 +#endif /* !CONFIG_SCHED_ALT */
-
+ 
  #ifdef CONFIG_PREEMPT_DYNAMIC
-
+ 
 @@ -278,6 +280,7 @@ static const struct file_operations sched_dynamic_fops = {
-
+ 
  #endif /* CONFIG_PREEMPT_DYNAMIC */
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  __read_mostly bool sched_debug_verbose;
-
+ 
  static const struct seq_operations sched_debug_sops;
 @@ -293,6 +296,7 @@ static const struct file_operations sched_debug_fops = {
  	.llseek		= seq_lseek,
  	.release	= seq_release,
  };
 +#endif /* !CONFIG_SCHED_ALT */
-
+ 
  static struct dentry *debugfs_sched;
-
+ 
 @@ -302,12 +306,15 @@ static __init int sched_init_debug(void)
-
+ 
  	debugfs_sched = debugfs_create_dir("sched", NULL);
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  	debugfs_create_file("features", 0644, debugfs_sched, NULL, &sched_feat_fops);
  	debugfs_create_bool("verbose", 0644, debugfs_sched, &sched_debug_verbose);
@@ -9373,41 +9481,41 @@ index bb3d63bdf4ae..4e1680785704 100644
  #ifdef CONFIG_PREEMPT_DYNAMIC
  	debugfs_create_file("preempt", 0644, debugfs_sched, NULL, &sched_dynamic_fops);
  #endif
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  	debugfs_create_u32("latency_ns", 0644, debugfs_sched, &sysctl_sched_latency);
  	debugfs_create_u32("min_granularity_ns", 0644, debugfs_sched, &sysctl_sched_min_granularity);
  	debugfs_create_u32("idle_min_granularity_ns", 0644, debugfs_sched, &sysctl_sched_idle_min_granularity);
 @@ -336,11 +343,13 @@ static __init int sched_init_debug(void)
  #endif
-
+ 
  	debugfs_create_file("debug", 0444, debugfs_sched, NULL, &sched_debug_fops);
 +#endif /* !CONFIG_SCHED_ALT */
-
+ 
  	return 0;
  }
  late_initcall(sched_init_debug);
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  #ifdef CONFIG_SMP
-
+ 
  static cpumask_var_t		sd_sysctl_cpus;
 @@ -1067,6 +1076,7 @@ void proc_sched_set_task(struct task_struct *p)
  	memset(&p->stats, 0, sizeof(p->stats));
  #endif
  }
 +#endif /* !CONFIG_SCHED_ALT */
-
+ 
  void resched_latency_warn(int cpu, u64 latency)
  {
 diff --git a/kernel/sched/idle.c b/kernel/sched/idle.c
-index ecb0d7052877..000c0d87de78 100644
+index 328cccbee..aef991fac 100644
 --- a/kernel/sched/idle.c
 +++ b/kernel/sched/idle.c
 @@ -400,6 +400,7 @@ void cpu_startup_entry(enum cpuhp_state state)
  		do_idle();
  }
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  /*
   * idle-task scheduling class.
@@ -9419,7 +9527,7 @@ index ecb0d7052877..000c0d87de78 100644
 +#endif
 diff --git a/kernel/sched/pds.h b/kernel/sched/pds.h
 new file mode 100644
-index 000000000000..56a649d02e49
+index 000000000..56a649d02
 --- /dev/null
 +++ b/kernel/sched/pds.h
 @@ -0,0 +1,127 @@
@@ -9551,36 +9659,36 @@ index 000000000000..56a649d02e49
 +#endif
 +static inline void sched_task_deactivate(struct task_struct *p, struct rq *rq) {}
 diff --git a/kernel/sched/pelt.c b/kernel/sched/pelt.c
-index 0f310768260c..bd38bf738fe9 100644
+index 0f3107682..bd38bf738 100644
 --- a/kernel/sched/pelt.c
 +++ b/kernel/sched/pelt.c
 @@ -266,6 +266,7 @@ ___update_load_avg(struct sched_avg *sa, unsigned long load)
  	WRITE_ONCE(sa->util_avg, sa->util_sum / divider);
  }
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  /*
   * sched_entity:
   *
 @@ -383,8 +384,9 @@ int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
-
+ 
  	return 0;
  }
 +#endif
-
+ 
 -#ifdef CONFIG_SCHED_THERMAL_PRESSURE
 +#if defined(CONFIG_SCHED_THERMAL_PRESSURE) && !defined(CONFIG_SCHED_ALT)
  /*
   * thermal:
   *
 diff --git a/kernel/sched/pelt.h b/kernel/sched/pelt.h
-index c336f5f481bc..5865f14714a9 100644
+index 4ff2ed4f8..226eeed61 100644
 --- a/kernel/sched/pelt.h
 +++ b/kernel/sched/pelt.h
 @@ -1,13 +1,15 @@
  #ifdef CONFIG_SMP
  #include "sched-pelt.h"
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  int __update_load_avg_blocked_se(u64 now, struct sched_entity *se);
  int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se);
@@ -9588,16 +9696,16 @@ index c336f5f481bc..5865f14714a9 100644
  int update_rt_rq_load_avg(u64 now, struct rq *rq, int running);
  int update_dl_rq_load_avg(u64 now, struct rq *rq, int running);
 +#endif
-
+ 
 -#ifdef CONFIG_SCHED_THERMAL_PRESSURE
 +#if defined(CONFIG_SCHED_THERMAL_PRESSURE) && !defined(CONFIG_SCHED_ALT)
  int update_thermal_load_avg(u64 now, struct rq *rq, u64 capacity);
-
+ 
  static inline u64 thermal_load_avg(struct rq *rq)
 @@ -44,6 +46,7 @@ static inline u32 get_pelt_divider(struct sched_avg *avg)
  	return PELT_MIN_DIVIDER + avg->period_contrib;
  }
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  static inline void cfs_se_util_change(struct sched_avg *avg)
  {
@@ -9607,9 +9715,9 @@ index c336f5f481bc..5865f14714a9 100644
  }
  #endif
 +#endif /* CONFIG_SCHED_ALT */
-
+ 
  #else
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  static inline int
  update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
@@ -9619,17 +9727,17 @@ index c336f5f481bc..5865f14714a9 100644
  	return 0;
  }
 +#endif
-
+ 
  static inline int
  update_thermal_load_avg(u64 now, struct rq *rq, u64 capacity)
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index 8dccb34eb190..bb3598e0ba5d 100644
+index 7b19a7240..f114795e2 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
 @@ -5,6 +5,10 @@
  #ifndef _KERNEL_SCHED_SCHED_H
  #define _KERNEL_SCHED_SCHED_H
-
+ 
 +#ifdef CONFIG_SCHED_ALT
 +#include "alt_sched.h"
 +#else
@@ -9637,10 +9745,10 @@ index 8dccb34eb190..bb3598e0ba5d 100644
  #include <linux/sched/affinity.h>
  #include <linux/sched/autogroup.h>
  #include <linux/sched/cpufreq.h>
-@@ -3087,4 +3091,9 @@ extern int sched_dynamic_mode(const char *str);
+@@ -3115,4 +3119,9 @@ extern int sched_dynamic_mode(const char *str);
  extern void sched_dynamic_update(int mode);
  #endif
-
+ 
 +static inline int task_running_nice(struct task_struct *p)
 +{
 +	return (task_nice(p) > 0);
@@ -9648,7 +9756,7 @@ index 8dccb34eb190..bb3598e0ba5d 100644
 +#endif /* !CONFIG_SCHED_ALT */
  #endif /* _KERNEL_SCHED_SCHED_H */
 diff --git a/kernel/sched/stats.c b/kernel/sched/stats.c
-index 857f837f52cb..5486c63e4790 100644
+index 857f837f5..5486c63e4 100644
 --- a/kernel/sched/stats.c
 +++ b/kernel/sched/stats.c
 @@ -125,8 +125,10 @@ static int show_schedstat(struct seq_file *seq, void *v)
@@ -9664,7 +9772,7 @@ index 857f837f52cb..5486c63e4790 100644
  		rq = cpu_rq(cpu);
 @@ -143,6 +145,7 @@ static int show_schedstat(struct seq_file *seq, void *v)
  		seq_printf(seq, "\n");
-
+ 
  #ifdef CONFIG_SMP
 +#ifndef CONFIG_SCHED_ALT
  		/* domain-specific stats */
@@ -9679,13 +9787,13 @@ index 857f837f52cb..5486c63e4790 100644
  	}
  	return 0;
 diff --git a/kernel/sched/stats.h b/kernel/sched/stats.h
-index baa839c1ba96..15238be0581b 100644
+index baa839c1b..15238be05 100644
 --- a/kernel/sched/stats.h
 +++ b/kernel/sched/stats.h
 @@ -89,6 +89,7 @@ static inline void rq_sched_info_depart  (struct rq *rq, unsigned long long delt
-
+ 
  #endif /* CONFIG_SCHEDSTATS */
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  #ifdef CONFIG_FAIR_GROUP_SCHED
  struct sched_entity_stats {
@@ -9695,49 +9803,49 @@ index baa839c1ba96..15238be0581b 100644
  	return &task_of(se)->stats;
  }
 +#endif /* CONFIG_SCHED_ALT */
-
+ 
  #ifdef CONFIG_PSI
  /*
 diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index 810750e62118..f2cdbb696dba 100644
+index 05b6c2ad9..480ef393b 100644
 --- a/kernel/sched/topology.c
 +++ b/kernel/sched/topology.c
 @@ -3,6 +3,7 @@
   * Scheduler topology setup/handling methods
   */
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  DEFINE_MUTEX(sched_domains_mutex);
-
+ 
  /* Protected by sched_domains_mutex: */
-@@ -1392,8 +1393,10 @@ static void asym_cpu_capacity_scan(void)
+@@ -1413,8 +1414,10 @@ static void asym_cpu_capacity_scan(void)
   */
-
+ 
  static int default_relax_domain_level = -1;
 +#endif /* CONFIG_SCHED_ALT */
  int sched_domain_level_max;
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  static int __init setup_relax_domain_level(char *str)
  {
  	if (kstrtoint(str, 0, &default_relax_domain_level))
-@@ -1626,6 +1629,7 @@ sd_init(struct sched_domain_topology_level *tl,
-
+@@ -1647,6 +1650,7 @@ sd_init(struct sched_domain_topology_level *tl,
+ 
  	return sd;
  }
 +#endif /* CONFIG_SCHED_ALT */
-
+ 
  /*
   * Topology list, bottom-up.
-@@ -1662,6 +1666,7 @@ void set_sched_topology(struct sched_domain_topology_level *tl)
+@@ -1683,6 +1687,7 @@ void set_sched_topology(struct sched_domain_topology_level *tl)
  	sched_domain_topology_saved = NULL;
  }
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  #ifdef CONFIG_NUMA
-
+ 
  static const struct cpumask *sd_numa_mask(int cpu)
-@@ -2617,3 +2622,15 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
+@@ -2638,3 +2643,15 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
  	partition_sched_domains_locked(ndoms_new, doms_new, dattr_new);
  	mutex_unlock(&sched_domains_mutex);
  }
@@ -9754,13 +9862,13 @@ index 810750e62118..f2cdbb696dba 100644
 +#endif /* CONFIG_NUMA */
 +#endif
 diff --git a/kernel/sysctl.c b/kernel/sysctl.c
-index 830aaf8ca08e..7ad676d5ae3b 100644
+index 35d034219..23719c728 100644
 --- a/kernel/sysctl.c
 +++ b/kernel/sysctl.c
-@@ -96,6 +96,10 @@
-
+@@ -86,6 +86,10 @@
+ 
  /* Constants used for minimum and  maximum */
-
+ 
 +#ifdef CONFIG_SCHED_ALT
 +extern int sched_yield_type;
 +#endif
@@ -9768,40 +9876,23 @@ index 830aaf8ca08e..7ad676d5ae3b 100644
  #ifdef CONFIG_PERF_EVENTS
  static const int six_hundred_forty_kb = 640 * 1024;
  #endif
-@@ -1659,6 +1663,24 @@ int proc_do_static_key(struct ctl_table *table, int write,
+@@ -1590,6 +1594,7 @@ int proc_do_static_key(struct ctl_table *table, int write,
  }
-
+ 
  static struct ctl_table kern_table[] = {
-+#ifdef CONFIG_SCHED_ALT
-+/* In ALT, only supported "sched_schedstats" */
-+#ifdef CONFIG_SCHED_DEBUG
-+#ifdef CONFIG_SMP
-+#ifdef CONFIG_SCHEDSTATS
-+	{
-+		.procname	= "sched_schedstats",
-+		.data		= NULL,
-+		.maxlen		= sizeof(unsigned int),
-+		.mode		= 0644,
-+		.proc_handler	= sysctl_schedstats,
-+		.extra1		= SYSCTL_ZERO,
-+		.extra2		= SYSCTL_ONE,
-+	},
-+#endif /* CONFIG_SCHEDSTATS */
-+#endif /* CONFIG_SMP */
-+#endif /* CONFIG_SCHED_DEBUG */
-+#else  /* !CONFIG_SCHED_ALT */
++#ifndef CONFIG_SCHED_ALT
+ #ifdef CONFIG_NUMA_BALANCING
  	{
- 		.procname	= "sched_child_runs_first",
- 		.data		= &sysctl_sched_child_runs_first,
-@@ -1778,6 +1800,7 @@ static struct ctl_table kern_table[] = {
- 		.extra2		= SYSCTL_ONE,
+ 		.procname	= "numa_balancing",
+@@ -1601,6 +1606,7 @@ static struct ctl_table kern_table[] = {
+ 		.extra2		= SYSCTL_FOUR,
  	},
- #endif
+ #endif /* CONFIG_NUMA_BALANCING */
 +#endif /* !CONFIG_SCHED_ALT */
- #ifdef CONFIG_PROVE_LOCKING
  	{
- 		.procname	= "prove_locking",
-@@ -2163,6 +2186,17 @@ static struct ctl_table kern_table[] = {
+ 		.procname	= "panic",
+ 		.data		= &panic_timeout,
+@@ -1902,6 +1908,17 @@ static struct ctl_table kern_table[] = {
  		.proc_handler	= proc_dointvec,
  	},
  #endif
@@ -9820,58 +9911,58 @@ index 830aaf8ca08e..7ad676d5ae3b 100644
  	{
  		.procname	= "spin_retry",
 diff --git a/kernel/time/hrtimer.c b/kernel/time/hrtimer.c
-index 0ea8702eb516..a27a0f3a654d 100644
+index 23af5eca1..792f94ce4 100644
 --- a/kernel/time/hrtimer.c
 +++ b/kernel/time/hrtimer.c
 @@ -2088,8 +2088,10 @@ long hrtimer_nanosleep(ktime_t rqtp, const enum hrtimer_mode mode,
  	int ret = 0;
  	u64 slack;
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  	slack = current->timer_slack_ns;
  	if (dl_task(current) || rt_task(current))
 +#endif
  		slack = 0;
-
+ 
  	hrtimer_init_sleeper_on_stack(&t, clockid, mode);
 diff --git a/kernel/time/posix-cpu-timers.c b/kernel/time/posix-cpu-timers.c
-index 0a97193984db..e32235cdc3b1 100644
+index cb925e8ef..67d823510 100644
 --- a/kernel/time/posix-cpu-timers.c
 +++ b/kernel/time/posix-cpu-timers.c
 @@ -223,7 +223,7 @@ static void task_sample_cputime(struct task_struct *p, u64 *samples)
  	u64 stime, utime;
-
+ 
  	task_cputime(p, &utime, &stime);
 -	store_samples(samples, stime, utime, p->se.sum_exec_runtime);
 +	store_samples(samples, stime, utime, tsk_seruntime(p));
  }
-
+ 
  static void proc_sample_cputime_atomic(struct task_cputime_atomic *at,
 @@ -866,6 +866,7 @@ static void collect_posix_cputimers(struct posix_cputimers *pct, u64 *samples,
  	}
  }
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  static inline void check_dl_overrun(struct task_struct *tsk)
  {
  	if (tsk->dl.dl_overrun) {
 @@ -873,6 +874,7 @@ static inline void check_dl_overrun(struct task_struct *tsk)
- 		__group_send_sig_info(SIGXCPU, SEND_SIG_PRIV, tsk);
+ 		send_signal_locked(SIGXCPU, SEND_SIG_PRIV, tsk, PIDTYPE_TGID);
  	}
  }
 +#endif
-
+ 
  static bool check_rlimit(u64 time, u64 limit, int signo, bool rt, bool hard)
  {
 @@ -900,8 +902,10 @@ static void check_thread_timers(struct task_struct *tsk,
  	u64 samples[CPUCLOCK_MAX];
  	unsigned long soft;
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  	if (dl_task(tsk))
  		check_dl_overrun(tsk);
 +#endif
-
+ 
  	if (expiry_cache_is_inactive(pct))
  		return;
 @@ -915,7 +919,7 @@ static void check_thread_timers(struct task_struct *tsk,
@@ -9881,24 +9972,24 @@ index 0a97193984db..e32235cdc3b1 100644
 -		unsigned long rttime = tsk->rt.timeout * (USEC_PER_SEC / HZ);
 +		unsigned long rttime = tsk_rttimeout(tsk) * (USEC_PER_SEC / HZ);
  		unsigned long hard = task_rlimit_max(tsk, RLIMIT_RTTIME);
-
+ 
  		/* At the hard limit, send SIGKILL. No further action. */
 @@ -1151,8 +1155,10 @@ static inline bool fastpath_timer_check(struct task_struct *tsk)
  			return true;
  	}
-
+ 
 +#ifndef CONFIG_SCHED_ALT
  	if (dl_task(tsk) && tsk->dl.dl_overrun)
  		return true;
 +#endif
-
+ 
  	return false;
  }
 diff --git a/kernel/trace/trace_selftest.c b/kernel/trace/trace_selftest.c
-index abcadbe933bb..d4c778b0ab0e 100644
+index a2d301f58..2ccdede85 100644
 --- a/kernel/trace/trace_selftest.c
 +++ b/kernel/trace/trace_selftest.c
-@@ -1140,10 +1140,15 @@ static int trace_wakeup_test_thread(void *data)
+@@ -1143,10 +1143,15 @@ static int trace_wakeup_test_thread(void *data)
  {
  	/* Make this a -deadline thread */
  	static const struct sched_attr attr = {
@@ -9913,398 +10004,7 @@ index abcadbe933bb..d4c778b0ab0e 100644
 +#endif
  	};
  	struct wakeup_test_data *x = data;
-
-From 3728c383c5031dce5ae0f5ea53fc47afba71270f Mon Sep 17 00:00:00 2001
-From: Juuso Alasuutari <juuso.alasuutari@gmail.com>
-Date: Sun, 14 Aug 2022 18:19:09 +0300
-Subject: [PATCH 01/10] sched/alt: [Sync] sched/core: Always flush pending
- blk_plug
-
----
- kernel/sched/alt_core.c | 8 ++++++--
- 1 file changed, 6 insertions(+), 2 deletions(-)
-
-diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index 588c7b983e3ba..8a6aa5b7279d3 100644
---- a/kernel/sched/alt_core.c
-+++ b/kernel/sched/alt_core.c
-@@ -4663,8 +4663,12 @@ static inline void sched_submit_work(struct task_struct *tsk)
- 			io_wq_worker_sleeping(tsk);
- 	}
-
--	if (tsk_is_pi_blocked(tsk))
--		return;
-+	/*
-+	 * spinlock and rwlock must not flush block requests.  This will
-+	 * deadlock if the callback attempts to acquire a lock which is
-+	 * already acquired.
-+	 */
-+	SCHED_WARN_ON(current->__state & TASK_RTLOCK_WAIT);
-
- 	/*
- 	 * If we are going to sleep and we have plugged IO queued,
-
-From 379df22366dfa47d021a6bfe149c10a02d39a59e Mon Sep 17 00:00:00 2001
-From: Juuso Alasuutari <juuso.alasuutari@gmail.com>
-Date: Sun, 14 Aug 2022 18:19:09 +0300
-Subject: [PATCH 02/10] sched/alt: [Sync] io_uring: move to separate directory
-
----
- kernel/sched/alt_core.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
-diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index 8a6aa5b7279d3..200d12b0ba6a9 100644
---- a/kernel/sched/alt_core.c
-+++ b/kernel/sched/alt_core.c
-@@ -43,7 +43,7 @@
-
- #include "pelt.h"
-
--#include "../../fs/io-wq.h"
-+#include "../../io_uring/io-wq.h"
- #include "../smpboot.h"
-
- /*
-
-From 289d4f9619656155c2d467f9ea9fa5258b4aacd0 Mon Sep 17 00:00:00 2001
-From: Juuso Alasuutari <juuso.alasuutari@gmail.com>
-Date: Sun, 14 Aug 2022 18:19:09 +0300
-Subject: [PATCH 03/10] sched/alt: [Sync] sched, cpuset: Fix dl_cpu_busy()
- panic due to empty cs->cpus_allowed
-
----
- kernel/sched/alt_core.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
-diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index 200d12b0ba6a9..1aeb7a225d9bd 100644
---- a/kernel/sched/alt_core.c
-+++ b/kernel/sched/alt_core.c
-@@ -6737,7 +6737,7 @@ int cpuset_cpumask_can_shrink(const struct cpumask __maybe_unused *cur,
- }
-
- int task_can_attach(struct task_struct *p,
--		    const struct cpumask *cs_cpus_allowed)
-+		    const struct cpumask *cs_effective_cpus)
- {
- 	int ret = 0;
-
-
-From 95e712f92034119e23b4157aba72e8ffb2d74fed Mon Sep 17 00:00:00 2001
-From: Tor Vic <torvic9@mailbox.org>
-Date: Wed, 17 Aug 2022 21:44:18 +0200
-Subject: [PATCH 05/10] sched/alt: Transpose the sched_rq_watermark array
-
-This is not my work.
-All credits go to Torge Matthies as in below link.
-
-Link: https://gitlab.com/alfredchen/linux-prjc/-/merge_requests/11
----
- kernel/sched/alt_core.c | 124 +++++++++++++++++++++++++++++++++-------
- 1 file changed, 104 insertions(+), 20 deletions(-)
-
-diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index cf71defb0e0be..7929b810ba74f 100644
---- a/kernel/sched/alt_core.c
-+++ b/kernel/sched/alt_core.c
-@@ -147,7 +147,87 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
- #ifdef CONFIG_SCHED_SMT
- static cpumask_t sched_sg_idle_mask ____cacheline_aligned_in_smp;
- #endif
--static cpumask_t sched_rq_watermark[SCHED_QUEUE_BITS] ____cacheline_aligned_in_smp;
-+
-+#define BITS_PER_ATOMIC_LONG_T BITS_PER_LONG
-+typedef struct sched_bitmask {
-+	atomic_long_t bits[DIV_ROUND_UP(SCHED_QUEUE_BITS, BITS_PER_ATOMIC_LONG_T)];
-+} sched_bitmask_t;
-+static sched_bitmask_t sched_rq_watermark[NR_CPUS] ____cacheline_aligned_in_smp;
-+
-+#define x(p, set, mask)                                \
-+	do {                                           \
-+		if (set)                               \
-+			atomic_long_or((mask), (p));   \
-+		else                                   \
-+			atomic_long_and(~(mask), (p)); \
-+	} while (0)
-+
-+static __always_inline void sched_rq_watermark_fill_downwards(int cpu, unsigned int end,
-+		unsigned int start, bool set)
-+{
-+	unsigned int start_idx, start_bit;
-+	unsigned int end_idx, end_bit;
-+	atomic_long_t *p;
-+
-+	if (end == start) {
-+		return;
-+	}
-+
-+	start_idx = start / BITS_PER_ATOMIC_LONG_T;
-+	start_bit = start % BITS_PER_ATOMIC_LONG_T;
-+	end_idx = (end - 1) / BITS_PER_ATOMIC_LONG_T;
-+	end_bit = (end - 1) % BITS_PER_ATOMIC_LONG_T;
-+	p = &sched_rq_watermark[cpu].bits[end_idx];
-+
-+	if (end_idx == start_idx) {
-+		x(p, set, (~0UL >> (BITS_PER_ATOMIC_LONG_T - 1 - end_bit)) & (~0UL << start_bit));
-+		return;
-+	}
-+
-+	if (end_bit != BITS_PER_ATOMIC_LONG_T - 1) {
-+		x(p, set, (~0UL >> (BITS_PER_ATOMIC_LONG_T - 1 - end_bit)));
-+		p -= 1;
-+		end_idx -= 1;
-+	}
-+
-+	while (end_idx != start_idx) {
-+		atomic_long_set(p, set ? ~0UL : 0);
-+		p -= 1;
-+		end_idx -= 1;
-+	}
-+
-+	x(p, set, ~0UL << start_bit);
-+}
-+
-+#undef x
-+
-+static __always_inline bool sched_rq_watermark_and(cpumask_t *dstp, const cpumask_t *cpus, int prio, bool not)
-+{
-+	int cpu;
-+	bool ret = false;
-+	int idx = prio / BITS_PER_ATOMIC_LONG_T;
-+	int bit = prio % BITS_PER_ATOMIC_LONG_T;
-+
-+	cpumask_clear(dstp);
-+	for_each_cpu(cpu, cpus)
-+		if (test_bit(bit, (long*)&sched_rq_watermark[cpu].bits[idx].counter) == !not) {
-+			__cpumask_set_cpu(cpu, dstp);
-+			ret = true;
-+		}
-+	return ret;
-+}
-+
-+static __always_inline bool sched_rq_watermark_test(const cpumask_t *cpus, int prio, bool not)
-+{
-+	int cpu;
-+	int idx = prio / BITS_PER_ATOMIC_LONG_T;
-+	int bit = prio % BITS_PER_ATOMIC_LONG_T;
-+
-+	for_each_cpu(cpu, cpus)
-+		if (test_bit(bit, (long*)&sched_rq_watermark[cpu].bits[idx].counter) == !not)
-+			return true;
-+	return false;
-+}
-
- /* sched_queue related functions */
- static inline void sched_queue_init(struct sched_queue *q)
-@@ -176,7 +256,6 @@ static inline void update_sched_rq_watermark(struct rq *rq)
- {
- 	unsigned long watermark = find_first_bit(rq->queue.bitmap, SCHED_QUEUE_BITS);
- 	unsigned long last_wm = rq->watermark;
--	unsigned long i;
- 	int cpu;
-
- 	if (watermark == last_wm)
-@@ -185,28 +264,25 @@ static inline void update_sched_rq_watermark(struct rq *rq)
- 	rq->watermark = watermark;
- 	cpu = cpu_of(rq);
- 	if (watermark < last_wm) {
--		for (i = last_wm; i > watermark; i--)
--			cpumask_clear_cpu(cpu, sched_rq_watermark + SCHED_QUEUE_BITS - i);
-+		sched_rq_watermark_fill_downwards(cpu, SCHED_QUEUE_BITS - watermark, SCHED_QUEUE_BITS - last_wm, false);
- #ifdef CONFIG_SCHED_SMT
- 		if (static_branch_likely(&sched_smt_present) &&
--		    IDLE_TASK_SCHED_PRIO == last_wm)
-+		    unlikely(IDLE_TASK_SCHED_PRIO == last_wm))
- 			cpumask_andnot(&sched_sg_idle_mask,
- 				       &sched_sg_idle_mask, cpu_smt_mask(cpu));
- #endif
- 		return;
- 	}
- 	/* last_wm < watermark */
--	for (i = watermark; i > last_wm; i--)
--		cpumask_set_cpu(cpu, sched_rq_watermark + SCHED_QUEUE_BITS - i);
-+	sched_rq_watermark_fill_downwards(cpu, SCHED_QUEUE_BITS - last_wm, SCHED_QUEUE_BITS - watermark, true);
- #ifdef CONFIG_SCHED_SMT
- 	if (static_branch_likely(&sched_smt_present) &&
--	    IDLE_TASK_SCHED_PRIO == watermark) {
--		cpumask_t tmp;
-+	    unlikely(IDLE_TASK_SCHED_PRIO == watermark)) {
-+		const cpumask_t *smt_mask = cpu_smt_mask(cpu);
-
--		cpumask_and(&tmp, cpu_smt_mask(cpu), sched_rq_watermark);
--		if (cpumask_equal(&tmp, cpu_smt_mask(cpu)))
-+		if (!sched_rq_watermark_test(smt_mask, 0, true))
- 			cpumask_or(&sched_sg_idle_mask,
--				   &sched_sg_idle_mask, cpu_smt_mask(cpu));
-+				   &sched_sg_idle_mask, smt_mask);
- 	}
- #endif
- }
-@@ -1903,9 +1979,9 @@ static inline int select_task_rq(struct task_struct *p)
- #ifdef CONFIG_SCHED_SMT
- 	    cpumask_and(&tmp, &chk_mask, &sched_sg_idle_mask) ||
- #endif
--	    cpumask_and(&tmp, &chk_mask, sched_rq_watermark) ||
--	    cpumask_and(&tmp, &chk_mask,
--			sched_rq_watermark + SCHED_QUEUE_BITS - 1 - task_sched_prio(p)))
-+	    sched_rq_watermark_and(&tmp, &chk_mask, 0, false) ||
-+	    sched_rq_watermark_and(&tmp, &chk_mask,
-+			SCHED_QUEUE_BITS - 1 - task_sched_prio(p), false))
- 		return best_mask_cpu(task_cpu(p), &tmp);
-
- 	return best_mask_cpu(task_cpu(p), &chk_mask);
-@@ -3977,7 +4053,7 @@ static inline void sg_balance(struct rq *rq)
- 	 * find potential cpus which can migrate the current running task
- 	 */
- 	if (cpumask_test_cpu(cpu, &sched_sg_idle_mask) &&
--	    cpumask_andnot(&chk, cpu_online_mask, sched_rq_watermark) &&
-+	    sched_rq_watermark_and(&chk, cpu_online_mask, 0, true) &&
- 	    cpumask_andnot(&chk, &chk, &sched_rq_pending_mask)) {
- 		int i;
-
-@@ -4285,9 +4361,8 @@ static inline void schedule_debug(struct task_struct *prev, bool preempt)
- #ifdef ALT_SCHED_DEBUG
- void alt_sched_debug(void)
- {
--	printk(KERN_INFO "sched: pending: 0x%04lx, idle: 0x%04lx, sg_idle: 0x%04lx\n",
-+	printk(KERN_INFO "sched: pending: 0x%04lx, sg_idle: 0x%04lx\n",
- 	       sched_rq_pending_mask.bits[0],
--	       sched_rq_watermark[0].bits[0],
- 	       sched_sg_idle_mask.bits[0]);
- }
- #else
-@@ -7285,8 +7360,17 @@ void __init sched_init(void)
- 	wait_bit_init();
-
- #ifdef CONFIG_SMP
--	for (i = 0; i < SCHED_QUEUE_BITS; i++)
--		cpumask_copy(sched_rq_watermark + i, cpu_present_mask);
-+	for (i = 0; i < nr_cpu_ids; i++) {
-+		long val = cpumask_test_cpu(i, cpu_present_mask) ? -1L : 0;
-+		int j;
-+		for (j = 0; j < DIV_ROUND_UP(SCHED_QUEUE_BITS, BITS_PER_ATOMIC_LONG_T); j++)
-+			atomic_long_set(&sched_rq_watermark[i].bits[j], val);
-+	}
-+	for (i = nr_cpu_ids; i < NR_CPUS; i++) {
-+		int j;
-+		for (j = 0; j < DIV_ROUND_UP(SCHED_QUEUE_BITS, BITS_PER_ATOMIC_LONG_T); j++)
-+			atomic_long_set(&sched_rq_watermark[i].bits[j], 0);
-+	}
- #endif
-
- #ifdef CONFIG_CGROUP_SCHED
-
-From 5b3b4b3d14c234196c807568905ee2e013565508 Mon Sep 17 00:00:00 2001
-From: Torge Matthies <openglfreak@googlemail.com>
-Date: Tue, 15 Mar 2022 23:08:54 +0100
-Subject: [PATCH 06/10] sched/alt: Add memory barriers around atomics.
-
----
- kernel/sched/alt_core.c | 4 ++++
- 1 file changed, 4 insertions(+)
-
-diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index 7929b810ba74f..b0cb6b772d5fa 100644
---- a/kernel/sched/alt_core.c
-+++ b/kernel/sched/alt_core.c
-@@ -156,10 +156,12 @@ static sched_bitmask_t sched_rq_watermark[NR_CPUS] ____cacheline_aligned_in_smp;
-
- #define x(p, set, mask)                                \
- 	do {                                           \
-+		smp_mb__before_atomic();               \
- 		if (set)                               \
- 			atomic_long_or((mask), (p));   \
- 		else                                   \
- 			atomic_long_and(~(mask), (p)); \
-+		smp_mb__after_atomic();                \
- 	} while (0)
-
- static __always_inline void sched_rq_watermark_fill_downwards(int cpu, unsigned int end,
-@@ -191,7 +193,9 @@ static __always_inline void sched_rq_watermark_fill_downwards(int cpu, unsigned
- 	}
-
- 	while (end_idx != start_idx) {
-+		smp_mb__before_atomic();
- 		atomic_long_set(p, set ? ~0UL : 0);
-+		smp_mb__after_atomic();
- 		p -= 1;
- 		end_idx -= 1;
- 	}
-
-From a587150a10f0c85e954b3e8d4d95eae59a4ccef9 Mon Sep 17 00:00:00 2001
-From: Alfred Chen <cchalpha@gmail.com>
-Date: Thu, 14 Jul 2022 16:33:06 +0000
-Subject: [PATCH 08/10] sched/alt: [Sync] f886aab8291c sched: Fix
- balance_push() vs __sched_setscheduler()
-
----
- kernel/sched/alt_core.c | 39 ++++++++++++++++++++++++++++++++++-----
- 1 file changed, 34 insertions(+), 5 deletions(-)
-
-diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
-index 427a1f75631b3..bd92ea2c2923d 100644
---- a/kernel/sched/alt_core.c
-+++ b/kernel/sched/alt_core.c
-@@ -3362,26 +3362,55 @@ static void do_balance_callbacks(struct rq *rq, struct callback_head *head)
-
- static void balance_push(struct rq *rq);
-
-+/*
-+ * balance_push_callback is a right abuse of the callback interface and plays
-+ * by significantly different rules.
-+ *
-+ * Where the normal balance_callback's purpose is to be ran in the same context
-+ * that queued it (only later, when it's safe to drop rq->lock again),
-+ * balance_push_callback is specifically targeted at __schedule().
-+ *
-+ * This abuse is tolerated because it places all the unlikely/odd cases behind
-+ * a single test, namely: rq->balance_callback == NULL.
-+ */
- struct callback_head balance_push_callback = {
- 	.next = NULL,
- 	.func = (void (*)(struct callback_head *))balance_push,
- };
-
--static inline struct callback_head *splice_balance_callbacks(struct rq *rq)
-+static inline struct callback_head *
-+__splice_balance_callbacks(struct rq *rq, bool split)
- {
- 	struct callback_head *head = rq->balance_callback;
-
--	if (head) {
--		lockdep_assert_held(&rq->lock);
-+	if (likely(!head))
-+		return NULL;
-+
-+	lockdep_assert_rq_held(rq);
-+	/*
-+	 * Must not take balance_push_callback off the list when
-+	 * splice_balance_callbacks() and balance_callbacks() are not
-+	 * in the same rq->lock section.
-+	 *
-+	 * In that case it would be possible for __schedule() to interleave
-+	 * and observe the list empty.
-+	 */
-+	if (split && head == &balance_push_callback)
-+		head = NULL;
-+	else
- 		rq->balance_callback = NULL;
--	}
-
- 	return head;
- }
-
-+static inline struct callback_head *splice_balance_callbacks(struct rq *rq)
-+{
-+	return __splice_balance_callbacks(rq, true);
-+}
-+
- static void __balance_callbacks(struct rq *rq)
- {
--	do_balance_callbacks(rq, splice_balance_callbacks(rq));
-+	do_balance_callbacks(rq, __splice_balance_callbacks(rq, false));
- }
-
- static inline void balance_callbacks(struct rq *rq, struct callback_head *head)
+ 
+-- 
+2.37.1.377.g679aad9e82
 
