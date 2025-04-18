@@ -372,8 +372,6 @@ if [ "$1" = "install" ]; then
     echo "    # copy the patched and compiled sources to /usr/src/$_headers_folder_name"
     echo "    sudo make modules_install"
     echo "    sudo make install"
-    echo "    sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname"
-    echo "    sudo grub-mkconfig -o /boot/grub/grub.cfg"
 
     msg2 "Note: Uninstalling requires manual intervention, use './install.sh uninstall-help' for more information."
     read -p "Continue ? Y/[n]: " _continue
@@ -419,14 +417,6 @@ if [ "$1" = "install" ]; then
       if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
         sudo emerge @module-rebuild --keep-going
       fi
-
-    else
-
-      msg2 "Creating initramfs"
-      sudo dracut --force --hostonly ${_dracut_options} --kver $_kernelname
-      msg2 "Updating GRUB"
-      sudo grub-mkconfig -o /boot/grub/grub.cfg
-
     fi
 
   fi
