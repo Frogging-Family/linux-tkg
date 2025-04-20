@@ -32,7 +32,9 @@ if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
   cp "$_where"/customization.cfg "$_where"/BIG_UGLY_FROGMINER
 
   # extract and define value of _EXT_CONFIG_PATH from customization file
-  eval `grep _EXT_CONFIG_PATH "$_where"/customization.cfg`
+  if [[ -z "$_EXT_CONFIG_PATH" ]]; then
+    eval `grep _EXT_CONFIG_PATH "$_where"/customization.cfg`
+  fi
 
   if [ -f "$_EXT_CONFIG_PATH" ]; then
     msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
