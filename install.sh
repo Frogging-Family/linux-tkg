@@ -198,7 +198,8 @@ if [ "$1" = "install" ]; then
 
   export KCPPFLAGS="-march=$_processor_opt"
   export KCFLAGS="-march=$_processor_opt"
-  export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt"
+  # when rust comes
+  # export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt"
 
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 

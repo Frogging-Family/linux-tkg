@@ -989,7 +989,7 @@ _tkg_srcprep() {
 
   typeset -Ag _cpu_marchs
   _cpu_marchs=(
-    ["x86-64"]="Baseline for any any X86 CPU (same as above)"
+    ["x86-64"]="Baseline for any X86 CPU (default)"
     ["x86-64-v2"]="Baseline for X86 CPUs newer than ~2008 (see https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels)"
     ["x86-64-v3"]="Baseline for X86 CPUS newer than ~2013 (see link above)"
     ["x86-64-v4"]="Baseline for Intel Skylake or newer, AMD zen4 or newer (see link above)"
@@ -1011,8 +1011,28 @@ _tkg_srcprep() {
     ["skylake"]="Intel Desktop Core 6th to 9th gen"
   )
 
-  if [ -n "$_processor_opt" ] && ! ( gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p' | grep "$_processor_opt" &> /dev/null ) ; then
-    warning "Processor micro architecture '$_processor_opt' does not exist"
+  _is_march_supported() {
+    if [[ "$_compiler" == "gcc" ]]; then
+      if ! ( gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p' | grep "$1" &> /dev/null ) ; then
+        return 1
+      fi
+    fi
+    if [[ "$_compiler" == "llvm" ]]; then
+      # "native" doesn't show up in clang's list, but it's supported
+      if [[ "$_march" != native ]] && ! ( clang -mcpu=help 2>&1 | grep "$1" &> /dev/null ) ; then
+        return 1
+      fi
+    fi
+    # When Rust comes, soon :tm:
+    # if which rustc &> /dev/null; then
+    #   if ! ( rustc --print target-cpus | grep "$1" &> /dev/null ) ; then
+    #     return 1
+    #   fi
+    # fi
+  }
+
+  if [ -n "$_processor_opt" ] && ! _is_march_supported "$_processor_opt" ; then
+    warning "Processor micro architecture '$_processor_opt' doesn't exist or is unsupported by current $_compiler compiler"
     if [ "$_nofallback" = "true" ]; then
       warning "Since _nofallback is enabled, exiting..."
       exit 1
@@ -1023,11 +1043,27 @@ _tkg_srcprep() {
   fi
 
   if [ -z "$_processor_opt" ]; then
+
+    # Drop march strings that are unsupported by current compiler
+    local _unsupported_marchs=""
+    for _march in "${!_cpu_marchs[@]}"; do
+      if ! _is_march_supported "$_march"; then
+        _unsupported_marchs+="$_march "
+        unset _cpu_marchs["$_march"]
+      fi
+    done
+
+    if [[ -n "$_unsupported_marchs" ]]; then
+      msg2 "These micro-architectures are unsupported by the currently selected $_compiler compiler"
+      msg2 "  $_unsupported_marchs"
+    fi
+
     msg2 "Please select the desired CPU micro-architecture"
-    msg2 "To get the full list of microarchitectures supported by your compiler"
-    msg2 "  - Clang: clang -mcpu=help"
-    msg2 "  - GCC: gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p'"
-    msg2 " march strings not offered in this list can be set directly in the '_processor_opt' variable in 'customization.cfg'"
+    msg2 "  Notes:"
+    msg2 "  - To get the full list of microarchitectures supported by your compiler"
+    msg2 "    - Clang: clang -mcpu=help"
+    msg2 "    - GCC: gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p'"
+    msg2 "  - Supported 'march' strings not shown bellow can be set directly in the '_processor_opt' variable in 'customization.cfg'"
     _default_key="x86-64"
     _prompt_from_dict '_cpu_marchs'
     _processor_opt="${_selected_key}"
