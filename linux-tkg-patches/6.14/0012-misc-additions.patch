@@ -238,3 +238,188 @@ index a54663f2e2ab9f..7ffad3eb0a0150 100644
  			case IP_VERSION(13, 0, 14):
  			case IP_VERSION(11, 0, 7):
  			case IP_VERSION(11, 0, 11):
+From 26f452f76a41a44be2f6e6b171433a2115972c44 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Sergio=20Gonz=C3=A1lez=20Collado?=
+ <sergio.collado@gmail.com>
+Date: Sun, 2 Mar 2025 23:15:18 +0100
+Subject: [PATCH] Kunit to check the longest symbol length
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The longest length of a symbol (KSYM_NAME_LEN) was increased to 512
+in the reference [1]. This patch adds kunit test suite to check the longest
+symbol length. These tests verify that the longest symbol length defined
+is supported.
+
+This test can also help other efforts for longer symbol length,
+like [2].
+
+The test suite defines one symbol with the longest possible length.
+
+The first test verify that functions with names of the created
+symbol, can be called or not.
+
+The second test, verify that the symbols are created (or
+not) in the kernel symbol table.
+
+[1] https://lore.kernel.org/lkml/20220802015052.10452-6-ojeda@kernel.org/
+[2] https://lore.kernel.org/lkml/20240605032120.3179157-1-song@kernel.org/
+
+Tested-by: Martin Rodriguez Reboredo <yakoyoku@gmail.com>
+Reviewed-by: Shuah Khan <skhan@linuxfoundation.org>
+Reviewed-by: Rae Moar <rmoar@google.com>
+Signed-off-by: Sergio González Collado <sergio.collado@gmail.com>
+Link: https://github.com/Rust-for-Linux/linux/issues/504
+Source: https://lore.kernel.org/rust-for-linux/20250302221518.76874-1-sergio.collado@gmail.com/
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/issues/63
+---
+ arch/x86/tools/insn_decoder_test.c |  3 +-
+ lib/Kconfig.debug                  |  9 ++++
+ lib/Makefile                       |  2 +
+ lib/longest_symbol_kunit.c         | 82 ++++++++++++++++++++++++++++++
+ 4 files changed, 95 insertions(+), 1 deletion(-)
+ create mode 100644 lib/longest_symbol_kunit.c
+
+diff --git a/arch/x86/tools/insn_decoder_test.c b/arch/x86/tools/insn_decoder_test.c
+index 472540aeabc235..6c2986d2ad1174 100644
+--- a/arch/x86/tools/insn_decoder_test.c
++++ b/arch/x86/tools/insn_decoder_test.c
+@@ -10,6 +10,7 @@
+ #include <assert.h>
+ #include <unistd.h>
+ #include <stdarg.h>
++#include <linux/kallsyms.h>
+ 
+ #define unlikely(cond) (cond)
+ 
+@@ -106,7 +107,7 @@ static void parse_args(int argc, char **argv)
+ 	}
+ }
+ 
+-#define BUFSIZE 256
++#define BUFSIZE (256 + KSYM_NAME_LEN)
+ 
+ int main(int argc, char **argv)
+ {
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index 35796c290ca351..a6da7f4411f461 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -2838,6 +2838,15 @@ config FORTIFY_KUNIT_TEST
+ 	  by the str*() and mem*() family of functions. For testing runtime
+ 	  traps of FORTIFY_SOURCE, see LKDTM's "FORTIFY_*" tests.
+ 
++config LONGEST_SYM_KUNIT_TEST
++	tristate "Test the longest symbol possible" if !KUNIT_ALL_TESTS
++	depends on KUNIT && KPROBES
++	default KUNIT_ALL_TESTS
++	help
++	  Tests the longest symbol possible
++
++	  If unsure, say N.
++
+ config HW_BREAKPOINT_KUNIT_TEST
+ 	bool "Test hw_breakpoint constraints accounting" if !KUNIT_ALL_TESTS
+ 	depends on HAVE_HW_BREAKPOINT
+diff --git a/lib/Makefile b/lib/Makefile
+index 4f3d00a2fd6592..9a54526008d0a5 100644
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -398,6 +398,8 @@ obj-$(CONFIG_FORTIFY_KUNIT_TEST) += fortify_kunit.o
+ obj-$(CONFIG_CRC_KUNIT_TEST) += crc_kunit.o
+ obj-$(CONFIG_SIPHASH_KUNIT_TEST) += siphash_kunit.o
+ obj-$(CONFIG_USERCOPY_KUNIT_TEST) += usercopy_kunit.o
++obj-$(CONFIG_LONGEST_SYM_KUNIT_TEST) += longest_symbol_kunit.o
++CFLAGS_longest_symbol_kunit.o += $(call cc-disable-warning, missing-prototypes)
+ 
+ obj-$(CONFIG_GENERIC_LIB_DEVMEM_IS_ALLOWED) += devmem_is_allowed.o
+ 
+diff --git a/lib/longest_symbol_kunit.c b/lib/longest_symbol_kunit.c
+new file mode 100644
+index 00000000000000..e3c28ff1807f0d
+--- /dev/null
++++ b/lib/longest_symbol_kunit.c
+@@ -0,0 +1,82 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Test the longest symbol length. Execute with:
++ *  ./tools/testing/kunit/kunit.py run longest-symbol
++ *  --arch=x86_64 --kconfig_add CONFIG_KPROBES=y --kconfig_add CONFIG_MODULES=y
++ *  --kconfig_add CONFIG_RETPOLINE=n --kconfig_add CONFIG_CFI_CLANG=n
++ *  --kconfig_add CONFIG_MITIGATION_RETPOLINE=n
++ */
++
++#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
++
++#include <kunit/test.h>
++#include <linux/stringify.h>
++#include <linux/kprobes.h>
++#include <linux/kallsyms.h>
++
++#define DI(name) s##name##name
++#define DDI(name) DI(n##name##name)
++#define DDDI(name) DDI(n##name##name)
++#define DDDDI(name) DDDI(n##name##name)
++#define DDDDDI(name) DDDDI(n##name##name)
++
++/*Generate a symbol whose name length is 511 */
++#define LONGEST_SYM_NAME  DDDDDI(g1h2i3j4k5l6m7n)
++
++#define RETURN_LONGEST_SYM 0xAAAAA
++
++noinline int LONGEST_SYM_NAME(void);
++noinline int LONGEST_SYM_NAME(void)
++{
++	return RETURN_LONGEST_SYM;
++}
++
++_Static_assert(sizeof(__stringify(LONGEST_SYM_NAME)) == KSYM_NAME_LEN,
++"Incorrect symbol length found. Expected KSYM_NAME_LEN: "
++__stringify(KSYM_NAME_LEN) ", but found: "
++__stringify(sizeof(LONGEST_SYM_NAME)));
++
++static void test_longest_symbol(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, RETURN_LONGEST_SYM, LONGEST_SYM_NAME());
++};
++
++static void test_longest_symbol_kallsyms(struct kunit *test)
++{
++	unsigned long (*kallsyms_lookup_name)(const char *name);
++	static int (*longest_sym)(void);
++
++	struct kprobe kp = {
++		.symbol_name = "kallsyms_lookup_name",
++	};
++
++	if (register_kprobe(&kp) < 0) {
++		pr_info("%s: kprobe not registered", __func__);
++		KUNIT_FAIL(test, "test_longest_symbol kallsyms: kprobe not registered\n");
++		return;
++	}
++
++	kunit_warn(test, "test_longest_symbol kallsyms: kprobe registered\n");
++	kallsyms_lookup_name = (unsigned long (*)(const char *name))kp.addr;
++	unregister_kprobe(&kp);
++
++	longest_sym =
++		(void *) kallsyms_lookup_name(__stringify(LONGEST_SYM_NAME));
++	KUNIT_EXPECT_EQ(test, RETURN_LONGEST_SYM, longest_sym());
++};
++
++static struct kunit_case longest_symbol_test_cases[] = {
++	KUNIT_CASE(test_longest_symbol),
++	KUNIT_CASE(test_longest_symbol_kallsyms),
++	{}
++};
++
++static struct kunit_suite longest_symbol_test_suite = {
++	.name = "longest-symbol",
++	.test_cases = longest_symbol_test_cases,
++};
++kunit_test_suite(longest_symbol_test_suite);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Test the longest symbol length");
++MODULE_AUTHOR("Sergio González Collado");
