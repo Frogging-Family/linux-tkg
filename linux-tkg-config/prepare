@@ -124,8 +124,10 @@ _prompt_from_array() {
     exit 1
   fi
 
-  _N=$(($#-1))
-  _index=0
+  unset _selected_index
+
+  local _N=$(($#-1))
+  local _index=0
   for _value in "$@"; do
     if [ "$_index" = "$_default_index" ]; then
       plain "  > ${_index}) ${_value}"
@@ -147,12 +149,45 @@ _prompt_from_array() {
     fi
   done
 
-  _natural_index=$(($_selected_index + 1))
+  local _natural_index=$(($_selected_index + 1))
   _selected_value="${!_natural_index}"
   plain "Selected: ${_selected_value}"
+}
 
-  unset _natural_index
-  unset _default_index
+_prompt_from_dict() {
+  # Prompts from dict that it receives by name, selects default key on empty user input
+  # Set the _default_key variable to enable default index selection
+
+  if [ $# != "1" ]; then
+    warning "Prompting on an empty dict, please report this issue."
+    exit 1
+  fi
+
+  unset _selected_key
+
+  declare -n _dict="$1"
+
+  for _key in "${!_dict[@]}"; do
+    if [ "$_key" = "$_default_key" ]; then
+      plain "  > ${_key}: ${_dict[$_key]}"
+    else
+      plain "    ${_key}: ${_dict[$_key]}"
+    fi
+  done
+  while true; do
+    read -rp "Section: ";
+    if [[ -z "$REPLY" && -n "$_default_key" ]]; then
+      _selected_key="$_default_key"
+      break
+    elif [[ -v _dict["$REPLY"] ]]; then
+      _selected_key="$REPLY"
+      break
+    else
+      echo "Selection not part of the possibilities, please re-try"
+    fi
+  done
+
+  plain "Selected: ${_selected_key}"
 }
 
 _set_kver_internal_vars() {
@@ -271,95 +306,56 @@ _set_cpu_scheduler() {
     ["cfs"]="CFS (Completely Fair Scheduler) Linux kernel's default for ≤ 6.5"
     ["muqss"]="MuQSS (Multiple Queue Skiplist Scheduler)"
     ["upds"]="Undead PDS (TkG)"
-    ["cacule"]="CacULE"
-    ["tt"]="TT (TaskType)"
-    ["echo"]="ECHO (Enhanced CPU Handling Orchestrator)"
     ["bore"]="BORE (Burst-Oriented Response Enhancer) CPU Scheduler"
     ["bore-eevdf"]="BORE (Burst-Oriented Response Enhancer - EEVDF variant) CPU Scheduler"
   )
 
-  # CPU SCHED selector - _projectc_unoff=1 sets unofficial Project C revision flag for a given version
+  _avail_cpu_scheds=("$_default_cpu_sched")
+  _recommended_sched="$_default_cpu_sched"
+  if [[ "$_kver" =~ ^5(04|07|12|13|14|15|16|17)$ ]]; then
+    _recommended_sched="pds"
+  elif [[ "$_kver" =~ ^5(09|10|11)$ ]]; then
+    _recommended_sched="upds"
+  fi
+
+  # automatically append "pds" & "bmq" when the patch 0009-prjc.patch exists for the chosen kernel version
+  if [[ -f "$_where/linux-tkg-patches/${_basekernel}/0009-prjc.patch" ]]; then
+    _avail_cpu_scheds+=("pds" "bmq")
+  fi
+
+  # automatically append "bore" when the patch 0002-bore.patch exists for the chosen kernel version
+  if [[ -f "$_where/linux-tkg-patches/${_basekernel}/0001-bore.patch" ]]; then
+    _avail_cpu_scheds+=("bore")
+  fi
+
+  # Manual scheduler additions
   if [ "$_kver" = "504" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "muqss" "cacule" "cfs")
+    _avail_cpu_scheds+=("pds" "bmq" "muqss") # PDS is not PrjC in this version, needs to be added manually
   elif [ "$_kver" = "507" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "muqss" "cfs")
+    _avail_cpu_scheds+=("muqss")
   elif [ "$_kver" = "508" ]; then
-    _avail_cpu_scheds=("upds" "pds" "bmq" "cfs")
+    _avail_cpu_scheds+=("upds")
   elif [[ "$_kver" =~ ^(509|511)$ ]]; then
-    _avail_cpu_scheds=("upds" "pds" "bmq" "muqss" "cfs")
+    _avail_cpu_scheds+=("upds" "muqss")
   elif [ "$_kver" = "510" ]; then
-    _avail_cpu_scheds=("upds" "pds" "bmq" "muqss" "cacule" "cfs")
+    _avail_cpu_scheds+=("upds" "muqss")
   elif [ "$_kver" = "512" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "muqss" "cacule" "cfs")
+    _avail_cpu_scheds+=("muqss")
   elif [ "$_kver" = "513" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "muqss" "cacule" "cfs")
-  elif [ "$_kver" = "514" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
-  elif [ "$_kver" = "515" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "cacule" "tt" "bore" "cfs")
-  elif [ "$_kver" = "516" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "cacule" "cfs")
-  elif [ "$_kver" = "517" ]; then
-    _avail_cpu_scheds=("pds" "bmq" "cacule" "tt" "cfs" "bore")
-  elif [ "$_kver" = "518" ]; then
-    _avail_cpu_scheds=("cfs" "pds" "bmq" "cacule" "tt" "bore")
-  elif [ "$_kver" = "519" ]; then
-    _avail_cpu_scheds=("cfs" "pds" "bmq" "cacule" "tt" "bore")
-  elif [ "$_kver" = "600" ]; then
-    _avail_cpu_scheds=("cfs" "pds" "bmq" "tt" "bore")
-  elif [ "$_kver" = "601" ]; then
-    _avail_cpu_scheds=("cfs" "pds" "bmq" "tt" "bore")
-  elif [ "$_kver" = "602" ]; then
-    _avail_cpu_scheds=("cfs" "pds" "bmq" "tt" "bore")
-  elif [ "$_kver" = "603" ]; then
-    _avail_cpu_scheds=("cfs" "pds" "bmq" "tt" "bore")
-  elif [ "$_kver" = "604" ]; then
-    _avail_cpu_scheds=("cfs" "eevdf" "pds" "bmq" "tt" "bore")
+    _avail_cpu_scheds+=("muqss")
   elif [ "$_kver" = "605" ]; then
-    _avail_cpu_scheds=("cfs" "eevdf" "pds" "bmq" "tt" "bore" "bore-eevdf")
-  elif [ "$_kver" = "606" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "pds" "bmq")
-  elif [ "$_kver" = "607" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "echo" "pds" "bmq")
-  elif [ "$_kver" = "608" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "echo" "pds" "bmq")
-  elif [ "$_kver" = "609" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "pds" "bmq")
-  elif [ "$_kver" = "610" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "pds" "bmq")
-  elif [ "$_kver" = "611" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "pds" "bmq")
-  elif [ "$_kver" = "612" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "pds" "bmq")
-  elif [ "$_kver" = "613" ]; then
-    _avail_cpu_scheds=("eevdf" "bore" "pds" "bmq")
-  elif [ "$_kver" = "614" ]; then
-    _avail_cpu_scheds=("eevdf" "bore")
-  elif [ "$_kver" = "615" ]; then
-    _avail_cpu_scheds=("eevdf" "bore")
-  else
-    _avail_cpu_scheds=("$_default_cpu_sched")
+    _avail_cpu_scheds+=("bore-eevdf")
   fi
 
   if [ "${_preempt_rt}" = "1" ]; then
     warning "! Since you have enabled _preempt_rt, incompatible cpu schedulers will not be available !"
-    if [[ "${_avail_cpu_scheds[*]}" =~ "cfs" ]]; then
-      _avail_cpu_scheds_rt=("cfs")
-    fi
-    if [[ "${_avail_cpu_scheds[*]}" =~ "eevdf" ]] && ! [[ "${_avail_cpu_scheds[*]}" =~ "cfs" ]]; then
-      _avail_cpu_scheds_rt=("eevdf")
-    fi
-    _avail_cpu_scheds=(${_avail_cpu_scheds_rt[*]})
+    _avail_cpu_scheds=("$_default_cpu_sched")
   fi
 
   # Populate descriptions of the available CPU schedulers
   _avail_cpu_scheds_text=()
   for _sched in "${_avail_cpu_scheds[@]}"; do
-    if [ "$_sched" = "pds" ] || [ "$_sched" = "bmq" ] && [ "$_projectc_unoff" = "1" ]; then
-      _avail_cpu_scheds_text+=("Project C / ${_sched^^} (unofficial port - ! possibly unstable !)")
-    else
-      _avail_cpu_scheds_text+=("${_sched_description_array[$_sched]}")
-    fi
+    _avail_cpu_scheds_text+=("${_sched_description_array[$_sched]}")
   done
 
   if ! [[ ${_avail_cpu_scheds[*]} =~ "$_cpusched" ]]; then
@@ -378,6 +374,11 @@ _set_cpu_scheduler() {
     msg2 "Select \"$_default_cpu_sched\" (linux kernel's default) if unsure."
 
     _default_index="0"
+    while [[ "${_avail_cpu_scheds[$_default_index]}" != "$_recommended_sched" ]]; do
+      _default_index=$((_default_index + 1))
+      [[ "$_default_index" -ge 20 ]] && error "Bug in scheduler selection logic" && exit 1
+    done
+
     _prompt_from_array "${_avail_cpu_scheds_text[@]}"
     _cpusched=${_avail_cpu_scheds[$_selected_index]}
   fi
@@ -513,18 +514,20 @@ _tkg_initscript() {
     exit 1
   fi
 
-  typeset -Ag _deprecated_config_var_set
-
-  # Check if user is defining deprecated config vars
-  _deprecated_config_var_set=(
-    ["_use_tmpfs"]=`[ -n "$_use_tmpfs" ]; echo $?`
-    ["_source_in_tmpfs"]=`[ -n "$_source_in_tmpfs" ]; echo $?`
-    ["_tmpfs_path"]=`[ -n "$_tmpfs_path" ]; echo $?`
+  local _deprecated_config_vars=(
+    "_use_tmpfs"
+    "_source_in_tmpfs"
+    "_tmpfs_path"
+    "_cacule_rdb"
+    "_cacule_rdb_interval"
+    "_tt_high_hz"
+    "_x86_64_isalvl"
+    "_dracut_options"
   )
 
-  for _deprectated_config_var in "${!_deprecated_config_var_set[@]}"; do
-    if [ "${_deprecated_config_var_set[$_deprectated_config_var]}" == "0" ]; then
-      warning "The deprecated config var $_deprectated_config_var has been set"
+  for _deprecated_var in "${_deprecated_config_vars[@]}"; do
+    if [ -n "${!_deprecated_var}" ]; then
+      warning "The deprecated config var $_deprecated_var has been set"
       warning "Please check the latest customization.cfg file to see what replaces it"
       exit 1
     fi
@@ -663,38 +666,6 @@ _tkg_srcprep() {
 
   if [ -z $_debug ]; then
 
-  # graysky's cpu opts - https://github.com/graysky2/kernel_compiler_patch
-
-  _patch_location="$srcdir"
-
-  if [ "$_kver" = "504" ]; then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-4.19-5.4"
-  elif [ "$_kver" = "507" ]; then
-    _outdated="outdated_versions/"
-    _patch_name="enable_additional_cpu_optimizations_for_gcc_v10.1+_kernel_v5.7"
-  elif (( 508 <= "$_kver" &&  "$_kver" <= 514 )); then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-5.8-5.14"
-  elif [[ "$_kver" =~ ^(515|516)$ ]]; then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-5.15-5.16"
-  elif ( [ "$_kver" = "601" ] && [ "$_sub" -lt "79" ] ) || ( [ "$_kver" = "606" ] && [ "$_sub" -lt "18" ] ) || ( [ "$_kver" = "607" ] && [ "$_sub" -lt "6" ] ) || [[ "$_kver" =~ ^(517|518|519|600|602|603|604|605)$ ]]; then
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-5.17-6.1.78"
-  elif [ "$_kver" = "615" ]; then
-    warning "Skipping graysky2 kernel compiler patch on this revision"
-  else
-    _patch_name="more-ISA-levels-and-uarches-for-kernel-6.1.79+"
-  fi
-
-  curl "https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/master/${_outdated}${_patch_name}.patch" > "$srcdir"/"${_patch_name}".patch || true
-  tkgpatch="${_patch_location}/${_patch_name}.patch"
-  if [ -e "$tkgpatch" ]; then
-    _msg="Applying graysky's cpu opts patch" && _tkg_patcher
-    if grep -wq "X86_64_VERSION" "$tkgpatch"; then
-      _graysky_legacy="false"
-    fi
-  else
-    msg2 "Couldn't find graysky's cpu opts patch for this version"
-  fi
-
   # PREEMPT_RT patch
   if [ "${_preempt_rt}" = "1" ] && [[ $_kver -lt 612 ]]; then
     if [ "${_rt_subver_map[$_basekernel]+_}" = "_" ]; then
@@ -774,19 +745,6 @@ _tkg_srcprep() {
   tkgpatch="$srcdir/0001-mm-Support-soft-dirty-flag-reset-for-VA-range.patch" && _tkg_patcher
   tkgpatch="$srcdir/0002-mm-Support-soft-dirty-flag-read-with-reset.patch" && _tkg_patcher
 
-  # prjc/bmq patch rev
-  if [ "$_kver" = "508" ] || [ "$_kver" = "507" ] || [ "$_kver" = "509" ] || [ "$_kver" = "511" ] || [ "$_kver" = "513" ] || [ "$_kver" = "514" ]; then
-    rev=3
-  elif [ "$_kver" = "510" ] || [ "$_kver" = "608" ]; then
-    rev=5
-  elif [ "$_kver" = "512" ] || [ "$_kver" = "515" ] || [ "$_kver" = "516" ] || [ "$_kver" = "601" ] || [ "$_kver" = "603" ] || [ "$_kver" = "608" ] || [ "$_kver" = "611" ]; then
-    rev=1
-  elif [ "$_kver" = "518" ] || [ "$_kver" = "602" ] || [ "$_kver" = "607" ] || [ "$_kver" = "610" ]; then
-    rev=2
-  else
-    rev=0
-  fi
-
   if [ "${_cpusched}" = "muqss" ]; then
     # MuQSS
     _msg="Applying MuQSS base patch"
@@ -816,7 +774,7 @@ _tkg_srcprep() {
         tkgpatch="$srcdir/0005${doa}-glitched-ondemand-pds.patch" && _tkg_patcher
       fi
     else
-      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
+      tkgpatch="$srcdir/0009-prjc.patch" && _tkg_patcher
       if [ "${_aggressive_ondemand}" = "true" ]; then
         _msg="Applying prjc PDS/BMQ agressive ondemand governor patch"
         tkgpatch="$srcdir/0009-glitched-ondemand-bmq.patch" && _tkg_patcher
@@ -830,7 +788,7 @@ _tkg_srcprep() {
     # Project C / BMQ
     _msg="Applying Project C / BMQ base patch"
     if [ "$_kver" != "504" ]; then
-      tkgpatch="$srcdir/0009-prjc_v${_basekernel}-r${rev}.patch" && _tkg_patcher
+      tkgpatch="$srcdir/0009-prjc.patch" && _tkg_patcher
     else
       tkgpatch="$srcdir/0009-bmq_v5.4-r2.patch" && _tkg_patcher
     fi
@@ -842,33 +800,8 @@ _tkg_srcprep() {
 
     _msg="Applying Glitched BMQ patch"
     tkgpatch="$srcdir/0009-glitched-bmq.patch" && _tkg_patcher
-  elif [ "${_cpusched}" = "cacule" ]; then
-    _msg="Applying cacule patch"
-    if [[ $_kver -lt 515 ]]; then
-      wget -P "$srcdir" "https://raw.githubusercontent.com/hamadmarri/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-    elif [[ $_kver = 515 ]]; then
-      wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/cacule-${_basekernel}.patch"
-    else
-      wget -P "$srcdir" "https://raw.githubusercontent.com/CachyOS/cacule-cpu-scheduler/master/patches/CacULE/v${_basekernel}/0001-cacULE-${_basekernel}.patch"
-    fi
-    tkgpatch="$srcdir/cacule-${_basekernel}.patch" && _tkg_patcher
-    tkgpatch="$srcdir/0001-cacULE-${_basekernel}.patch" && _tkg_patcher
-  elif [ "${_cpusched}" = "tt" ]; then
-    _msg="Applying TT patch"
-    curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-tt.patch" > "$srcdir"/tt.patch
-    tkgpatch="$srcdir/tt.patch" && _tkg_patcher
-    if [ "$_tt_high_hz" = "true" ] && [ $_kver = 515 ]; then
-      _msg="Applying TT High HZ patch"
-      curl "https://raw.githubusercontent.com/hamadmarri/TT-CPU-Scheduler/master/patches/${_basekernel}/high-hz.patch" > "$srcdir"/tt_high_hz.patch
-      tkgpatch="$srcdir/tt_high_hz.patch" && _tkg_patcher
-    fi
-  elif [ "${_cpusched}" = "echo" ]; then
-    _msg="Applying ECHO patch"
-    curl "https://raw.githubusercontent.com/hamadmarri/ECHO-CPU-Scheduler/main/${_basekernel}.y/linux-${_basekernel}-echo.patch" > "$srcdir"/0001-echo.patch
-    tkgpatch="$srcdir/0001-echo.patch" && _tkg_patcher
   elif [ "${_cpusched}" = "bore" ]; then
     _msg="Applying BORE patch"
-    curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-bore.patch" > "$srcdir"/0001-bore.patch
     tkgpatch="$srcdir/0001-bore.patch" && _tkg_patcher
   elif [ "${_cpusched}" = "cfs" ]; then
     _msg="Applying Glitched CFS additions patch"
@@ -887,19 +820,17 @@ _tkg_srcprep() {
       tkgpatch="$srcdir/0003-glitched-eevdf-additions.patch" && _tkg_patcher
       if [ "$_eevdf_sched_ext_support" = "true" ] && [[ $_kver -ge 608 ]] && [[ $_kver -le 611 ]]; then
         _msg="Applying Sched_ext support patch"
-        curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-sched-ext.patch" > "$srcdir"/0001-sched-ext.patch
         tkgpatch="$srcdir/0001-sched-ext.patch" && _tkg_patcher
       fi
     fi
 
     if [ "${_cpusched}" = "bore-eevdf" ]; then
       _msg="Applying BORE-EEVDF patch"
-      curl "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/${_basekernel}/sched/0001-bore-eevdf.patch" > "$srcdir"/0001-bore-eevdf.patch
       tkgpatch="$srcdir/0001-bore-eevdf.patch" && _tkg_patcher
     fi
   fi
 
-  if [ "${_cpusched}" = "cfs" ] || [ "${_cpusched}" = "cacule" ] || [ "${_cpusched}" = "tt" ] || [ "${_cpusched}" = "bore" ] || [[ "${_cpusched}" =~ "eevdf" ]]; then
+  if [ "${_cpusched}" = "cfs" ] || [ "${_cpusched}" = "bore" ] || [[ "${_cpusched}" =~ "eevdf" ]]; then
     _msg="Applying Glitched CFS/EEVDF patch"
     tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
   fi
@@ -1056,96 +987,91 @@ _tkg_srcprep() {
     _enable "FONT_AUTOSELECT"
   fi
 
-  # cpu opt
-  _cpu_marchs=("generic_cpu")
-  if [ "$_graysky_legacy" != "false" ]; then
-    _cpu_marchs+=("generic_cpu2" "generic_cpu3" "generic_cpu4")
-  fi
-  _cpu_marchs+=("native_amd" "native_intel")
-  _cpu_marchs+=("k8" "k8sse3" "k10" "barcelona" "bobcat" "jaguar" "bulldozer" "piledriver")
-  _cpu_marchs+=("steamroller" "excavator" "zen" "zen2" "zen3" "zen4" "zen5" "mpsc" "atom" "core2" "nehalem" "westmere")
-  _cpu_marchs+=("bonnell" "silvermont" "sandybridge" "ivybridge" "haswell" "broadwell" "skylake")
-  _cpu_marchs+=("skylakex" "cannonlake" "goldmont" "goldmontplus" "cascadelake" "emeraldrapids")
-  _cpu_marchs+=("cooperlake" "tigerlake" "sapphirerapids" "rocketlake" "alderlake" "raptorlake" "meteorlake")
-
-  if [[ "$_kver" -ge 601 ]]; then
-    _cpu_marchs+=("icelake_client" "icelake_server")
-
-    # change "icelake" into "icelake_client" to fit with graysky patches for kernels >=6.1
-    [[ "$_processor_opt" == "icelake" ]] && _processor_opt="icelake_client"
-  else
-    _cpu_marchs+=("icelake")
-
-    # channge "icelake_client" to "icelake" to fit with grasky patches for kernels < 6.1
-    [[ "$_processor_opt" == "icelake_client" ]] && _processor_opt="icelake"
-  fi
-
-  typeset -A _generic_march_map
-  _generic_march_map=(
-    ["generic"]="generic_cpu"
-    ["generic_v2"]="generic_cpu2"
-    ["generic_v3"]="generic_cpu3"
-    ["generic_v4"]="generic_cpu4"
+  typeset -Ag _cpu_marchs
+  _cpu_marchs=(
+    ["x86-64"]="Baseline for any X86 CPU (default)"
+    ["x86-64-v2"]="Baseline for X86 CPUs newer than ~2008 (see https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels)"
+    ["x86-64-v3"]="Baseline for X86 CPUS newer than ~2013 (see link above)"
+    ["x86-64-v4"]="Baseline for Intel Skylake or newer, AMD zen4 or newer (see link above)"
+    ["native"]="Automatically tune for the current CPU"
+    ["znver5"]="AMD Ryzen 9000 | Mobile Ryzen AI (MAX) 300 | EPYC 9005"
+    ["znver4"]="AMD Ryzen 8000/7000 | Mobile Ryzen 200 | Threadripper 7000WX | EPYC 9004/8004/4004"
+    ["znver3"]="AMD Ryzen 6000/5000 | Mobile Ryzen 7030/5000 | Threadripper 5000WX | EPYC 7003"
+    ["znver2"]="AMD Ryzen 4000/3000 | Mobile Ryzen 5[3,5,7]00U | Threadripper 3000WX | EPYC 7002"
+    ["znver1"]="AMD Ryzen 1000/2000 | Athlon 200/300/3000 | Threadripper 1000 | EPYC 7001"
+    ["arrowlake-s"]="Intel Desktop Core Ultra 200"
+    ["arrowlake"]="Intel Laptop Core Ultra 200"
+    ["lunarlake"]="Intel Laptop Core Ultra 200V"
+    ["meteorlake"]="Intel Laptop Core Ultra 100"
+    ["raptorlake"]="Intel Core 14th & 13th gen"
+    ["alderlake"]="Intel Core 12th gen"
+    ["rocketlake"]="Intel Core 11th gen (see https://en.wikipedia.org/wiki/Rocket_Lake)"
+    ["tigerlake"]="Intel Laptop Core 11th gen"
+    ["icelake-client"]="Intel Desktop Core 10th gen"
+    ["skylake"]="Intel Desktop Core 6th to 9th gen"
   )
-  if [ -n "$_processor_opt" ]; then
-    # Replace customization.cfg convention with .config convention for generic
-    if [[ "${!_generic_march_map[@]}" =~ "$_processor_opt" ]]; then
-      _processor_opt="${_generic_march_map[$_processor_opt]}"
+
+  _is_march_supported() {
+    if [[ "$_compiler" == "gcc" ]]; then
+      if ! ( gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p' | grep "$1" &> /dev/null ) ; then
+        return 1
+      fi
     fi
-    if ! [[ "${_cpu_marchs[@]}" =~ "$_processor_opt" ]]; then
-      warning "the setup _processor_opt=\"${_processor_opt}\" not recognized. Prompting..."
+    if [[ "$_compiler" == "llvm" ]]; then
+      # "native" doesn't show up in clang's list, but it's supported
+      if [[ "$_march" != native ]] && ! ( clang -mcpu=help 2>&1 | grep "$1" &> /dev/null ) ; then
+        return 1
+      fi
+    fi
+    # When Rust comes, soon :tm:
+    # if which rustc &> /dev/null; then
+    #   if ! ( rustc --print target-cpus | grep "$1" &> /dev/null ) ; then
+    #     return 1
+    #   fi
+    # fi
+  }
+
+  if [ -n "$_processor_opt" ] && ! _is_march_supported "$_processor_opt" ; then
+    warning "Processor micro architecture '$_processor_opt' doesn't exist or is unsupported by current $_compiler compiler"
+    if [ "$_nofallback" = "true" ]; then
+      warning "Since _nofallback is enabled, exiting..."
+      exit 1
+    else
+      warning "Please select another"
       _processor_opt=""
     fi
   fi
 
   if [ -z "$_processor_opt" ]; then
+
+    # Drop march strings that are unsupported by current compiler
+    local _unsupported_marchs=""
+    for _march in "${!_cpu_marchs[@]}"; do
+      if ! _is_march_supported "$_march"; then
+        _unsupported_marchs+="$_march "
+        unset _cpu_marchs["$_march"]
+      fi
+    done
+
+    if [[ -n "$_unsupported_marchs" ]]; then
+      msg2 "These micro-architectures are unsupported by the currently selected $_compiler compiler"
+      msg2 "  $_unsupported_marchs"
+    fi
+
     msg2 "Please select the desired CPU micro-architecture"
-    _default_index="0"
-    _prompt_from_array "${_cpu_marchs[@]}"
-    _processor_opt="${_selected_value}"
+    msg2 "  Notes:"
+    msg2 "  - To get the full list of microarchitectures supported by your compiler"
+    msg2 "    - Clang: clang -mcpu=help"
+    msg2 "    - GCC: gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p'"
+    msg2 "  - Supported 'march' strings not shown bellow can be set directly in the '_processor_opt' variable in 'customization.cfg'"
+    _default_key="x86-64"
+    _prompt_from_dict '_cpu_marchs'
+    _processor_opt="${_selected_key}"
   fi
 
-  msg2 "Setting cpu march to $_processor_opt"
+  msg2 "Setting cpu micro architecture to $_processor_opt"
 
-  for _march in "${_cpu_marchs[@]}"
-  do
-    _march_upper=`echo "$_march" | tr '[a-z]' '[A-Z]'`
-    if [ "$_processor_opt" = "$_march" ]; then
-      if [[ "$_march" = "generic"* ]]; then
-        _enable "${_march_upper}"
-      else
-        _enable "M${_march_upper}"
-      fi
-    else
-      if [[ "$_march" = "generic"* ]]; then
-        _disable "${_march_upper}"
-      else
-        _disable "M${_march_upper}"
-      fi
-    fi
-  done
-
-  # x86_64 Compiler ISA level
-  if [ "$_processor_opt" = "generic_cpu" ]; then
-    if [[ -z "$_x86_64_isalvl" || ! "$_x86_64_isalvl" =~ ^(1|2|3)$ ]]; then
-      plain "Please select the desired x86_64 compiler ISA level"
-      plain "You can find the best version for your CPU by running one of the following:"
-      msg2 "/lib/ld-linux-x86-64.so.2 --help | grep supported"
-      msg2 "/lib64/ld-linux-x86-64.so.2 --help | grep supported"
-      _x86_64_isalvl_array_text=(
-        "x86-64-v1"
-        "x86-64-v2"
-        "x86-64-v3"
-      )
-      _default_index="0"
-      _prompt_from_array "${_x86_64_isalvl_array_text[@]}"
-      _x86_64_isalvl="$((_selected_index+1))"
-    fi
-
-    scripts/config --set-val "X86_64_VERSION" "$_x86_64_isalvl"
-
-    msg2 "Setting generic_cpu to x86-64-v$_x86_64_isalvl"
-  fi
+  echo "_processor_opt='$_processor_opt'" >> "$_where"/BIG_UGLY_FROGMINER
 
   # Disable some debugging
   if [ "${_debugdisable}" = "true" ]; then
@@ -1186,19 +1112,6 @@ _tkg_srcprep() {
     # PDS default config
     _enable "SCHED_ALT" "SCHED_PDS"
     _disable "SCHED_BMQ"
-  elif [ "${_cpusched}" = "cacule" ]; then
-    _enable "SCHED_AUTOGROUP" "CACULE_SCHED"
-    _disable "BSD_PROCESS_ACCT" "TASK_XACCT" "CGROUP_CPUACCT" "CGROUP_DEBUG" "CACULE_RDB"
-    if [ "$_cacule_rdb" = "true" ]; then
-      _enable "CACULE_RDB"
-      scripts/config --set-val "RDB_INTERVAL" "$_cacule_rdb_interval"
-    fi
-  elif [ "${_cpusched}" = "tt" ]; then
-    _enable "TT_SCHED"
-    _enable "TT_ACCOUNTING_STATS"
-  elif [ "${_cpusched}" = "echo" ]; then
-    _enable "ECHO_SCHED"
-    _disable "FAIR_GROUP_SCHED" "SCHED_AUTOGROUP" "SCHED_CORE"
   elif [ "${_cpusched}" = "upds" ]; then
     # PDS default config
     _enable "SCHED_PDS"
@@ -1405,21 +1318,11 @@ _tkg_srcprep() {
   # timer freq
   _avail_timer_frequencies=("100" "250" "300" "500" "750" "1000")
   _avail_timer_frequencies_text=("100 Hz" "250 Hz" "300 Hz" "500 Hz" "750 Hz" "1000 Hz")
-  if [ "$_cpusched" = "cacule" ]; then
-    _avail_timer_frequencies+=("2000")
-    _avail_timer_frequencies_text+=("2000 Hz")
-  elif [ "$_cpusched" = "echo" ]; then
-    _avail_timer_frequencies=("625")
-    _avail_timer_frequencies_text=("625 Hz")
-  fi
 
   typeset -A _default_timer_frequencies_index
   _default_timer_frequencies_index=(
     ["pds"]="5"
     ["muqss"]="1"
-    ["cacule"]="6"
-    ["tt"]="5"
-    ["echo"]="0"
     ["upds"]="5"
     ["cfs"]="5"
     ["eevdf"]="5"
