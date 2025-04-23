@@ -141,7 +141,13 @@ sudo make install
 
 #### Gentoo
 
-The interactive `install.sh` script supports Gentoo by following the same procedure as `Generic`, symlinks the sources folder in `/usr/src/` to `/usr/src/linux`, then offers to do an `emerge @module-rebuild` for convenience
+The interactive `install.sh` script supports Gentoo by following the same procedure as `Generic`, with minor additions
+
+1. Applies few Gentoo patches
+   - `https://dev.gentoo.org/~mpagano/genpatches/trunk/$kver/4567_distro-Gentoo-Kconfig.patch`
+   - `https://dev.gentoo.org/~mpagano/genpatches/trunk/$kver/3000_Support-printing-firmware-info.patch`
+2. Symlinks the newly installed `/usr/src/linux-tkg-${kernel_flavor}` src folder to `/usr/src/linux`
+3. Offers to do a `emerge @module-rebuild` for convenience
 
 ```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
@@ -150,4 +156,7 @@ cd linux-tkg
 ./install.sh install
 ```
 
-**Note:** If you're running openrc, you'll want to set `_configfile="running-kernel"` to use your current kernel's defconfig instead of Arch's. Else the resulting kernel won't boot.
+**Notes:**
+
+- On OpenRC, in case of boot issues, try setting `_configfile="running-kernel"` in `customization.cfg`.
+  - This will use the running kernel's `.config` file instead of Arch's.
