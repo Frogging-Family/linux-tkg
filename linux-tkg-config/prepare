@@ -6,6 +6,18 @@ _current_kernels=("6.15" "6.14" "6.13" "6.12" "6.11" "6.10" "6.6" "6.1" "5.15")
 # List of kernels that are no longer maintained either upstream or locally
 _eol_kernels=("6.9" "6.8" "6.7" "6.5" "6.4" "6.3" "6.2" "6.0" "5.19" "5.18" "5.17" "5.16" "5.14" "5.13" "5.12" "5.11" "5.9" "5.8" "5.7" "5.4.230" "5.10.135")
 
+typeset -Ag _all_scheds
+_all_scheds=(
+  ["pds"]="Project C's Priority and Deadline based Skiplist multiple queue scheduler (PDS)"
+  ["bmq"]="Project C's BitMap Queue Scheduler (BMQ)"
+  ["eevdf"]="Earliest Eligible Virtual Deadline First scheduler (EEVDF). Linux kernel's default for ≥ 6.6"
+  ["cfs"]="Completely Fair Scheduler (CFS). Linux kernel's default for ≤ 6.5"
+  ["muqss"]="Multiple Queue Skiplist Scheduler (MuQSS)"
+  ["upds"]="TkG's Undead PDS"
+  ["bore"]="Burst-Oriented Response Enhancer Scheduler (BORE)"
+  ["bore-eevdf"]="Burst-Oriented Response Enhancer Scheduler (BORE, EEVDF variant)"
+)
+
 typeset -Ag _kernel_git_remotes
 _kernel_git_remotes=(
   ["kernel.org"]="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
@@ -298,18 +310,6 @@ _set_cpu_scheduler() {
 
   [[ -z "$_kver" ]] && error "bug: _kver variable not defined but needed" && exit 1
 
-  declare -A _sched_description_array
-  _sched_description_array=(
-    ["pds"]="Project C / PDS"
-    ["bmq"]="Project C / BMQ"
-    ["eevdf"]="EEVDF (Earliest Eligible Virtual Deadline First scheduler) Linux kernel's default for ≥ 6.6"
-    ["cfs"]="CFS (Completely Fair Scheduler) Linux kernel's default for ≤ 6.5"
-    ["muqss"]="MuQSS (Multiple Queue Skiplist Scheduler)"
-    ["upds"]="Undead PDS (TkG)"
-    ["bore"]="BORE (Burst-Oriented Response Enhancer) CPU Scheduler"
-    ["bore-eevdf"]="BORE (Burst-Oriented Response Enhancer - EEVDF variant) CPU Scheduler"
-  )
-
   _avail_cpu_scheds=("$_default_cpu_sched")
   _recommended_sched="$_default_cpu_sched"
   if [[ "$_kver" =~ ^5(04|07|12|13|14|15|16|17)$ ]]; then
@@ -352,10 +352,11 @@ _set_cpu_scheduler() {
     _avail_cpu_scheds=("$_default_cpu_sched")
   fi
 
-  # Populate descriptions of the available CPU schedulers
-  _avail_cpu_scheds_text=()
-  for _sched in "${_avail_cpu_scheds[@]}"; do
-    _avail_cpu_scheds_text+=("${_sched_description_array[$_sched]}")
+  # remove unavailable scheds from _all_scheds
+  for _sched in "${!_all_scheds[@]}"; do
+    if ! [[ "${_avail_cpu_scheds[*]}" =~ "$_sched" ]]; then
+      unset _all_scheds["$_sched"]
+    fi
   done
 
   if ! [[ ${_avail_cpu_scheds[*]} =~ "$_cpusched" ]]; then
@@ -371,16 +372,11 @@ _set_cpu_scheduler() {
 
   if [ -z "$_cpusched" ]; then
     msg2 "Which CPU sched variant do you want to build/install?"
-    msg2 "Select \"$_default_cpu_sched\" (linux kernel's default) if unsure."
+    msg2 "  If unsure, press enter to use \"$_recommended_sched\" (recommended)"
 
-    _default_index="0"
-    while [[ "${_avail_cpu_scheds[$_default_index]}" != "$_recommended_sched" ]]; do
-      _default_index=$((_default_index + 1))
-      [[ "$_default_index" -ge 20 ]] && error "Bug in scheduler selection logic" && exit 1
-    done
-
-    _prompt_from_array "${_avail_cpu_scheds_text[@]}"
-    _cpusched=${_avail_cpu_scheds[$_selected_index]}
+    _default_key="$_recommended_sched"
+    _prompt_from_dict "_all_scheds"
+    _cpusched="${_selected_key}"
   fi
 
   msg2 "Using $_cpusched CPU schduler"
