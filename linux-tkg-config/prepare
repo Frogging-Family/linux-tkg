@@ -998,14 +998,25 @@ _tkg_srcprep() {
   fi
 
   _is_march_supported() {
+    if [[ -z "$1" ]]; then
+      error "Internal linux-tkg bug: checking empty march string"
+      exit 1
+    fi
+
+    # native is supported
+    [[ "$1" == "native" ]] && return 0
+
+    # 'generic' is unsupported, use x86-64 instead
+    [[ "$1" == "generic" ]] && return 1
+
     if [[ "$_compiler" == "gcc" ]]; then
-      if ! ( LC_ALL=C gcc --target-help | grep -A 2 -m1 'Known valid' | sed -n '2p' | grep "$1" &> /dev/null ) ; then
+      if ! ( LC_ALL=C gcc --target-help | grep -A 2 -m1 'Known valid arguments for -march=' | sed -n '2p' | grep "$1" &> /dev/null ) ; then
         return 1
       fi
     fi
     if [[ "$_compiler" == "llvm" ]]; then
       # "native" doesn't show up in clang's list, but it's supported
-      if [[ "$_march" != native ]] && ! ( clang -mcpu=help 2>&1 | grep "$1" &> /dev/null ) ; then
+      if ! ( clang -mcpu=help 2>&1 | grep "$1" &> /dev/null ) ; then
         return 1
       fi
     fi
