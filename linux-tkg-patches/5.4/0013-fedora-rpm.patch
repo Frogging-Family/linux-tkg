@@ -1,38 +1,54 @@
 diff --git a/scripts/package/mkspec b/scripts/package/mkspec
-index 70392fd2f..34f98648f 100755
+index 8640c278f1..baba05400f 100755
 --- a/scripts/package/mkspec
 +++ b/scripts/package/mkspec
-@@ -25,7 +25,7 @@ fi
-
+@@ -23,11 +23,11 @@ else
+ 	M=DEL
+ fi
+ 
 +PROVIDES_DRM=""
  if grep -q CONFIG_DRM=y .config; then
 -	PROVIDES=kernel-drm
 +	PROVIDES_DRM="Provides: kernel-drm = %{version}"
  fi
-
+ 
 -PROVIDES="$PROVIDES kernel-$KERNELRELEASE"
  __KERNELRELEASE=$(echo $KERNELRELEASE | sed -e "s/-/_/g")
-@@ -50,3 +50,6 @@ sed -e '/^DEL/d' -e 's/^\t*//' <<EOF
+ EXCLUDES="$RCS_TAR_IGNORE --exclude=*vmlinux* --exclude=*.mod \
+ --exclude=*.o --exclude=*.ko --exclude=*.cmd --exclude=Documentation \
+@@ -48,7 +48,10 @@ sed -e '/^DEL/d' -e 's/^\t*//' <<EOF
+ 	Vendor: The Linux Community
+ 	URL: http://www.kernel.org
  $S	Source: kernel-$__KERNELRELEASE.tar.gz
 -	Provides: $PROVIDES
 +	$PROVIDES_DRM
 +	Provides: kernel = %{version}
 +	Provides: kernel-uname-r = %{version}
 +	Provides: installonlypkg(kernel) = %{version}
- 	# $UTS_MACHINE as a fallback of _arch in case
-@@ -63,4 +66,4 @@ $S	Source: kernel-$__KERNELRELEASE.tar.gz
+ 	%define __spec_install_post /usr/lib/rpm/brp-compress || :
+ 	%define debug_package %{nil}
+ 
+@@ -58,8 +61,8 @@ $S	Source: kernel-$__KERNELRELEASE.tar.gz
+ 	%package headers
+ 	Summary: Header files for the Linux kernel for use by glibc
  	Group: Development/System
 -	Obsoletes: kernel-headers
  	Provides: kernel-headers = %{version}
 +	Provides: installonlypkg(kernel) = %{version}
  	%description headers
-@@ -75,2 +78,5 @@ $S$M	Summary: Development package for building kernel modules to match the $__KE
+ 	Kernel-headers includes the C header files that specify the interface
+ 	between the Linux kernel and userspace libraries and programs.  The
+@@ -70,11 +73,30 @@ $S	Source: kernel-$__KERNELRELEASE.tar.gz
+ $S$M	%package devel
+ $S$M	Summary: Development package for building kernel modules to match the $__KERNELRELEASE kernel
  $S$M	Group: System Environment/Kernel
 +$S$M	Provides: kernel-devel = %{version}
 +$S$M	Provides: kernel-devel-uname-r = %{version}
 +$S$M	Provides: installonlypkg(kernel) = %{version}
  $S$M	AutoReqProv: no
-@@ -80,2 +86,18 @@ $S$M	against the $__KERNELRELEASE kernel package.
+ $S$M	%description -n kernel-devel
+ $S$M	This package provides kernel headers and makefiles sufficient to build modules
+ $S$M	against the $__KERNELRELEASE kernel package.
  $S$M
 +$S	# Opt out of a lot of Fedora hardening flags etc...
 +$S	# See https://src.fedoraproject.org/rpms/redhat-rpm-config//blob/rawhide/f/buildflags.md
@@ -51,3 +67,16 @@ index 70392fd2f..34f98648f 100755
 +$S	%define _build_id_links none
 +$S
  $S	%prep
+ $S	%setup -q
+ $S
+@@ -89,8 +111,9 @@ $S
+ 	ln -s efi/vmlinuz-$KERNELRELEASE %{buildroot}/boot/
+ 	%else
+ 	cp \$($MAKE image_name) %{buildroot}/boot/vmlinuz-$KERNELRELEASE
++	strip %{buildroot}/boot/vmlinuz-$KERNELRELEASE
+ 	%endif
+-$M	$MAKE %{?_smp_mflags} INSTALL_MOD_PATH=%{buildroot} modules_install
++$M	$MAKE %{?_smp_mflags} INSTALL_MOD_PATH=%{buildroot} INSTALL_MOD_STRIP=1 modules_install
+ 	$MAKE %{?_smp_mflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
+ 	cp System.map %{buildroot}/boot/System.map-$KERNELRELEASE
+ 	cp .config %{buildroot}/boot/config-$KERNELRELEASE

@@ -1,12 +1,16 @@
 diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
-index 3eee0143e0c5..552177c1dfc5 100644
+index 726f34e119..ecb6b1fcdd 100644
 --- a/scripts/package/kernel.spec
 +++ b/scripts/package/kernel.spec
-@@ -18,2 +18,3 @@ Source2: diff.patch
- Provides: kernel-$KERNELRELEASE
+@@ -14,6 +14,7 @@ URL: https://www.kernel.org
+ Source0: linux.tar.gz
+ Source1: config
+ Source2: diff.patch
 +Provides: kernel-uname-r = %{version}
+ Provides: kernel-%{KERNELRELEASE}
  BuildRequires: bc binutils bison dwarves
-@@ -27,8 +27,8 @@ The Linux Kernel, the operating system core itself
+ BuildRequires: (elfutils-libelf-devel or libelf-devel) flex
+@@ -25,8 +26,8 @@ The Linux Kernel, the operating system core itself
  %package headers
  Summary: Header files for the Linux kernel for use by glibc
  Group: Development/System
@@ -16,18 +20,9 @@ index 3eee0143e0c5..552177c1dfc5 100644
  %description headers
  Kernel-headers includes the C header files that specify the interface
  between the Linux kernel and userspace libraries and programs.  The
-@@ -40,12 +40,31 @@ glibc package.
- %package devel
- Summary: Development package for building kernel modules to match the %{version} kernel
- Group: System Environment/Kernel
-+Provides: kernel-devel = %{version}
-+Provides: kernel-devel-uname-r = %{version}
-+Provides: installonlypkg(kernel) = %{version}
- AutoReqProv: no
- %description -n kernel-devel
- This package provides kernel headers and makefiles sufficient to build modules
- against the %{version} kernel package.
- %endif
+@@ -64,6 +65,22 @@ against the %{version} kernel package.
+ # a package redefinition error. ensure that doesn't happen
+ %define debug_package %{nil}
  
 +# Opt out of a lot of Fedora hardening flags etc...
 +# See https://src.fedoraproject.org/rpms/redhat-rpm-config//blob/rawhide/f/buildflags.md
@@ -45,6 +40,17 @@ index 3eee0143e0c5..552177c1dfc5 100644
 +# See https://github.com/rpm-software-management/rpm/blob/master/macros.in#L471
 +%define _build_id_links none
 +
- %if %{with_debuginfo}
- # list of debuginfo-related options taken from distribution kernel.spec
- # files
+ # later, we make all modules executable so that find-debuginfo.sh strips
+ # them up. but they don't actually need to be executable, so remove the
+ # executable bit, taking care to do it _after_ find-debuginfo.sh has run
+@@ -85,8 +102,9 @@ patch -p1 < %{SOURCE2}
+ %install
+ mkdir -p %{buildroot}/lib/modules/%{KERNELRELEASE}
+ cp $(%{make} %{makeflags} -s image_name) %{buildroot}/lib/modules/%{KERNELRELEASE}/vmlinuz
++strip %{buildroot}/lib/modules/%{KERNELRELEASE}/vmlinuz
+ # DEPMOD=true makes depmod no-op. We do not package depmod-generated files.
+-%{make} %{makeflags} INSTALL_MOD_PATH=%{buildroot} DEPMOD=true modules_install
++%{make} %{makeflags} INSTALL_MOD_PATH=%{buildroot} DEPMOD=true INSTALL_MOD_STRIP=1 modules_install
+ %{make} %{makeflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
+ cp System.map %{buildroot}/lib/modules/%{KERNELRELEASE}
+ cp .config %{buildroot}/lib/modules/%{KERNELRELEASE}/config
