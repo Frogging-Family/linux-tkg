@@ -196,13 +196,6 @@ if [ "$1" = "install" ]; then
   msg2 "Add patched files to the diff.patch"
   git add .
 
-  _mtune="$_processor_opt"
-  [[ "$_processor_opt" =~ x86-64 ]] && _mtune="generic"
-
-  export KCPPFLAGS="-march=$_processor_opt -mtune=$_mtune"
-  export KCFLAGS="-march=$_processor_opt -mtune=$_mtune"
-  # when rust comes
-  # export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt -Ztune-cpu=$_mtune"
 
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 

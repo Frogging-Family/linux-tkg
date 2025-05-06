@@ -1859,6 +1859,44 @@ fi
     msg2 "Prepared %s version %s" "$pkgbase" "$(<version)"
   fi
 
+  # Hardcode the -march and -mtune in the Makefile so it persists for DKMS building
+  # See https://github.com/Frogging-Family/linux-tkg/issues/1099
+
+  # 1. Get the line number where the user KCFLAGS, KCPPFLAGS and KRUSTFLAGS env vars are taken into account
+  # 2. Insert the -march and -mtune flags just before so it sets a default that can still be overriden by those variables, if set by the user
+
+  local _mtune="$_processor_opt"
+  [[ "$_processor_opt" =~ x86-64 ]] && _mtune="generic"
+
+  set -o pipefail
+  if local cflags_source_line_number=$(grep -F -n 'KBUILD_CFLAGS   += $(KCFLAGS)' Makefile 2> /dev/null | cut -d":" -f1); then
+    sed -i "${cflags_source_line_number}i KBUILD_CFLAGS   += -mtune=$_mtune" Makefile
+    sed -i "${cflags_source_line_number}i KBUILD_CFLAGS   += -march=$_processor_opt" Makefile
+    sed -i "${cflags_source_line_number}i # The following two lines are added by linux-tkg script" Makefile
+  else
+    warning "Couldn't set -march and -mtune for C files in Makefile. Please open a bug report on this"
+    [[ "$_nofallback" = "true" ]] && exit 1
+  fi
+
+  if local cppflags_source_line_number=$(grep -F -n 'KBUILD_CPPFLAGS += $(KCPPFLAGS)' Makefile 2> /dev/null | cut -d":" -f1); then
+    sed -i "${cppflags_source_line_number}i KBUILD_CPPFLAGS += -mtune=$_mtune" Makefile
+    sed -i "${cppflags_source_line_number}i KBUILD_CPPFLAGS += -march=$_processor_opt" Makefile
+    sed -i "${cppflags_source_line_number}i # The following two lines are added by linux-tkg script" Makefile
+  else
+    warning "Couldn't set -march and -mtune for C++ files in Makefile. Please open a bug report on this"
+    [[ "$_nofallback" = "true" ]] && exit 1
+  fi
+
+  # if local rustflags_source_line_number=$(grep -F -n 'KBUILD_RUSTFLAGS += $(KRUSTFLAGS)' Makefile 2> /dev/null | cut -d":" -f1); then
+  #   sed -i "${rustflags_source_line_number}i KBUILD_RUSTFLAGS += -Ztune-cpu=$_mtune" Makefile
+  #   sed -i "${rustflags_source_line_number}i KBUILD_RUSTFLAGS += -Ctarget-cpu=$_processor_opt" Makefile
+  #   sed -i "${rustflags_source_line_number}i # The following two lines are added by linux-tkg script" Makefile
+  # else
+  #   warning "Couldn't set -march and -mtune for Rust files in Makefile. Please open a bug report on this"
+  #   [[ "$_nofallback" = "true" ]] && exit 1
+  # fi
+  set +o pipefail
+
   # copy new config file back to the user's git folder for an eventual future use
   cp .config "${_where}"/kernelconfig.new
 }
