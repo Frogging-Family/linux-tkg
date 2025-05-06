@@ -407,6 +407,8 @@ if [ "$1" = "install" ]; then
     msg2 "Installing kernel"
     sudo make install
 
+    sudo cp "$(make ${llvm_opt} -s image_name)" "/lib/modules/$_kernelname/vmlinuz"
+
     if [ "$_distro" = "Gentoo" ]; then
 
       msg2 "Selecting the kernel source code as default source folder"
