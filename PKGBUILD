@@ -137,10 +137,10 @@ build() {
       $_schedtool "$_pid" ||:
       $_ionice -p "$_pid" ||:
     fi
-    export KCPPFLAGS="-march=$_processor_opt"
-    export KCFLAGS="-march=$_processor_opt"
+    export KCPPFLAGS="-march=$_processor_opt -mtune=$_processor_opt"
+    export KCFLAGS="-march=$_processor_opt -mtune=$_processor_opt"
     # when rust comes
-    # export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt"
+    # export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt -Ztune-cpu=$_processor_opt"
     time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3
     return 0
   )

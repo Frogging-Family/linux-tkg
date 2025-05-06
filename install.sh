@@ -196,10 +196,10 @@ if [ "$1" = "install" ]; then
   msg2 "Add patched files to the diff.patch"
   git add .
 
-  export KCPPFLAGS="-march=$_processor_opt"
-  export KCFLAGS="-march=$_processor_opt"
+  export KCPPFLAGS="-march=$_processor_opt -mtune=$_processor_opt"
+  export KCFLAGS="-march=$_processor_opt -mtune=$_processor_opt"
   # when rust comes
-  # export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt"
+  # export KRUSTFLAGS="-Ctarget-cpu=$_processor_opt -Ztune-cpu=$_processor_opt"
 
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
