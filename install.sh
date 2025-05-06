@@ -196,6 +196,8 @@ if [ "$1" = "install" ]; then
   msg2 "Add patched files to the diff.patch"
   git add .
 
+  export KCPPFLAGS
+  export KCFLAGS
 
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
