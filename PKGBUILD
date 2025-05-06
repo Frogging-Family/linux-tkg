@@ -180,7 +180,11 @@ hackbase() {
   echo "$pkgbase" | install -Dm644 /dev/stdin "$modulesdir/pkgbase"
 
   msg2 "Installing modules..."
-  ZSTD_CLEVEL=19 make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 \
+
+  local _STRIP_MODS=0
+  [[ "$STRIP" == "true" ]] && _STRIP_MODS=1
+
+  ZSTD_CLEVEL=19 make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=$_STRIP_MODS \
     DEPMOD=/doesnt/exist modules_install  # Suppress depmod
 
   # remove build and source links

@@ -391,11 +391,12 @@ if [ "$1" = "install" ]; then
     cd "/usr/src/$_headers_folder_name"
 
     msg2 "Installing modules"
-    if [ "$_STRIP" = "true" ]; then
-      sudo make modules_install INSTALL_MOD_STRIP="1"
-    else
-      sudo make modules_install
-    fi
+
+    _STRIP_MODS=0
+    [[ "$STRIP" == "true" ]] && _STRIP_MODS=1
+
+    sudo make modules_install INSTALL_MOD_STRIP=$_STRIP_MODS
+
     msg2 "Removing modules from source folder in /usr/src/${_kernel_src_gentoo}"
     sudo find . -type f -name '*.ko' -delete
     sudo find . -type f -name '*.ko.cmd' -delete
