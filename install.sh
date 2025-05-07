@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Stop the script at any ecountered error
+# Stop the script at any encountered error
 set -e
 
 ###################### Definition of helper variables and functions
