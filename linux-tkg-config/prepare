@@ -98,28 +98,28 @@ _rt_rev_map=(
 
 _undefine() {
   for _config_name in "$@"; do
-    echo "# CONFIG_$_config_name removed" >> "$_where"/changed-configs.txt
+    echo "# CONFIG_$_config_name removed" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --undefine "${_config_name}"
   done
 }
 
 _enable() {
   for _config_name in "$@"; do
-    echo "CONFIG_${_config_name}=y" >> "$_where"/changed-configs.txt
+    echo "CONFIG_${_config_name}=y" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --enable "${_config_name}"
   done
 }
 
 _disable() {
   for _config_name in "$@"; do
-    echo "# CONFIG_$_config_name is not set" >> "$_where"/changed-configs.txt
+    echo "# CONFIG_$_config_name is not set" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --disable "${_config_name}"
   done
 }
 
 _module() {
   for _config_name in "$@"; do
-    echo "CONFIG_${_config_name}=m" >> "$_where"/changed-configs.txt
+    echo "CONFIG_${_config_name}=m" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --module "${_config_name}"
   done
 }
@@ -130,7 +130,7 @@ _set_str() {
     exit 1
   fi
 
-  echo "$1=\"$2\"" >> "$_where"/changed-configs.txt
+  echo "$1=\"$2\"" >> "$_where"/tkg-all-config-changes.txt
   scripts/config --set-str "$1" "$2"
 }
 
@@ -700,6 +700,9 @@ _tkg_patcher() {
 }
 
 _tkg_srcprep() {
+
+  # Clear config change files
+  echo "" > "$_where"/tkg-all-config-changes.txt
 
   cd "$_kernel_work_folder_abs"
 
@@ -1610,6 +1613,16 @@ _tkg_srcprep() {
     warning "NR_CPUS is bugged on 6.1.y, so your setting was ignored"
   fi
 
+  # Modify the kernel config file to fit Fedora SELinux configuration
+  if [ "$_distro" = "Fedora" ] ; then
+    msg2 "SELinux activation for Fedora"
+    _enable "AUDIT"
+    _enable "SECURITY_SELINUX"
+    _enable "DEFAULT_SECURITY_SELINUX"
+    _disable "DEFAULT_SECURITY_DAC"
+    _set_str "LSM" "lockdown,yama,integrity,selinux,bpf,landlock"
+  fi
+
   fi
 
   # Community patches
@@ -1647,6 +1660,55 @@ _tkg_srcprep() {
 
     # get kernel version
     #make prepare ${llvm_opt}
+  fi
+
+  # Fnalize the .config file then check that the .config changes actually were taken into account
+
+  # we should not use _enable, _disable, _undefine, _set_str after this.
+  unset _enable _disable _undefine _set_str
+
+  # rewrite configuration
+  msg2 "Setting config"
+  make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
+
+  # Check that all the config changes actually got applied
+
+  failed_configs=()
+  _failed_config_diffs=()
+  while read -r _config_line; do
+    if [[ "$_config_line" =~ ^'# '(CONFIG_.*)' removed'$ ]]; then
+      local _config="${BASH_REMATCH[1]}"
+      if grep -F "$_config" .config &> /dev/null; then
+        local _match=$(set +e; grep -F "$_config" .config)
+        _failed_config_diffs+=("| $_config_line | $_match |")
+        failed_configs+=("$_config")
+      fi
+    elif [[ "$_config_line" =~ ^'# '(CONFIG_.*)' is not set'$ ]]; then
+      local _config="${BASH_REMATCH[1]}"
+      # either match the whole '# CONFIG_FOO is not set' or 'CONFIG_FOO' doesn't appear at all, which is acceptable too
+      if ( ! grep -F "$_config_line" .config &> /dev/null ) && \
+           ( grep -F "$_config" .config &> /dev/null ) ; then
+        local _match=$(set +e; grep -F "$_config" .config)
+        _failed_config_diffs+=("| $_config_line | $_match |")
+        failed_configs+=("$_config")
+      fi
+    elif [[ "$_config_line" =~ ^(CONFIG_.*)'=' ]]; then
+      local _config="${BASH_REMATCH[1]}"
+      if ! grep -F "$_config_line" .config &> /dev/null; then
+        local _match=$(set +e; grep -F -e "$_config=" -e "$_config " .config)
+        [[ -z "$_match" ]] && _match="_undefined_"
+        _failed_config_diffs+=("| $_config_line | $_match |")
+        failed_configs+=("$_config")
+      fi
+    fi
+  done < "$_where"/tkg-all-config-changes.txt
+
+  if [[ "${#_failed_config_diffs}" != 0 ]]; then
+    msg2 "Some .config changes were not applied. They are logged in logs/tkg-failed-config-diffs.md.txt when this script ends."
+    echo -e "| Wanted State | Actual State |\n| --- | ---|" >> "$_where"/tkg-failed-config-diffs.md.txt
+    printf "%s\n" "${_failed_config_diffs[@]}" >> "$_where"/tkg-failed-config-diffs.md.txt
+    printf "%s\n" "${failed_configs[@]}" > "$_where"/tkg-failed-configs.txt
+    sleep 1s
   fi
 
   # modprobed-db
@@ -1705,20 +1767,6 @@ _tkg_srcprep() {
     if [ 0 -lt "${#fragments[@]}" ]; then
       scripts/kconfig/merge_config.sh -m .config "${fragments[@]}"
     fi
-  fi
-
-  # rewrite configuration
-  msg2 "Setting config"
-  make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
-
-  # Modify the kernel config file to fit Fedora SELinux configuration
-  if [ "$_distro" = "Fedora" ] ; then
-    msg2 "SELinux activation for Fedora"
-    _enable "AUDIT"
-    _enable "SECURITY_SELINUX"
-    _enable "DEFAULT_SECURITY_SELINUX"
-    _disable "DEFAULT_SECURITY_DAC"
-    _set_str "LSM" "lockdown,yama,integrity,selinux,bpf,landlock"
   fi
 
   # menuconfig / nconfig
@@ -1917,7 +1965,14 @@ exit_cleanup() {
   [[ -f "$_where"/git_work.log.txt ]] && \
     mv -f "$_where"/git_work.log.txt "$_where"/logs/git_work.log.txt
 
-  mv -f "$_where"/changed-configs.txt "$_where"/logs/changed-configs.txt
+  [[ -f "$_where"/tkg-all-config-changes.txt ]] && \
+    mv -f "$_where"/tkg-all-config-changes.txt "$_where"/logs/tkg-all-config-changes.txt
+
+  [[ -f "$_where"/tkg-failed-config-diffs.md.txt ]] && \
+    mv -f "$_where"/tkg-failed-config-diffs.md.txt "$_where"/logs/tkg-failed-config-diffs.md.txt
+
+  [[ -f "$_where"/tkg-failed-configs.txt ]] && \
+    mv -f "$_where"/tkg-failed-configs.txt "$_where"/logs/tkg-failed-configs.txt
 
   # Create logs/system-info.txt
   cat /etc/os-release > "$_where"/logs/system-info.txt
