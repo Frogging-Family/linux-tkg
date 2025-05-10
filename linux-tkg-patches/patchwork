@@ -1,0 +1,292 @@
+#!/bin/bash
+
+msg2() {
+  [[ "$_silent" = "true" ]] || echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
+}
+
+error() {
+ echo -e " \033[1;31m==> ERROR: $1\033[1;0m" >&2
+}
+
+warning() {
+ echo -e " \033[1;33m==> WARNING: $1\033[1;0m" >&2
+}
+
+plain() {
+  [[ "$_silent" = "true" ]] || echo -e "$1" >&2
+}
+
+_prepare_kernel(){
+
+  _set_kernel_version
+
+  _setup_kernel_work_folder
+
+}
+
+_rebase_end(){
+
+  _define_kernel_abs_paths
+
+  cd "$_kernel_work_folder_abs"
+
+  if [[ ! -d tkg-patch-fixes/patches || ! -f "tkg-patch-fixes/patch_name" || ! -f "tkg-patch-fixes/original_commit" ]]; then
+    error "This tree doesn't seem to be started with ./patchwork fix-start, please do it again"
+    error "   Note: make sure to backup any rebase you've done in the current tree"
+    exit 1
+  fi
+
+  local _patch_full_path="$_where/linux-tkg-patches/$(cat tkg-patch-fixes/patch_name)"
+  if [[ ! -f "$_patch_full_path" ]]; then
+    error "Patch $_patch_full_path, referenced by tkg-patch-fixes/patch_name, doesn't exist"
+    exit 1
+  fi
+
+  mkdir -p tkg-patch-fixes/rebased_patches
+
+  git format-patch $(cat tkg-patch-fixes/original_commit) --stdout > "$_patch_full_path"
+}
+
+_hash() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+_rebase_start(){
+
+  typeset -r _shasum_var_name="_patch_sha256_sum"
+  typeset -r _kernel_tag_var_name="_patch_kernel_tag"
+
+  local _patch="$1"
+  local _patch_file="$_where/linux-tkg-patches/$_patch"
+  if [[ ! -f "$_patch_file" ]]; then
+    error "Patch $_patch doesn't exist."
+    exit 1
+  fi
+
+  local _patch_name=$(basename "$_patch")
+  local _kernel_ver=$(dirname "$_patch")
+  _version="$_kernel_ver-latest"
+
+  local _last_check_file="$_where/linux-tkg-patches/$_kernel_ver/patchwork/last-successful-check/$_patch_name"
+  if [[ "$2" == "is-clean" && -f "$_last_check_file" ]]; then
+    _set_kernel_version
+
+    source "$_last_check_file"
+
+    if [[ "$(_hash "$_patch_file")" == "${!_shasum_var_name}" && "$_kernel_git_tag" == "${!_kernel_tag_var_name}" ]]
+    then
+      return 0
+    fi
+  fi
+
+  _prepare_kernel
+
+  msg2 "Working on patch $_patch"
+
+  cd "$_kernel_work_folder_abs"
+
+  mkdir -p tkg-patch-fixes/patches/
+  echo '*' > tkg-patch-fixes/.gitignore
+  echo "$_patch" > tkg-patch-fixes/patch_name
+  echo "$_kernel_git_tag" > tkg-patch-fixes/original_commit
+
+  local _interdeps_folder="$_where/linux-tkg-patches/$_kernel_ver/patchwork/interdeps/"
+  local _patch_dep_file="$_interdeps_folder/$(basename "$_patch")"
+  if [[ -f "$_patch_dep_file" ]]; then
+    local _parent_patch_name=$(shuf -n 1 "$_patch_dep_file")
+    msg2 "Patch $_patch depends on $_parent_patch_name, applying it first..."
+
+    local _parent_patch_dep_file="$_interdeps_folder/$(basename "$_parent_patch_name")"
+    if [[ -f "$_parent_patch_dep_file" ]]; then
+      error "cannot handle patches with a deep dependency tree"
+      exit 1
+    elif [[ ! -f "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" ]]; then
+      error "Parent patch $_kernel_ver/$_parent_patch_name of $_patch doesn't exist"
+      exit 1
+    fi
+
+    if patch -Np1 -i "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" &> /dev/null; then
+      git add .
+      git commit -m "$_kernel_ver: Applied parent patch $_parent_patch_name of $(basename "$_parent_patch_name")"
+      # use this new commit as "base" commit so we format the patch against it
+      git rev-parse HEAD > tkg-patch-fixes/original_commit
+    else
+      error "Parent patch $_kernel_ver/$_parent_patch_name of $_patch doesn't apply cleanly"
+      exit 1
+    fi
+
+  fi
+
+  if [[ "$2" == "is-clean" ]]; then
+    if patch -Np1 -i "$_where/linux-tkg-patches/$_patch"; then
+      mkdir -p "$(dirname "$_last_check_file")"
+      echo "$_shasum_var_name=$(_hash "$_patch_file")" > "$_last_check_file"
+      echo "$_kernel_tag_var_name=$_kernel_git_tag" >> "$_last_check_file"
+      return 0
+    else
+      return 1
+    fi
+  fi
+
+  if head -n 10 "$_where/linux-tkg-patches/$_patch" |  grep -E '^Subject:' &> /dev/null ; then
+
+    msg2 "$_patch is mail-formatted, recreating commits with 'git am'"
+    msg2 "Starting 'git am'"
+
+    if git am "$_where/linux-tkg-patches/$_patch"; then
+      msg2 "If you add changes that you want included in the original patch:
+            Do './patchwork rebase done' To update the original patch file with the changes
+            Note: all changes need to be committed, do not edit the first commit as it's the upstream one."
+      return 0
+    else
+      msg2 "When a patch fails and needs updating
+        1. Use either
+            - git am --show-current-patch=diff | git apply --reject
+            - git am --show-current-patch=diff | git apply -3
+        2. Fix the rejects or merge conflicts (respectively) and stage all the relevant files
+        3. Run git am --continue
+        4. Repeat steps above until done.
+        5. Do './patchwork rebase done' To update the original patch file with the changes"
+        return 1
+    fi
+
+  else
+
+    msg2 "$_patch is a simple diff file, not mail formatted."
+    msg2 "Please commit your changes so './patchwork rebase done' picks it up"
+
+    _clean_patch="true"
+    if ! git apply --reject "$_where/linux-tkg-patches/$_patch"; then
+      _clean_patch="false"
+    fi
+
+    msg2 "If you add changes that you want included in the original patch:
+          1. Stage & commit the changes (as many commits as needed)
+          2. Do './patchwork rebase done' To update the original patch file with the changes"
+
+    if [[ "$_clean_patch" == "true" ]]; then
+      return 0
+    else
+      return 1
+    fi
+
+  fi
+
+}
+
+_get_unclean_patch_list(){
+
+  typeset -A _skiplist
+  _skiplist=(
+    ["0012-linux-hardened.patch"]="1"
+  )
+
+  cd "$_where"/linux-tkg-patches
+
+  _unclean_patches=()
+
+  _gnu_vs_git_patches=()
+
+  _old_silent="$_silent"
+
+  _silent=true
+
+  local _max=""
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    _max="$1"
+  fi
+
+  _kernel_verr_arr=("${_current_kernels[@]}")
+  _kernel_verr_arr+=("${_eol_kernels[@]}")
+
+  for kernel_ver in "${_kernel_verr_arr[@]}"; do
+
+    echo "Checking patches of kernel $kernel_ver" >& 2
+
+    local _patch_dir=$(realpath "$_where/linux-tkg-patches/$kernel_ver")
+
+    for _patch in "$_patch_dir"/*.patch; do
+      local _patch_name="$(basename $_patch)"
+      [[ -v _skiplist["$_patch_name"] ]] && continue
+
+      local _patch_num="${#_unclean_patches}"
+      [[ -n "$_max" && "${_patch_num}" -ge "$_max" ]] && break
+
+      local _patch_rel=$(realpath --relative-to=$(dirname $(dirname $_patch)) $_patch)
+      if ! _rebase_start "$_patch_rel" "is-clean" > /dev/null ; then
+        _unclean_patches+=("$_patch_rel")
+      fi
+    done
+
+    local _patch_num="${#_unclean_patches}"
+    [[ -n "$_max" && "${_patch_num}" -ge "$_max" ]] && break
+
+  done
+
+  _silent="$_old_silent"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+
+  # get env and customization
+  declare -p -x > current_env
+  source ../customization.cfg
+  if [ -f "$_EXT_CONFIG_PATH" ]; then
+    source "$_EXT_CONFIG_PATH"
+  fi
+  . ./current_env
+
+  # needed for things to work in 'prepare'
+  _where=$(realpath ..)
+
+  . ../linux-tkg-config/prepare
+
+  if [[ "$1" == 'print' && "$2" == 'unclean' ]]; then
+
+    shift; shift;
+    _get_unclean_patch_list 1000 "$@"
+
+    if [[ "${#_unclean_patches}" != 0 ]]; then
+      for _patch in "${_unclean_patches[@]}"; do
+        echo $_patch
+      done
+    else
+      msg2 "All patches apply cleanly!"
+    fi
+
+  elif [[ "$1" == 'rebase' && "$2" == 'start' ]]; then
+
+    _patch="$3"
+    if [[ -z "$3" ]]; then
+      _get_unclean_patch_list 1
+      [[ "${#_unclean_patches[@]}" == 0 ]] && msg2 "All patches good!" && exit 0
+      _patch="${_unclean_patches[0]}"
+    fi
+
+    _rebase_start "$_patch"
+
+    elif [[ "$1" == 'rebase' && "$2" == 'end' ]]; then
+
+      _rebase_end
+
+    elif [[ "$1" == 'prepare-kernel' ]]; then
+
+      _prepare_kernel
+
+  else
+
+      msg2 "Argument not recognized, options are:
+            - 'print'
+              - 'unclean': prints list of patches that don't apply against latest kernel .z version,
+                          for each currently maintained x.y kernel version (full version string being x.y.z)
+            - 'rebase'
+              - 'start [<X.Y/patch-path>]' : sets a workfolder with a kernel where you can do any number of extra commits or commit edits on top
+                                            Note: the first commit should be left intact so re-creating the patch (after edits) still works.
+                - [no argument]: sets a workfolder of the first kernel version x.y.z where a patch
+                                doesn't apply and starts a 'git am' with that patch.
+                - <x.y/patch-name> [optional]: sets a workfolder of kernel version x.y.z (where .z is the latest) and applies the given patch in argument
+              - 'end' : Rebase done, re-create the patch that has been pulled with the user added changes."
+      exit 1
+
+  fi
+fi
