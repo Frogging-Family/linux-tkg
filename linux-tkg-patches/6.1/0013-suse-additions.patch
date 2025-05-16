@@ -1,17 +1,91 @@
+From e8cf217c4a38e15d9d1cb0f9e46066989b6e9907 Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
 Date: Wed, 7 Feb 2018 15:16:04 +0100
-Subject: Add ksym-provides tool.
+Subject: [PATCH] Add ksym-provides tool.
 
 References: bsc#1077692
 Patch-mainline: no, not needed
 
 Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 ---
+ Makefile                    |   4 +-
+ doc/README.KSYMS            |   6 ++
+ scripts/depmod.sh           |  27 +-------
  scripts/mod/Makefile        |   6 +-
  scripts/mod/ksym-provides.c | 124 ++++++++++++++++++++++++++++++++++++
- 2 files changed, 129 insertions(+), 1 deletion(-)
+ scripts/package/mkspec      |  33 +++++++---
+ 6 files changed, 164 insertions(+), 36 deletions(-)
+ create mode 100644 doc/README.KSYMS
  create mode 100644 scripts/mod/ksym-provides.c
 
+diff --git a/Makefile b/Makefile
+index d8d39fe5ef70..5c1283008590 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1169,7 +1169,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
+ # makefile but the argument can be passed to make if needed.
+ #
+ 
+-MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
++export KERNEL_MODULE_DIRECTORY := $(shell pkg-config --print-variables kmod 2>/dev/null | grep '^module_directory$$' >/dev/null && pkg-config --variable=module_directory kmod || echo /lib/modules)
++
++MODLIB	= $(INSTALL_MOD_PATH)$(KERNEL_MODULE_DIRECTORY)/$(KERNELRELEASE)
+ export MODLIB
+ 
+ PHONY += prepare0
+diff --git a/doc/README.KSYMS b/doc/README.KSYMS
+new file mode 100644
+index 000000000000..39fe7878174d
+--- /dev/null
++++ b/doc/README.KSYMS
+@@ -0,0 +1,6 @@
++This file is a place holder for the kernel-syms{,-rt} package. It is used
++to group build dependencies for all kernel flavors.
++
++The KMP build process will build KMPs against all installed kernel flavors
++automatically. If you don't need to build against other flavors than the
++ones you've already installed - it is safe to uninstall this package.
+diff --git a/scripts/depmod.sh b/scripts/depmod.sh
+index 3643b4f896ed..fca689ba4f21 100755
+--- a/scripts/depmod.sh
++++ b/scripts/depmod.sh
+@@ -23,33 +23,8 @@ if [ -z $(command -v $DEPMOD) ]; then
+ 	exit 0
+ fi
+ 
+-# older versions of depmod require the version string to start with three
+-# numbers, so we cheat with a symlink here
+-depmod_hack_needed=true
+-tmp_dir=$(mktemp -d ${TMPDIR:-/tmp}/depmod.XXXXXX)
+-mkdir -p "$tmp_dir/lib/modules/$KERNELRELEASE"
+-if "$DEPMOD" -b "$tmp_dir" $KERNELRELEASE 2>/dev/null; then
+-	if test -e "$tmp_dir/lib/modules/$KERNELRELEASE/modules.dep" -o \
+-		-e "$tmp_dir/lib/modules/$KERNELRELEASE/modules.dep.bin"; then
+-		depmod_hack_needed=false
+-	fi
+-fi
+-rm -rf "$tmp_dir"
+-if $depmod_hack_needed; then
+-	symlink="$INSTALL_MOD_PATH/lib/modules/99.98.$KERNELRELEASE"
+-	ln -s "$KERNELRELEASE" "$symlink"
+-	KERNELRELEASE=99.98.$KERNELRELEASE
+-fi
+-
+ set -- -ae -F System.map
+ if test -n "$INSTALL_MOD_PATH"; then
+ 	set -- "$@" -b "$INSTALL_MOD_PATH"
+ fi
+-"$DEPMOD" "$@" "$KERNELRELEASE"
+-ret=$?
+-
+-if $depmod_hack_needed; then
+-	rm -f "$symlink"
+-fi
+-
+-exit $ret
++exec "$DEPMOD" "$@" "$KERNELRELEASE"
+diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
+index c9e38ad937fd..3df9464a858f 100644
 --- a/scripts/mod/Makefile
 +++ b/scripts/mod/Makefile
 @@ -2,11 +2,15 @@
@@ -31,6 +105,9 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
  devicetable-offsets-file := devicetable-offsets.h
  
  $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+diff --git a/scripts/mod/ksym-provides.c b/scripts/mod/ksym-provides.c
+new file mode 100644
+index 000000000000..c71fb79d4640
 --- /dev/null
 +++ b/scripts/mod/ksym-provides.c
 @@ -0,0 +1,124 @@
@@ -158,218 +235,11 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 +	close(fd);
 +	return 1;
 +}
-
-From bb1a83cf109eee56c8dee26f7910c772f8c246fc Mon Sep 17 00:00:00 2001
-From: Michal Suchanek <msuchanek@suse.de>
-Date: Thu, 29 Jun 2023 17:47:16 +0200
-Subject: [PATCH] depmod: Handle installing modules under a prefix
-
-References: bsc#1212835
-Patch-mainline: Never, upstream rejected
-
-Some distributions aim at shipping all files in /usr.
-
-The path under which kernel modules are installed is hardcoded to /lib
-which conflicts with this goal.
-
-When kmod provides the config command, use it to determine the correct
-module installation path.
-
-With kmod that does not provide the config command /lib/modules is used
-as before.
-
-Note: users can use
-
-make MODLIB='$(INSTALL_MOD_PATH)/usr/lib/modules/$(KERNELRELEASE)'
-
-to install modules from mainline kernel on usrmerged system.
-Not great for KMPs, though
-
-Signed-off-by: Michal Suchanek <msuchanek@suse.de>
-Nacked-by: Masahiro Yamada <masahiroy@kernel.org>
----
-v2: Avoid error on systems with kmod that does not support config
-command
-v3: More verbose commit message
-v4:
-  - Document jq requirement
-  - fix bashism
-  - Update to getting full module path, not just additional prefix
-v5: switch to pkgconfig
----
- Makefile | 4 +++-
- 1 file changed, 3 insertions(+), 1 deletion(-)
-
-diff --git a/Makefile b/Makefile
-index 658ec2b8aa74..5a1889fc43c7 100644
---- a/Makefile
-+++ b/Makefile
-@@ -1165,7 +1165,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
- # makefile but the argument can be passed to make if needed.
- #
-
--MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
-+export KERNEL_MODULE_DIRECTORY := $(shell pkg-config --print-variables kmod 2>/dev/null | grep '^module_directory$$' >/dev/null && pkg-config --variable=module_directory kmod || echo /lib/modules)
-+
-+MODLIB	= $(INSTALL_MOD_PATH)$(KERNEL_MODULE_DIRECTORY)/$(KERNELRELEASE)
- export MODLIB
-
- PHONY += prepare0
---
-2.41.0
-
-From 4d15c9fa058e6dee09324cfc93f48858d4296019 Mon Sep 17 00:00:00 2001
-From: Michal Suchanek <msuchanek@suse.de>
-Date: Tue, 18 Jul 2023 18:58:43 +0200
-Subject: [PATCH] Revert "kbuild: Hack for depmod not handling X.Y versions"
-
-References: bsc#1212835
-Patch-mainline: v6.6-rc1
-Git-commit: 4d15c9fa058e6dee09324cfc93f48858d4296019
-
-Remove hack for ancient version of module-init-tools that was added in
-Linux 3.0.
-
-Since then module-init-tools was replaced with kmod.
-
-This hack adds an additional indirection, and causes confusing errors
-to be printed when depmod fails.
-
-Reverts commit 8fc62e594253 ("kbuild: Do not write to builddir in modules_install")
-Reverts commit bfe5424a8b31 ("kbuild: Hack for depmod not handling X.Y versions")
-
-Link: https://lore.kernel.org/linux-modules/CAK7LNAQMs3QBYfWcLkmOQdbbq7cj=7wWbK=AWhdTC2rAsKHXzQ@mail.gmail.com/
-
-Signed-off-by: Michal Suchanek <msuchanek@suse.de>
-Signed-off-by: Masahiro Yamada <masahiroy@kernel.org>
----
- scripts/depmod.sh | 27 +--------------------------
- 1 file changed, 1 insertion(+), 26 deletions(-)
-
-diff --git a/scripts/depmod.sh b/scripts/depmod.sh
-index 3643b4f896ed..fca689ba4f21 100755
---- a/scripts/depmod.sh
-+++ b/scripts/depmod.sh
-@@ -23,33 +23,8 @@ if [ -z $(command -v $DEPMOD) ]; then
- 	exit 0
- fi
-
--# older versions of depmod require the version string to start with three
--# numbers, so we cheat with a symlink here
--depmod_hack_needed=true
--tmp_dir=$(mktemp -d ${TMPDIR:-/tmp}/depmod.XXXXXX)
--mkdir -p "$tmp_dir/lib/modules/$KERNELRELEASE"
--if "$DEPMOD" -b "$tmp_dir" $KERNELRELEASE 2>/dev/null; then
--	if test -e "$tmp_dir/lib/modules/$KERNELRELEASE/modules.dep" -o \
--		-e "$tmp_dir/lib/modules/$KERNELRELEASE/modules.dep.bin"; then
--		depmod_hack_needed=false
--	fi
--fi
--rm -rf "$tmp_dir"
--if $depmod_hack_needed; then
--	symlink="$INSTALL_MOD_PATH/lib/modules/99.98.$KERNELRELEASE"
--	ln -s "$KERNELRELEASE" "$symlink"
--	KERNELRELEASE=99.98.$KERNELRELEASE
--fi
--
- set -- -ae -F System.map
- if test -n "$INSTALL_MOD_PATH"; then
- 	set -- "$@" -b "$INSTALL_MOD_PATH"
- fi
--"$DEPMOD" "$@" "$KERNELRELEASE"
--ret=$?
--
--if $depmod_hack_needed; then
--	rm -f "$symlink"
--fi
--
--exit $ret
-+exec "$DEPMOD" "$@" "$KERNELRELEASE"
---
-2.41.0
-
-From 0ec8a11bd6287ada08e6c13023ce47be5cdc4270 Mon Sep 17 00:00:00 2001
-From: tkg <tkg@froggi.es>
-Date: Sat, 9 Sep 2023 00:48:37 +0200
-Subject: mkspec: Suse is using /usr/lib instead of the standard /lib symlink. Adapt.
-
-
 diff --git a/scripts/package/mkspec b/scripts/package/mkspec
-index de170760d..2b5ee7b35 100755
+index f892cf8e37f0..a04301b1cdd0 100755
 --- a/scripts/package/mkspec
 +++ b/scripts/package/mkspec
-@@ -121,11 +121,11 @@ $S
- 	$MAKE %{?_smp_mflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
- 	cp System.map %{buildroot}/boot/System.map-$KERNELRELEASE
- 	cp .config %{buildroot}/boot/config-$KERNELRELEASE
--$S$M	rm -f %{buildroot}/lib/modules/$KERNELRELEASE/build
--$S$M	rm -f %{buildroot}/lib/modules/$KERNELRELEASE/source
-+$S$M	rm -f %{buildroot}/usr/lib/modules/$KERNELRELEASE/build
-+$S$M	rm -f %{buildroot}/usr/lib/modules/$KERNELRELEASE/source
- $S$M	mkdir -p %{buildroot}/usr/src/kernels/$KERNELRELEASE
- $S$M	tar cf - $EXCLUDES . | tar xf - -C %{buildroot}/usr/src/kernels/$KERNELRELEASE
--$S$M	cd %{buildroot}/lib/modules/$KERNELRELEASE
-+$S$M	cd %{buildroot}/usr/lib/modules/$KERNELRELEASE
- $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE build
- $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE source
-
-@@ -159,9 +159,9 @@ $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE source
-
- 	%files
- 	%defattr (-, root, root)
--$M	/lib/modules/$KERNELRELEASE
--$M	%exclude /lib/modules/$KERNELRELEASE/build
--$M	%exclude /lib/modules/$KERNELRELEASE/source
-+$M	/usr/lib/modules/$KERNELRELEASE
-+$M	%exclude /usr/lib/modules/$KERNELRELEASE/build
-+$M	%exclude /usr/lib/modules/$KERNELRELEASE/source
- 	/boot/*
-
- 	%files headers
-@@ -171,6 +171,6 @@ $S$M
- $S$M	%files devel
- $S$M	%defattr (-, root, root)
- $S$M	/usr/src/kernels/$KERNELRELEASE
--$S$M	/lib/modules/$KERNELRELEASE/build
--$S$M	/lib/modules/$KERNELRELEASE/source
-+$S$M	/usr/lib/modules/$KERNELRELEASE/build
-+$S$M	/usr/lib/modules/$KERNELRELEASE/source
- EOF
- 
-From 23133fe6745d567db5b93dc9e6aecc32d31354bd Mon Sep 17 00:00:00 2001
-From: Jeff Mahoney <jeffm@suse.de>
-Date: Tue, 31 Mar 2009 09:46:30 -0400
-Subject: [PATCH] - doc/README.KSYMS: Add to repo.
-
----
- doc/README.KSYMS      | 6 ++++++
- 1 file changed, 6 insertions(+)
- create mode 100644 doc/README.KSYMS
-
-diff --git a/doc/README.KSYMS b/doc/README.KSYMS
-new file mode 100644
-index 00000000000..39fe7878174
---- /dev/null
-+++ b/doc/README.KSYMS
-@@ -0,0 +1,6 @@
-+This file is a place holder for the kernel-syms{,-rt} package. It is used
-+to group build dependencies for all kernel flavors.
-+
-+The KMP build process will build KMPs against all installed kernel flavors
-+automatically. If you don't need to build against other flavors than the
-+ones you've already installed - it is safe to uninstall this package.
-
-From 5cd5e149a95d37746a89850f4beddef4f0ad2224 Mon Sep 17 00:00:00 2001
-From: tkg <tkg@froggi.es>
-Date: Sat, 9 Sep 2023 14:06:44 +0200
-Subject: Suse: Add kernel-syms package
-
-
-diff --git a/scripts/package/mkspec b/scripts/package/mkspec
-index ff8c33ead..51c94131e 100755
---- a/scripts/package/mkspec
-+++ b/scripts/package/mkspec
-@@ -88,6 +88,19 @@ $S$M	%description -n kernel-devel
+@@ -78,6 +78,19 @@ $S$M	%description -n kernel-devel
  $S$M	This package provides kernel headers and makefiles sufficient to build modules
  $S$M	against the $__KERNELRELEASE kernel package.
  $S$M
@@ -386,15 +256,50 @@ index ff8c33ead..51c94131e 100755
 +$S$M	This package is needed for compiling kernel module packages with proper
 +$S$M	package dependencies.
 +
- $S	# Opt out of a lot of Fedora hardening flags etc...
- $S	# See https://src.fedoraproject.org/rpms/redhat-rpm-config//blob/rawhide/f/buildflags.md
- $S	%undefine _package_note_file
-@@ -173,4 +189,8 @@ $S$M	%defattr (-, root, root)
+ $S	%prep
+ $S	%setup -q
+ $S
+@@ -97,11 +110,11 @@ $M	$MAKE %{?_smp_mflags} INSTALL_MOD_PATH=%{buildroot} modules_install
+ 	$MAKE %{?_smp_mflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
+ 	cp System.map %{buildroot}/boot/System.map-$KERNELRELEASE
+ 	cp .config %{buildroot}/boot/config-$KERNELRELEASE
+-$S$M	rm -f %{buildroot}/lib/modules/$KERNELRELEASE/build
+-$S$M	rm -f %{buildroot}/lib/modules/$KERNELRELEASE/source
++$S$M	rm -f %{buildroot}/usr/lib/modules/$KERNELRELEASE/build
++$S$M	rm -f %{buildroot}/usr/lib/modules/$KERNELRELEASE/source
+ $S$M	mkdir -p %{buildroot}/usr/src/kernels/$KERNELRELEASE
+ $S$M	tar cf - $EXCLUDES . | tar xf - -C %{buildroot}/usr/src/kernels/$KERNELRELEASE
+-$S$M	cd %{buildroot}/lib/modules/$KERNELRELEASE
++$S$M	cd %{buildroot}/usr/lib/modules/$KERNELRELEASE
+ $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE build
+ $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE source
+ 
+@@ -131,9 +144,9 @@ $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE source
+ 
+ 	%files
+ 	%defattr (-, root, root)
+-$M	/lib/modules/$KERNELRELEASE
+-$M	%exclude /lib/modules/$KERNELRELEASE/build
+-$M	%exclude /lib/modules/$KERNELRELEASE/source
++$M	/usr/lib/modules/$KERNELRELEASE
++$M	%exclude /usr/lib/modules/$KERNELRELEASE/build
++$M	%exclude /usr/lib/modules/$KERNELRELEASE/source
+ 	/boot/*
+ 
+ 	%files headers
+@@ -143,6 +156,10 @@ $S$M
+ $S$M	%files devel
+ $S$M	%defattr (-, root, root)
  $S$M	/usr/src/kernels/$KERNELRELEASE
- $S$M	/usr/lib/modules/$KERNELRELEASE/build
- $S$M	/usr/lib/modules/$KERNELRELEASE/source
+-$S$M	/lib/modules/$KERNELRELEASE/build
+-$S$M	/lib/modules/$KERNELRELEASE/source
++$S$M	/usr/lib/modules/$KERNELRELEASE/build
++$S$M	/usr/lib/modules/$KERNELRELEASE/source
 +$S$M
 +$S$M	%files syms
 +$S$M	%defattr (-, root, root)
 +$S$M	/usr/src/kernels/$KERNELRELEASE/doc
  EOF
+-- 
+2.49.0
+
