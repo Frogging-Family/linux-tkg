@@ -1,18 +1,43 @@
-diff --git a/MAINTAINERS b/MAINTAINERS
-index 281de213e..51ee1cb84 100644
---- a/MAINTAINERS
-+++ b/MAINTAINERS
-@@ -7279,7 +7279,7 @@ F:	Documentation/locking/*futex*
- F:	include/asm-generic/futex.h
- F:	include/linux/futex.h
- F:	include/uapi/linux/futex.h
--F:	kernel/futex.c
-+F:	kernel/futex*
- F:	tools/perf/bench/futex*
- F:	tools/testing/selftests/futex/
- 
+From ab7be5ad88bdc8944650b6ab8c25ea4f1daca825 Mon Sep 17 00:00:00 2001
+From: Adel KARA SLIMANE <adel.ks@zegrapher.com>
+Date: Sun, 18 May 2025 00:52:34 +0200
+Subject: [PATCH] Rebase of the futex2_interface
+
+---
+ arch/x86/entry/syscalls/syscall_32.tbl        |   3 +
+ arch/x86/entry/syscalls/syscall_64.tbl        |   3 +
+ include/linux/syscalls.h                      |   7 +
+ include/uapi/asm-generic/unistd.h             |  11 +-
+ include/uapi/linux/futex.h                    |  40 +
+ init/Kconfig                                  |   7 +
+ kernel/futex/Makefile                         |   1 +
+ kernel/futex/futex2.c                         | 833 ++++++++++++++++++
+ kernel/sys_ni.c                               |   5 +
+ tools/arch/x86/include/asm/unistd_64.h        |   8 +
+ tools/include/uapi/asm-generic/unistd.h       |  11 +-
+ .../arch/x86/entry/syscalls/syscall_64.tbl    |   3 +
+ tools/perf/bench/bench.h                      |   3 +
+ tools/perf/bench/futex-hash.c                 |  24 +-
+ tools/perf/bench/futex-wake-parallel.c        |  41 +-
+ tools/perf/bench/futex-wake.c                 |  36 +-
+ tools/perf/bench/futex.h                      |  17 +
+ tools/perf/builtin-bench.c                    |  17 +-
+ .../selftests/futex/functional/.gitignore     |   2 +
+ .../selftests/futex/functional/Makefile       |   5 +-
+ .../selftests/futex/functional/futex2_wait.c  | 148 ++++
+ .../selftests/futex/functional/futex2_waitv.c | 156 ++++
+ .../futex/functional/futex_wait_timeout.c     |  58 +-
+ .../futex/functional/futex_wait_wouldblock.c  |  33 +-
+ .../testing/selftests/futex/functional/run.sh |   6 +
+ .../selftests/futex/include/futex2test.h      |  94 ++
+ 26 files changed, 1537 insertions(+), 35 deletions(-)
+ create mode 100644 kernel/futex/futex2.c
+ create mode 100644 tools/testing/selftests/futex/functional/futex2_wait.c
+ create mode 100644 tools/testing/selftests/futex/functional/futex2_waitv.c
+ create mode 100644 tools/testing/selftests/futex/include/futex2test.h
+
 diff --git a/arch/x86/entry/syscalls/syscall_32.tbl b/arch/x86/entry/syscalls/syscall_32.tbl
-index 0d0667a9f..65734d5e1 100644
+index bad983312060..26072bb91a61 100644
 --- a/arch/x86/entry/syscalls/syscall_32.tbl
 +++ b/arch/x86/entry/syscalls/syscall_32.tbl
 @@ -445,3 +445,6 @@
@@ -23,7 +48,7 @@ index 0d0667a9f..65734d5e1 100644
 +442	i386	futex_wake		sys_futex_wake
 +443	i386	futex_waitv		sys_futex_waitv
 diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
-index 379819244..f30811b56 100644
+index 379819244b91..f30811b56683 100644
 --- a/arch/x86/entry/syscalls/syscall_64.tbl
 +++ b/arch/x86/entry/syscalls/syscall_64.tbl
 @@ -362,6 +362,9 @@
@@ -37,10 +62,10 @@ index 379819244..f30811b56 100644
  #
  # Due to a historical design error, certain syscalls are numbered differently
 diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
-index aea0ce9f3..ca03850ce 100644
+index a96e924c7b45..ff536a199b36 100644
 --- a/include/linux/syscalls.h
 +++ b/include/linux/syscalls.h
-@@ -613,6 +613,13 @@ asmlinkage long sys_get_robust_list(int pid,
+@@ -614,6 +614,13 @@ asmlinkage long sys_get_robust_list(int pid,
  asmlinkage long sys_set_robust_list(struct robust_list_head __user *head,
  				    size_t len);
  
@@ -55,7 +80,7 @@ index aea0ce9f3..ca03850ce 100644
  asmlinkage long sys_nanosleep(struct __kernel_timespec __user *rqtp,
  			      struct __kernel_timespec __user *rmtp);
 diff --git a/include/uapi/asm-generic/unistd.h b/include/uapi/asm-generic/unistd.h
-index 205631898..81a90b697 100644
+index 1ff9589ab611..49f33d285837 100644
 --- a/include/uapi/asm-generic/unistd.h
 +++ b/include/uapi/asm-generic/unistd.h
 @@ -860,8 +860,17 @@ __SYSCALL(__NR_faccessat2, sys_faccessat2)
@@ -78,7 +103,7 @@ index 205631898..81a90b697 100644
  /*
   * 32 bit systems traditionally used different
 diff --git a/include/uapi/linux/futex.h b/include/uapi/linux/futex.h
-index a3e760886..60f14769e 100644
+index a3e760886b8e..60f14769efb1 100644
 --- a/include/uapi/linux/futex.h
 +++ b/include/uapi/linux/futex.h
 @@ -44,6 +44,46 @@
@@ -129,10 +154,10 @@ index a3e760886..60f14769e 100644
   * Support for robust futexes: the kernel cleans up held futexes at
   * thread exit time.
 diff --git a/init/Kconfig b/init/Kconfig
-index a40d8afeb..07bce9696 100644
+index 233166e54df3..50042c700247 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1548,6 +1548,13 @@ config FUTEX
+@@ -1549,6 +1549,13 @@ config FUTEX
  	  support for "fast userspace mutexes".  The resulting kernel may not
  	  run glibc-based applications correctly.
  
@@ -146,23 +171,20 @@ index a40d8afeb..07bce9696 100644
  config FUTEX_PI
  	bool
  	depends on FUTEX && RT_MUTEXES
-diff --git a/kernel/Makefile b/kernel/Makefile
-index 6c9f19911..daacc0a16 100644
---- a/kernel/Makefile
-+++ b/kernel/Makefile
-@@ -54,6 +54,7 @@ obj-$(CONFIG_PROFILING) += profile.o
- obj-$(CONFIG_STACKTRACE) += stacktrace.o
- obj-y += time/
- obj-$(CONFIG_FUTEX) += futex.o
+diff --git a/kernel/futex/Makefile b/kernel/futex/Makefile
+index b89ba3fba343..895f47aa0dab 100644
+--- a/kernel/futex/Makefile
++++ b/kernel/futex/Makefile
+@@ -1,3 +1,4 @@
+ # SPDX-License-Identifier: GPL-2.0
+ 
+ obj-y += core.o
 +obj-$(CONFIG_FUTEX2) += futex2.o
- obj-$(CONFIG_GENERIC_ISA_DMA) += dma.o
- obj-$(CONFIG_SMP) += smp.o
- ifneq ($(CONFIG_SMP),y)
-diff --git a/kernel/futex2.c b/kernel/futex2.c
+diff --git a/kernel/futex/futex2.c b/kernel/futex/futex2.c
 new file mode 100644
-index 000000000..58cd8a868
+index 000000000000..2c2f6592657e
 --- /dev/null
-+++ b/kernel/futex2.c
++++ b/kernel/futex/futex2.c
 @@ -0,0 +1,833 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +/*
@@ -998,7 +1020,7 @@ index 000000000..58cd8a868
 +}
 +core_initcall(futex2_init);
 diff --git a/kernel/sys_ni.c b/kernel/sys_ni.c
-index f27ac94d5..1898e7340 100644
+index 9019299069b1..9faf2100ad9c 100644
 --- a/kernel/sys_ni.c
 +++ b/kernel/sys_ni.c
 @@ -148,6 +148,11 @@ COND_SYSCALL_COMPAT(set_robust_list);
@@ -1014,7 +1036,7 @@ index f27ac94d5..1898e7340 100644
  
  /* kernel/itimer.c */
 diff --git a/tools/arch/x86/include/asm/unistd_64.h b/tools/arch/x86/include/asm/unistd_64.h
-index 4205ed415..151a41ceb 100644
+index 4205ed4158bf..151a41cebbd5 100644
 --- a/tools/arch/x86/include/asm/unistd_64.h
 +++ b/tools/arch/x86/include/asm/unistd_64.h
 @@ -17,3 +17,11 @@
@@ -1030,7 +1052,7 @@ index 4205ed415..151a41ceb 100644
 +# define __NR_futex_wake 442
 +#endif
 diff --git a/tools/include/uapi/asm-generic/unistd.h b/tools/include/uapi/asm-generic/unistd.h
-index 205631898..81a90b697 100644
+index 2056318988f7..81a90b697231 100644
 --- a/tools/include/uapi/asm-generic/unistd.h
 +++ b/tools/include/uapi/asm-generic/unistd.h
 @@ -860,8 +860,17 @@ __SYSCALL(__NR_faccessat2, sys_faccessat2)
@@ -1053,7 +1075,7 @@ index 205631898..81a90b697 100644
  /*
   * 32 bit systems traditionally used different
 diff --git a/tools/perf/arch/x86/entry/syscalls/syscall_64.tbl b/tools/perf/arch/x86/entry/syscalls/syscall_64.tbl
-index 379819244..bd47f368f 100644
+index 379819244b91..bd47f368f49a 100644
 --- a/tools/perf/arch/x86/entry/syscalls/syscall_64.tbl
 +++ b/tools/perf/arch/x86/entry/syscalls/syscall_64.tbl
 @@ -362,6 +362,9 @@
@@ -1067,10 +1089,10 @@ index 379819244..bd47f368f 100644
  #
  # Due to a historical design error, certain syscalls are numbered differently
 diff --git a/tools/perf/bench/bench.h b/tools/perf/bench/bench.h
-index eac36afab..f6f881a05 100644
+index 9a56a44f87dd..ed00e6c55ffa 100644
 --- a/tools/perf/bench/bench.h
 +++ b/tools/perf/bench/bench.h
-@@ -38,8 +38,11 @@ int bench_mem_memcpy(int argc, const char **argv);
+@@ -26,8 +26,11 @@ int bench_mem_memcpy(int argc, const char **argv);
  int bench_mem_memset(int argc, const char **argv);
  int bench_mem_find_bit(int argc, const char **argv);
  int bench_futex_hash(int argc, const char **argv);
@@ -1083,7 +1105,7 @@ index eac36afab..f6f881a05 100644
  /* pi futexes */
  int bench_futex_lock_pi(int argc, const char **argv);
 diff --git a/tools/perf/bench/futex-hash.c b/tools/perf/bench/futex-hash.c
-index 915bf3da7..72921c22b 100644
+index 915bf3da7ce2..72921c22b5c2 100644
 --- a/tools/perf/bench/futex-hash.c
 +++ b/tools/perf/bench/futex-hash.c
 @@ -34,7 +34,7 @@ static unsigned int nthreads = 0;
@@ -1143,7 +1165,7 @@ index 915bf3da7..72921c22b 100644
 +	return bench_futex_hash_common(argc, argv);
 +}
 diff --git a/tools/perf/bench/futex-wake-parallel.c b/tools/perf/bench/futex-wake-parallel.c
-index cd2b81a84..540104538 100644
+index a129c94eb3fe..596a7768e9b4 100644
 --- a/tools/perf/bench/futex-wake-parallel.c
 +++ b/tools/perf/bench/futex-wake-parallel.c
 @@ -17,6 +17,12 @@ int bench_futex_wake_parallel(int argc __maybe_unused, const char **argv __maybe
@@ -1217,8 +1239,8 @@ index cd2b81a84..540104538 100644
  		futex_flag = FUTEX_PRIVATE_FLAG;
  
  	printf("Run summary [PID %d]: blocking on %d threads (at [%s] "
-@@ -322,4 +339,16 @@ int bench_futex_wake_parallel(int argc, const char **argv)
- 	free(blocked_worker);
+@@ -323,4 +340,16 @@ int bench_futex_wake_parallel(int argc, const char **argv)
+ 	perf_cpu_map__put(cpu);
  	return ret;
  }
 +
@@ -1235,7 +1257,7 @@ index cd2b81a84..540104538 100644
 +
  #endif /* HAVE_PTHREAD_BARRIER */
 diff --git a/tools/perf/bench/futex-wake.c b/tools/perf/bench/futex-wake.c
-index 2dfcef3e3..b98b84e7b 100644
+index 507ff533612c..971ace9364ef 100644
 --- a/tools/perf/bench/futex-wake.c
 +++ b/tools/perf/bench/futex-wake.c
 @@ -46,6 +46,9 @@ static struct stats waketime_stats, wakeup_stats;
@@ -1299,8 +1321,8 @@ index 2dfcef3e3..b98b84e7b 100644
  		timersub(&end, &start, &runtime);
  
  		update_stats(&wakeup_stats, nwoken);
-@@ -212,3 +227,14 @@ int bench_futex_wake(int argc, const char **argv)
- 	free(worker);
+@@ -213,3 +228,14 @@ int bench_futex_wake(int argc, const char **argv)
+ 	perf_cpu_map__put(cpu);
  	return ret;
  }
 +
@@ -1315,7 +1337,7 @@ index 2dfcef3e3..b98b84e7b 100644
 +	return bench_futex_wake_common(argc, argv);
 +}
 diff --git a/tools/perf/bench/futex.h b/tools/perf/bench/futex.h
-index 31b53cc7d..5111799b5 100644
+index 31b53cc7d5bc..5111799b5e82 100644
 --- a/tools/perf/bench/futex.h
 +++ b/tools/perf/bench/futex.h
 @@ -86,4 +86,21 @@ futex_cmp_requeue(u_int32_t *uaddr, u_int32_t val, u_int32_t *uaddr2, int nr_wak
@@ -1341,7 +1363,7 @@ index 31b53cc7d..5111799b5 100644
 +}
  #endif /* _FUTEX_H */
 diff --git a/tools/perf/builtin-bench.c b/tools/perf/builtin-bench.c
-index 62a7b7420..200ecacad 100644
+index fb3029495c23..7d287100d50a 100644
 --- a/tools/perf/builtin-bench.c
 +++ b/tools/perf/builtin-bench.c
 @@ -12,10 +12,11 @@
@@ -1360,7 +1382,7 @@ index 62a7b7420..200ecacad 100644
   */
  #include <subcmd/parse-options.h>
  #include "builtin.h"
-@@ -75,6 +76,13 @@ static struct bench futex_benchmarks[] = {
+@@ -76,6 +77,13 @@ static struct bench futex_benchmarks[] = {
  	{ NULL,		NULL,						NULL			}
  };
  
@@ -1374,7 +1396,7 @@ index 62a7b7420..200ecacad 100644
  #ifdef HAVE_EVENTFD_SUPPORT
  static struct bench epoll_benchmarks[] = {
  	{ "wait",	"Benchmark epoll concurrent epoll_waits",       bench_epoll_wait	},
-@@ -105,6 +113,7 @@ static struct collection collections[] = {
+@@ -106,6 +114,7 @@ static struct collection collections[] = {
  	{ "numa",	"NUMA scheduling and MM benchmarks",		numa_benchmarks		},
  #endif
  	{"futex",       "Futex stressing benchmarks",                   futex_benchmarks        },
@@ -1383,7 +1405,7 @@ index 62a7b7420..200ecacad 100644
  	{"epoll",       "Epoll stressing benchmarks",                   epoll_benchmarks        },
  #endif
 diff --git a/tools/testing/selftests/futex/functional/.gitignore b/tools/testing/selftests/futex/functional/.gitignore
-index 0efcd494d..d0b8f637b 100644
+index 0efcd494daab..d0b8f637b786 100644
 --- a/tools/testing/selftests/futex/functional/.gitignore
 +++ b/tools/testing/selftests/futex/functional/.gitignore
 @@ -6,3 +6,5 @@ futex_wait_private_mapped_file
@@ -1393,18 +1415,18 @@ index 0efcd494d..d0b8f637b 100644
 +futex2_wait
 +futex2_waitv
 diff --git a/tools/testing/selftests/futex/functional/Makefile b/tools/testing/selftests/futex/functional/Makefile
-index 23207829e..b857b9450 100644
+index 6a0ed2e7881e..576c8f59f43d 100644
 --- a/tools/testing/selftests/futex/functional/Makefile
 +++ b/tools/testing/selftests/futex/functional/Makefile
 @@ -5,6 +5,7 @@ LDLIBS := -lpthread -lrt
  
- HEADERS := \
+ LOCAL_HDRS := \
  	../include/futextest.h \
 +	../include/futex2test.h \
  	../include/atomic.h \
  	../include/logging.h
- TEST_GEN_FILES := \
-@@ -14,7 +15,9 @@ TEST_GEN_FILES := \
+ TEST_GEN_PROGS := \
+@@ -14,7 +15,9 @@ TEST_GEN_PROGS := \
  	futex_requeue_pi_signal_restart \
  	futex_requeue_pi_mismatched_ops \
  	futex_wait_uninitialized_heap \
@@ -1417,7 +1439,7 @@ index 23207829e..b857b9450 100644
  
 diff --git a/tools/testing/selftests/futex/functional/futex2_wait.c b/tools/testing/selftests/futex/functional/futex2_wait.c
 new file mode 100644
-index 000000000..0646a24b7
+index 000000000000..0646a24b7b6f
 --- /dev/null
 +++ b/tools/testing/selftests/futex/functional/futex2_wait.c
 @@ -0,0 +1,148 @@
@@ -1571,7 +1593,7 @@ index 000000000..0646a24b7
 +}
 diff --git a/tools/testing/selftests/futex/functional/futex2_waitv.c b/tools/testing/selftests/futex/functional/futex2_waitv.c
 new file mode 100644
-index 000000000..d4b116651
+index 000000000000..d4b116651faa
 --- /dev/null
 +++ b/tools/testing/selftests/futex/functional/futex2_waitv.c
 @@ -0,0 +1,156 @@
@@ -1732,7 +1754,7 @@ index 000000000..d4b116651
 +	return ret;
 +}
 diff --git a/tools/testing/selftests/futex/functional/futex_wait_timeout.c b/tools/testing/selftests/futex/functional/futex_wait_timeout.c
-index ee55e6d38..245670e44 100644
+index ee55e6d389a3..245670e44d2d 100644
 --- a/tools/testing/selftests/futex/functional/futex_wait_timeout.c
 +++ b/tools/testing/selftests/futex/functional/futex_wait_timeout.c
 @@ -11,6 +11,7 @@
@@ -1831,7 +1853,7 @@ index ee55e6d38..245670e44 100644
  	return ret;
  }
 diff --git a/tools/testing/selftests/futex/functional/futex_wait_wouldblock.c b/tools/testing/selftests/futex/functional/futex_wait_wouldblock.c
-index 0ae390ff8..1f72e5928 100644
+index 0ae390ff8164..1f72e5928244 100644
 --- a/tools/testing/selftests/futex/functional/futex_wait_wouldblock.c
 +++ b/tools/testing/selftests/futex/functional/futex_wait_wouldblock.c
 @@ -12,6 +12,7 @@
@@ -1905,7 +1927,7 @@ index 0ae390ff8..1f72e5928 100644
  	return ret;
  }
 diff --git a/tools/testing/selftests/futex/functional/run.sh b/tools/testing/selftests/futex/functional/run.sh
-index 1acb6ace1..18b3883d7 100755
+index 1acb6ace1680..18b3883d7236 100755
 --- a/tools/testing/selftests/futex/functional/run.sh
 +++ b/tools/testing/selftests/futex/functional/run.sh
 @@ -73,3 +73,9 @@ echo
@@ -1920,7 +1942,7 @@ index 1acb6ace1..18b3883d7 100755
 +./futex2_waitv $COLOR
 diff --git a/tools/testing/selftests/futex/include/futex2test.h b/tools/testing/selftests/futex/include/futex2test.h
 new file mode 100644
-index 000000000..10be0c504
+index 000000000000..10be0c5048dd
 --- /dev/null
 +++ b/tools/testing/selftests/futex/include/futex2test.h
 @@ -0,0 +1,94 @@
@@ -2018,3 +2040,6 @@ index 000000000..10be0c504
 +{
 +	return syscall(__NR_futex_waitv, waiters, nr_waiters, flags, timo);
 +}
+-- 
+2.49.0
+
