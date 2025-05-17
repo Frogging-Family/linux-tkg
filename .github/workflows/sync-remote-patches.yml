@@ -14,21 +14,31 @@ jobs:
       matrix:
         include:
           - description: BORE patch from CachyOS repo
+            type: direct-link
             src_file_link: https://github.com/CachyOS/kernel-patches/raw/refs/heads/master/$kver/sched/0001-bore.patch
             copy_as: 0001-bore.patch
           - description: Gentoo Kconfig patch
+            type: direct-link
             src_file_link: https://dev.gentoo.org/~mpagano/genpatches/trunk/$kver/4567_distro-Gentoo-Kconfig.patch
             copy_as: 0013-gentoo-kconfig.patch
           - description: Gentoo Print loaded firmware patch
+            type: direct-link
             src_file_link: https://dev.gentoo.org/~mpagano/genpatches/trunk/$kver/3000_Support-printing-firmware-info.patch
             copy_as: 0013-gentoo-print-loaded-firmware.patch
+          - description: linux-hardened patches
+            type: github-release
+            repo: anthraxx/linux-hardened
+            tag_regex: 'v$kver.'
+            asset_name: 'linux-hardened-$tag.patch'
+            copy_as: 0012-linux-hardened.patch
 
     steps:
       - name: Checkout linux-tkg
         uses: actions/checkout@v4
 
-      - name: Sync patches
-        id: update-patches
+      - name: Sync direct-link patches
+        if: matrix.type == 'direct-link'
+        id: direct-link-sync
         run: |
           set -e
 
@@ -52,6 +62,43 @@ jobs:
             fi
           done
 
+      - name: Sync github-release patches
+        if: matrix.type == 'github-release'
+        id: gihtub-release-sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+
+          all_tags=$(gh release list -R ${{ matrix.repo }} -L 100 | awk '{print $1}' )
+
+          cd linux-tkg-patches
+
+          for kver in *
+          do
+            [[ ! -d "$kver" ]] && continue
+
+            tag_regex=$(eval "echo ${{ matrix.tag_regex }}")
+            tag=$(echo "$all_tags" | grep -F "$tag_regex" | head -n1)
+            asset_name=$(eval "echo ${{ matrix.asset_name }}")
+
+            file_link="https://github.com/${{ matrix.repo }}/releases/download/$tag/$asset_name"
+            echo "Checking link $file_link"
+            if wget $file_link -O $kver/"${{ matrix.copy_as }}".new &> /dev/null
+            then
+              echo "Link exists"
+              echo "Overwriting linux-tkg-patches/$kver/${{ matrix.copy_as }} with remote file"
+              mv -f $kver/"${{ matrix.copy_as }}".new $kver/"${{ matrix.copy_as }}"
+              git add -N $kver/"${{ matrix.copy_as }}"
+            else
+              echo "Link doesn't exist"
+              rm $kver/"${{ matrix.copy_as }}".new
+            fi
+          done
+
+      - name: Check for changes
+        id: change-check
+        run: |
           if git diff --exit-code . > /dev/null
           then
             echo "patches-updated=0" >> $GITHUB_OUTPUT
@@ -60,7 +107,7 @@ jobs:
           fi
 
       - name: Push changes
-        if: steps.update-patches.outputs.patches-updated == '1'
+        if: steps.change-check.outputs.patches-updated == '1'
         run: |
           git config --global user.name 'Frogminer'
           git config --global user.email 'frogminer@miner.frog'
