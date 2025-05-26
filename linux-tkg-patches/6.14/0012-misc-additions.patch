@@ -339,33 +339,6 @@ index ed9dac00ebfb18..b3fd5e9df44c6f 100644
  			"New power limit (%d) is out of range [%d,%d]\n",
  			limit, smu->min_power_limit, smu->max_power_limit);
 
-From d4ca2fd218caafbf50e3343ba1260c6a23b5676a Mon Sep 17 00:00:00 2001
-From: Tk-Glitch <ti3nou@gmail.com>
-Date: Sun, 24 Apr 2025 23:38:21 +0200
-Subject: REVERT: Bluetooth: l2cap: Check encryption key size on incoming connection
-
-Reverts upstream commit 522e9ed157e3c21b4dd623c79967f72c21e45b78 due to a regression
-with multiple devices, notably Dualshock 4 and Dualsense gamepads
-
----
- net/bluetooth/l2cap_core.c | 3 --+
- 1 file changed, 1 insertions(+), 2 deletion(-)
-
-diff --git a/net/bluetooth/l2cap_core.c b/net/bluetooth/l2cap_core.c
-index c27ea70f71e1e1..499e38ed639e60 100644
---- a/net/bluetooth/l2cap_core.c
-+++ b/net/bluetooth/l2cap_core.c
-@@ -3956,8 +3956,7 @@ static void l2cap_connect(struct l2cap_conn *conn, struct l2cap_cmd_hdr *cmd,
-
- 	/* Check if the ACL is secure enough (if not SDP) */
- 	if (psm != cpu_to_le16(L2CAP_PSM_SDP) &&
--	    (!hci_conn_check_link_mode(conn->hcon) ||
--	    !l2cap_check_enc_key_size(conn->hcon))) {
-+	    !hci_conn_check_link_mode(conn->hcon)) {
- 		conn->disc_reason = HCI_ERROR_AUTH_FAILURE;
- 		result = L2CAP_CR_SEC_BLOCK;
- 		goto response;
-
 From 26f452f76a41a44be2f6e6b171433a2115972c44 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Sergio=20Gonz=C3=A1lez=20Collado?=
  <sergio.collado@gmail.com>
@@ -551,3 +524,288 @@ index 00000000000000..e3c28ff1807f0d
 +MODULE_LICENSE("GPL");
 +MODULE_DESCRIPTION("Test the longest symbol length");
 +MODULE_AUTHOR("Sergio González Collado");
+
+From dc3e5d970ae0a381dabaa6e210488f9099a591f9 Mon Sep 17 00:00:00 2001
+From: Luiz Augusto von Dentz <luiz.von.dentz@intel.com>
+Date: Wed, 30 Apr 2025 15:07:03 -0400
+Subject: [PATCH] Bluetooth: hci_event: Fix not using key encryption size when
+ its known
+
+This fixes the regression introduced by 50c1241e6a8a ("Bluetooth: l2cap:
+Check encryption key size on incoming connection") introduced a check for
+l2cap_check_enc_key_size which checks for hcon->enc_key_size which may
+not be initialized if HCI_OP_READ_ENC_KEY_SIZE is still pending.
+
+If the key encryption size is known, due previously reading it using
+HCI_OP_READ_ENC_KEY_SIZE, then store it as part of link_key/smp_ltk
+structures so the next time the encryption is changed their values are
+used as conn->enc_key_size thus avoiding the racing against
+HCI_OP_READ_ENC_KEY_SIZE.
+
+Now that the enc_size is stored as part of key the information the code
+then attempts to check that there is no downgrade of security if
+HCI_OP_READ_ENC_KEY_SIZE returns a value smaller than what has been
+previously stored.
+
+Link: https://bugzilla.kernel.org/show_bug.cgi?id=220061
+Link: https://bugzilla.kernel.org/show_bug.cgi?id=220063
+Fixes: 522e9ed157e3 ("Bluetooth: l2cap: Check encryption key size on incoming connection")
+Signed-off-by: Luiz Augusto von Dentz <luiz.von.dentz@intel.com>
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/issues/137
+---
+ include/net/bluetooth/hci_core.h |  1 +
+ net/bluetooth/hci_conn.c         | 24 +++++++++++
+ net/bluetooth/hci_event.c        | 73 ++++++++++++++++++--------------
+ 3 files changed, 67 insertions(+), 31 deletions(-)
+
+diff --git a/include/net/bluetooth/hci_core.h b/include/net/bluetooth/hci_core.h
+index 7d8bab892154eb..e21abd869ce726 100644
+--- a/include/net/bluetooth/hci_core.h
++++ b/include/net/bluetooth/hci_core.h
+@@ -1778,6 +1778,7 @@ struct hci_conn_params *hci_pend_le_action_lookup(struct list_head *list,
+ void hci_uuids_clear(struct hci_dev *hdev);
+ 
+ void hci_link_keys_clear(struct hci_dev *hdev);
++u8 *hci_conn_key_enc_size(struct hci_conn *conn);
+ struct link_key *hci_find_link_key(struct hci_dev *hdev, bdaddr_t *bdaddr);
+ struct link_key *hci_add_link_key(struct hci_dev *hdev, struct hci_conn *conn,
+ 				  bdaddr_t *bdaddr, u8 *val, u8 type,
+diff --git a/net/bluetooth/hci_conn.c b/net/bluetooth/hci_conn.c
+index ae66fa0a5fb584..a5cf428822fcd8 100644
+--- a/net/bluetooth/hci_conn.c
++++ b/net/bluetooth/hci_conn.c
+@@ -2897,3 +2897,27 @@ int hci_abort_conn(struct hci_conn *conn, u8 reason)
+ 	 */
+ 	return hci_cmd_sync_run_once(hdev, abort_conn_sync, conn, NULL);
+ }
++
++u8 *hci_conn_key_enc_size(struct hci_conn *conn)
++{
++	if (conn->type == ACL_LINK) {
++		struct link_key *key;
++
++		key = hci_find_link_key(conn->hdev, &conn->dst);
++		if (!key)
++			return NULL;
++
++		return &key->pin_len;
++	} else if (conn->type == LE_LINK) {
++		struct smp_ltk *ltk;
++
++		ltk = hci_find_ltk(conn->hdev, &conn->dst, conn->dst_type,
++				   conn->role);
++		if (!ltk)
++			return NULL;
++
++		return &ltk->enc_size;
++	}
++
++	return NULL;
++}
+diff --git a/net/bluetooth/hci_event.c b/net/bluetooth/hci_event.c
+index ab940ec698c0f5..a46929e3378347 100644
+--- a/net/bluetooth/hci_event.c
++++ b/net/bluetooth/hci_event.c
+@@ -739,10 +739,17 @@ static u8 hci_cc_read_enc_key_size(struct hci_dev *hdev, void *data,
+ 			   handle);
+ 		conn->enc_key_size = 0;
+ 	} else {
++		u8 *key_enc_size = hci_conn_key_enc_size(conn);
++
+ 		conn->enc_key_size = rp->key_size;
+ 		status = 0;
+ 
+-		if (conn->enc_key_size < hdev->min_enc_key_size) {
++		/* Attempt to check if the key size is too small or if it has
++		 * been downgraded from the last time it was stored as part of
++		 * the link_key.
++		 */
++		if (conn->enc_key_size < hdev->min_enc_key_size ||
++		    (key_enc_size && conn->enc_key_size < *key_enc_size)) {
+ 			/* As slave role, the conn->state has been set to
+ 			 * BT_CONNECTED and l2cap conn req might not be received
+ 			 * yet, at this moment the l2cap layer almost does
+@@ -755,6 +762,10 @@ static u8 hci_cc_read_enc_key_size(struct hci_dev *hdev, void *data,
+ 			clear_bit(HCI_CONN_ENCRYPT, &conn->flags);
+ 			clear_bit(HCI_CONN_AES_CCM, &conn->flags);
+ 		}
++
++		/* Update the key encryption size with the connection one */
++		if (key_enc_size && *key_enc_size != conn->enc_key_size)
++			*key_enc_size = conn->enc_key_size;
+ 	}
+ 
+ 	hci_encrypt_cfm(conn, status);
+@@ -3062,6 +3073,34 @@ static void hci_inquiry_result_evt(struct hci_dev *hdev, void *edata,
+ 	hci_dev_unlock(hdev);
+ }
+ 
++static int hci_read_enc_key_size(struct hci_dev *hdev, struct hci_conn *conn)
++{
++	struct hci_cp_read_enc_key_size cp;
++	u8 *key_enc_size = hci_conn_key_enc_size(conn);
++
++	if (!read_key_size_capable(hdev)) {
++		conn->enc_key_size = HCI_LINK_KEY_SIZE;
++		return -EOPNOTSUPP;
++	}
++
++	bt_dev_dbg(hdev, "hcon %p", conn);
++
++	memset(&cp, 0, sizeof(cp));
++	cp.handle = cpu_to_le16(conn->handle);
++
++	/* If the key enc_size is already known, use it as conn->enc_key_size,
++	 * otherwise use hdev->min_enc_key_size so the likes of
++	 * l2cap_check_enc_key_size don't fail while waiting for
++	 * HCI_OP_READ_ENC_KEY_SIZE response.
++	 */
++	if (key_enc_size && *key_enc_size)
++		conn->enc_key_size = *key_enc_size;
++	else
++		conn->enc_key_size = hdev->min_enc_key_size;
++
++	return hci_send_cmd(hdev, HCI_OP_READ_ENC_KEY_SIZE, sizeof(cp), &cp);
++}
++
+ static void hci_conn_complete_evt(struct hci_dev *hdev, void *data,
+ 				  struct sk_buff *skb)
+ {
+@@ -3154,23 +3193,11 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, void *data,
+ 		if (ev->encr_mode == 1 && !test_bit(HCI_CONN_ENCRYPT, &conn->flags) &&
+ 		    ev->link_type == ACL_LINK) {
+ 			struct link_key *key;
+-			struct hci_cp_read_enc_key_size cp;
+ 
+ 			key = hci_find_link_key(hdev, &ev->bdaddr);
+ 			if (key) {
+ 				set_bit(HCI_CONN_ENCRYPT, &conn->flags);
+-
+-				if (!read_key_size_capable(hdev)) {
+-					conn->enc_key_size = HCI_LINK_KEY_SIZE;
+-				} else {
+-					cp.handle = cpu_to_le16(conn->handle);
+-					if (hci_send_cmd(hdev, HCI_OP_READ_ENC_KEY_SIZE,
+-							 sizeof(cp), &cp)) {
+-						bt_dev_err(hdev, "sending read key size failed");
+-						conn->enc_key_size = HCI_LINK_KEY_SIZE;
+-					}
+-				}
+-
++				hci_read_enc_key_size(hdev, conn);
+ 				hci_encrypt_cfm(conn, ev->status);
+ 			}
+ 		}
+@@ -3609,24 +3636,8 @@ static void hci_encrypt_change_evt(struct hci_dev *hdev, void *data,
+ 
+ 	/* Try reading the encryption key size for encrypted ACL links */
+ 	if (!ev->status && ev->encrypt && conn->type == ACL_LINK) {
+-		struct hci_cp_read_enc_key_size cp;
+-
+-		/* Only send HCI_Read_Encryption_Key_Size if the
+-		 * controller really supports it. If it doesn't, assume
+-		 * the default size (16).
+-		 */
+-		if (!read_key_size_capable(hdev)) {
+-			conn->enc_key_size = HCI_LINK_KEY_SIZE;
+-			goto notify;
+-		}
+-
+-		cp.handle = cpu_to_le16(conn->handle);
+-		if (hci_send_cmd(hdev, HCI_OP_READ_ENC_KEY_SIZE,
+-				 sizeof(cp), &cp)) {
+-			bt_dev_err(hdev, "sending read key size failed");
+-			conn->enc_key_size = HCI_LINK_KEY_SIZE;
++		if (hci_read_enc_key_size(hdev, conn))
+ 			goto notify;
+-		}
+ 
+ 		goto unlock;
+ 	}
+
+From 908b9f8ebb69a9d087b319e37b45b54c6f588e16 Mon Sep 17 00:00:00 2001
+From: Christoph Hellwig <hch@lst.de>
+Date: Tue, 20 May 2025 15:54:20 +0200
+Subject: [PATCH] loop: don't require ->write_iter for writable files in
+ loop_configure
+
+Block devices can be opened read-write even if they can't be written to
+for historic reasons.  Remove the check requiring file->f_op->write_iter
+when the block devices was opened in loop_configure. The call to
+loop_check_backing_file just below ensures the ->write_iter is present
+for backing files opened for writing, which is the only check that is
+actually needed.
+
+Fixes: f5c84eff634b ("loop: Add sanity check for read/write_iter")
+Reported-by: Christian Hesse <mail@eworm.de>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+Link: https://lore.kernel.org/r/20250520135420.1177312-1-hch@lst.de
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+Cherry-picked-for: https://lore.kernel.org/r/20250519175640.2fcac001@leda.eworm.net
+---
+ drivers/block/loop.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/drivers/block/loop.c b/drivers/block/loop.c
+index b378d2aa49f069..34bc46d1f3f353 100644
+--- a/drivers/block/loop.c
++++ b/drivers/block/loop.c
+@@ -972,9 +972,6 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
+ 	if (!file)
+ 		return -EBADF;
+ 
+-	if ((mode & BLK_OPEN_WRITE) && !file->f_op->write_iter)
+-		return -EINVAL;
+-
+ 	error = loop_check_backing_file(file);
+ 	if (error)
+ 		return error;
+
+From 30dd9945fd79d33a049da4e52984c9bc07450de2 Mon Sep 17 00:00:00 2001
+From: Aurabindo Pillai <aurabindo.pillai@amd.com>
+Date: Wed, 21 May 2025 16:10:57 -0400
+Subject: [PATCH] Revert "drm/amd/display: more liberal vmin/vmax update for
+ freesync"
+
+This reverts commit 219898d29c438d8ec34a5560fac4ea8f6b8d4f20 since it
+causes regressions on certain configs. Revert until the issue can be
+isolated and debugged.
+
+Closes: https://gitlab.freedesktop.org/drm/amd/-/issues/4238
+Signed-off-by: Aurabindo Pillai <aurabindo.pillai@amd.com>
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/issues/139
+---
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c    | 16 +++++-----------
+ 1 file changed, 5 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index 2dbd71fbae28a5..e4f0517f0f2b23 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -668,21 +668,15 @@ static void dm_crtc_high_irq(void *interrupt_params)
+ 	spin_lock_irqsave(&adev_to_drm(adev)->event_lock, flags);
+ 
+ 	if (acrtc->dm_irq_params.stream &&
+-		acrtc->dm_irq_params.vrr_params.supported) {
+-		bool replay_en = acrtc->dm_irq_params.stream->link->replay_settings.replay_feature_enabled;
+-		bool psr_en = acrtc->dm_irq_params.stream->link->psr_settings.psr_feature_enabled;
+-		bool fs_active_var_en = acrtc->dm_irq_params.freesync_config.state == VRR_STATE_ACTIVE_VARIABLE;
+-
++	    acrtc->dm_irq_params.vrr_params.supported &&
++	    acrtc->dm_irq_params.freesync_config.state ==
++		    VRR_STATE_ACTIVE_VARIABLE) {
+ 		mod_freesync_handle_v_update(adev->dm.freesync_module,
+ 					     acrtc->dm_irq_params.stream,
+ 					     &acrtc->dm_irq_params.vrr_params);
+ 
+-		/* update vmin_vmax only if freesync is enabled, or only if PSR and REPLAY are disabled */
+-		if (fs_active_var_en || (!fs_active_var_en && !replay_en && !psr_en)) {
+-			dc_stream_adjust_vmin_vmax(adev->dm.dc,
+-					acrtc->dm_irq_params.stream,
+-					&acrtc->dm_irq_params.vrr_params.adjust);
+-		}
++		dc_stream_adjust_vmin_vmax(adev->dm.dc, acrtc->dm_irq_params.stream,
++					   &acrtc->dm_irq_params.vrr_params.adjust);
+ 	}
+ 
+ 	/*
