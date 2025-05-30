@@ -1,8 +1,69 @@
+From 5b2796b7182ba04dd5bea5e5e78448ca1180d509 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Fri, 25 Oct 2019 14:00:52 +1100
+Subject: [PATCH 01/17] MultiQueue Skiplist Scheduler v0.205
+
+---
+ .../admin-guide/kernel-parameters.txt         |    8 +
+ Documentation/admin-guide/sysctl/kernel.rst   |   34 +
+ Documentation/scheduler/sched-BFS.txt         |  351 +
+ Documentation/scheduler/sched-MuQSS.txt       |  373 +
+ arch/alpha/Kconfig                            |    2 +
+ arch/arm/Kconfig                              |    2 +
+ arch/arm64/Kconfig                            |    2 +
+ arch/powerpc/Kconfig                          |    2 +
+ arch/powerpc/platforms/cell/spufs/sched.c     |    5 -
+ arch/x86/Kconfig                              |   18 +
+ fs/proc/base.c                                |    2 +-
+ include/linux/init_task.h                     |    4 +
+ include/linux/ioprio.h                        |    2 +
+ include/linux/sched.h                         |   61 +-
+ include/linux/sched/deadline.h                |    9 +
+ include/linux/sched/nohz.h                    |    2 +-
+ include/linux/sched/prio.h                    |   12 +
+ include/linux/sched/rt.h                      |    2 +
+ include/linux/sched/task.h                    |    2 +-
+ include/linux/skip_list.h                     |   33 +
+ include/uapi/linux/sched.h                    |    9 +-
+ init/Kconfig                                  |   24 +-
+ init/init_task.c                              |   10 +
+ init/main.c                                   |    2 +
+ kernel/Kconfig.MuQSS                          |  105 +
+ kernel/Makefile                               |    3 +-
+ kernel/delayacct.c                            |    2 +-
+ kernel/exit.c                                 |    4 +-
+ kernel/kthread.c                              |   30 +-
+ kernel/livepatch/transition.c                 |    6 +-
+ kernel/sched/Makefile                         |   10 +-
+ kernel/sched/MuQSS.c                          | 7866 +++++++++++++++++
+ kernel/sched/MuQSS.h                          | 1070 +++
+ kernel/sched/cpufreq_schedutil.c              |   12 +-
+ kernel/sched/cpupri.h                         |    2 +
+ kernel/sched/cputime.c                        |   22 +-
+ kernel/sched/idle.c                           |    2 +
+ kernel/sched/sched.h                          |   35 +
+ kernel/sched/topology.c                       |    8 +
+ kernel/skip_list.c                            |  148 +
+ kernel/sysctl.c                               |   76 +-
+ kernel/time/Kconfig                           |    2 +-
+ kernel/time/clockevents.c                     |    5 +
+ kernel/time/posix-cpu-timers.c                |    4 +-
+ kernel/time/timer.c                           |    7 +-
+ kernel/trace/trace_selftest.c                 |    5 +
+ 46 files changed, 10339 insertions(+), 56 deletions(-)
+ create mode 100644 Documentation/scheduler/sched-BFS.txt
+ create mode 100644 Documentation/scheduler/sched-MuQSS.txt
+ create mode 100644 include/linux/skip_list.h
+ create mode 100644 kernel/Kconfig.MuQSS
+ create mode 100644 kernel/sched/MuQSS.c
+ create mode 100644 kernel/sched/MuQSS.h
+ create mode 100644 kernel/skip_list.c
+
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 44fde25bb221..044daa3a41ab 100644
+index 88110e74b3f7..b2570fcecf51 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -4652,6 +4652,14 @@
+@@ -4836,6 +4836,14 @@
  			Memory area to be used by remote processor image,
  			managed by CMA.
  
@@ -18,7 +79,7 @@ index 44fde25bb221..044daa3a41ab 100644
  
  	S		[KNL] Run init in single mode
 diff --git a/Documentation/admin-guide/sysctl/kernel.rst b/Documentation/admin-guide/sysctl/kernel.rst
-index d4b32cc32bb7..9e1e71fc66d0 100644
+index 6b0c7b650dea..ec2609176073 100644
 --- a/Documentation/admin-guide/sysctl/kernel.rst
 +++ b/Documentation/admin-guide/sysctl/kernel.rst
 @@ -436,6 +436,16 @@ this allows system administrators to override the
@@ -38,7 +99,7 @@ index d4b32cc32bb7..9e1e71fc66d0 100644
  kexec_load_disabled
  ===================
  
-@@ -1077,6 +1087,20 @@ ROM/Flash boot loader. Maybe to tell it what to do after
+@@ -1081,6 +1091,20 @@ ROM/Flash boot loader. Maybe to tell it what to do after
  rebooting. ???
  
  
@@ -59,7 +120,7 @@ index d4b32cc32bb7..9e1e71fc66d0 100644
  sched_energy_aware
  ==================
  
-@@ -1515,3 +1539,13 @@ is 10 seconds.
+@@ -1540,3 +1564,13 @@ is 10 seconds.
  
  The softlockup threshold is (``2 * watchdog_thresh``). Setting this
  tunable to zero will disable lockup detection altogether.
@@ -809,21 +870,6 @@ index 000000000000..ae28b85c9995
 +
 +
 +Con Kolivas <kernel@kolivas.org> Sat, 29th October 2016
-diff --git a/Makefile b/Makefile
-index e30cf02da8b8..317a5c41c03f 100644
---- a/Makefile
-+++ b/Makefile
-@@ -18,6 +18,10 @@ $(if $(filter __%, $(MAKECMDGOALS)), \
- PHONY := __all
- __all:
- 
-+CKVERSION = -ck1
-+CKNAME = MuQSS Powered
-+EXTRAVERSION := $(EXTRAVERSION)$(CKVERSION)
-+
- # We are using a recursive build, so we need to do a little thinking
- # to get the ordering right.
- #
 diff --git a/arch/alpha/Kconfig b/arch/alpha/Kconfig
 index d6e9fc7a7b19..f2d07b1939fd 100644
 --- a/arch/alpha/Kconfig
@@ -837,24 +883,11 @@ index d6e9fc7a7b19..f2d07b1939fd 100644
  config SRM_ENV
  	tristate "SRM environment through procfs"
  	depends on PROC_FS
-diff --git a/arch/arc/configs/tb10x_defconfig b/arch/arc/configs/tb10x_defconfig
-index a12656ec0072..b46b6ddc7636 100644
---- a/arch/arc/configs/tb10x_defconfig
-+++ b/arch/arc/configs/tb10x_defconfig
-@@ -29,7 +29,7 @@ CONFIG_ARC_PLAT_TB10X=y
- CONFIG_ARC_CACHE_LINE_SHIFT=5
- CONFIG_HZ=250
- CONFIG_ARC_BUILTIN_DTB_NAME="abilis_tb100_dvk"
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- # CONFIG_COMPACTION is not set
- CONFIG_NET=y
- CONFIG_PACKET=y
 diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
-index 002e0cf025f5..a3045ba688ca 100644
+index 335308aff6ce..006c722b12d4 100644
 --- a/arch/arm/Kconfig
 +++ b/arch/arm/Kconfig
-@@ -1236,6 +1236,8 @@ config SCHED_SMT
+@@ -1237,6 +1237,8 @@ config SCHED_SMT
  	  MultiThreading at a cost of slightly increased overhead in some
  	  places. If unsure say N here.
  
@@ -863,76 +896,11 @@ index 002e0cf025f5..a3045ba688ca 100644
  config HAVE_ARM_SCU
  	bool
  	help
-diff --git a/arch/arm/configs/bcm2835_defconfig b/arch/arm/configs/bcm2835_defconfig
-index 44ff9cd88d81..9c639c998015 100644
---- a/arch/arm/configs/bcm2835_defconfig
-+++ b/arch/arm/configs/bcm2835_defconfig
-@@ -29,7 +29,7 @@ CONFIG_MODULE_UNLOAD=y
- CONFIG_ARCH_MULTI_V6=y
- CONFIG_ARCH_BCM=y
- CONFIG_ARCH_BCM2835=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_AEABI=y
- CONFIG_KSM=y
- CONFIG_CLEANCACHE=y
-diff --git a/arch/arm/configs/imx_v6_v7_defconfig b/arch/arm/configs/imx_v6_v7_defconfig
-index 221f5c340c86..2cb7a9a08a05 100644
---- a/arch/arm/configs/imx_v6_v7_defconfig
-+++ b/arch/arm/configs/imx_v6_v7_defconfig
-@@ -33,6 +33,7 @@ CONFIG_PCI_MSI=y
- CONFIG_PCI_IMX6=y
- CONFIG_SMP=y
- CONFIG_ARM_PSCI=y
-+CONFIG_PREEMPT=y
- CONFIG_HIGHMEM=y
- CONFIG_FORCE_MAX_ZONEORDER=14
- CONFIG_CMDLINE="noinitrd console=ttymxc0,115200"
-diff --git a/arch/arm/configs/mps2_defconfig b/arch/arm/configs/mps2_defconfig
-index 1d923dbb9928..9c1931f1fafd 100644
---- a/arch/arm/configs/mps2_defconfig
-+++ b/arch/arm/configs/mps2_defconfig
-@@ -18,7 +18,7 @@ CONFIG_ARCH_MPS2=y
- CONFIG_SET_MEM_PARAM=y
- CONFIG_DRAM_BASE=0x21000000
- CONFIG_DRAM_SIZE=0x1000000
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- # CONFIG_ATAGS is not set
- CONFIG_ZBOOT_ROM_TEXT=0x0
- CONFIG_ZBOOT_ROM_BSS=0x0
-diff --git a/arch/arm/configs/mxs_defconfig b/arch/arm/configs/mxs_defconfig
-index a9c6f32a9b1c..870866aaa39d 100644
---- a/arch/arm/configs/mxs_defconfig
-+++ b/arch/arm/configs/mxs_defconfig
-@@ -1,7 +1,7 @@
- CONFIG_SYSVIPC=y
- CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT_VOLUNTARY=n
- CONFIG_TASKSTATS=y
- CONFIG_TASK_DELAY_ACCT=y
- CONFIG_TASK_XACCT=y
-@@ -25,6 +25,13 @@ CONFIG_MODULE_UNLOAD=y
- CONFIG_MODULE_FORCE_UNLOAD=y
- CONFIG_MODVERSIONS=y
- CONFIG_BLK_DEV_INTEGRITY=y
-+# CONFIG_IOSCHED_DEADLINE is not set
-+# CONFIG_IOSCHED_CFQ is not set
-+# CONFIG_ARCH_MULTI_V7 is not set
-+CONFIG_ARCH_MXS=y
-+# CONFIG_ARM_THUMB is not set
-+CONFIG_PREEMPT=y
-+CONFIG_AEABI=y
- CONFIG_NET=y
- CONFIG_PACKET=y
- CONFIG_UNIX=y
 diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
-index a6b5b7ef40ae..621c278bb5f2 100644
+index cd13f02d579b..0a8a590156d7 100644
 --- a/arch/arm64/Kconfig
 +++ b/arch/arm64/Kconfig
-@@ -976,6 +976,8 @@ config SCHED_SMT
+@@ -1053,6 +1053,8 @@ config SCHED_SMT
  	  MultiThreading at a cost of slightly increased overhead in some
  	  places. If unsure say N here.
  
@@ -941,702 +909,11 @@ index a6b5b7ef40ae..621c278bb5f2 100644
  config NR_CPUS
  	int "Maximum number of CPUs (2-4096)"
  	range 2 4096
-diff --git a/arch/mips/configs/fuloong2e_defconfig b/arch/mips/configs/fuloong2e_defconfig
-index 023b4e644b1c..013e630b96a6 100644
---- a/arch/mips/configs/fuloong2e_defconfig
-+++ b/arch/mips/configs/fuloong2e_defconfig
-@@ -4,7 +4,7 @@ CONFIG_SYSVIPC=y
- CONFIG_POSIX_MQUEUE=y
- CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_BSD_PROCESS_ACCT=y
- CONFIG_IKCONFIG=y
- CONFIG_IKCONFIG_PROC=y
-diff --git a/arch/mips/configs/gpr_defconfig b/arch/mips/configs/gpr_defconfig
-index 9085f4d6c698..fb23111d45f6 100644
---- a/arch/mips/configs/gpr_defconfig
-+++ b/arch/mips/configs/gpr_defconfig
-@@ -1,8 +1,8 @@
-+CONFIG_PREEMPT=y
- # CONFIG_LOCALVERSION_AUTO is not set
- CONFIG_SYSVIPC=y
- CONFIG_POSIX_MQUEUE=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
- CONFIG_BSD_PROCESS_ACCT=y
- CONFIG_BSD_PROCESS_ACCT_V3=y
- CONFIG_RELAY=y
-diff --git a/arch/mips/configs/ip22_defconfig b/arch/mips/configs/ip22_defconfig
-index 21a1168ae301..529a1b1007cf 100644
---- a/arch/mips/configs/ip22_defconfig
-+++ b/arch/mips/configs/ip22_defconfig
-@@ -1,7 +1,7 @@
- CONFIG_SYSVIPC=y
- CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_IKCONFIG=y
- CONFIG_IKCONFIG_PROC=y
- CONFIG_LOG_BUF_SHIFT=14
-diff --git a/arch/mips/configs/ip28_defconfig b/arch/mips/configs/ip28_defconfig
-index 0921ef38e9fb..6da05cef46f8 100644
---- a/arch/mips/configs/ip28_defconfig
-+++ b/arch/mips/configs/ip28_defconfig
-@@ -1,5 +1,5 @@
- CONFIG_SYSVIPC=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_IKCONFIG=y
- CONFIG_IKCONFIG_PROC=y
- CONFIG_LOG_BUF_SHIFT=14
-diff --git a/arch/mips/configs/jazz_defconfig b/arch/mips/configs/jazz_defconfig
-index 8c223035921f..a3bf87450343 100644
---- a/arch/mips/configs/jazz_defconfig
-+++ b/arch/mips/configs/jazz_defconfig
-@@ -1,8 +1,8 @@
-+CONFIG_PREEMPT=y
- CONFIG_SYSVIPC=y
- CONFIG_POSIX_MQUEUE=y
- CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
- CONFIG_BSD_PROCESS_ACCT=y
- CONFIG_LOG_BUF_SHIFT=14
- CONFIG_RELAY=y
-diff --git a/arch/mips/configs/mtx1_defconfig b/arch/mips/configs/mtx1_defconfig
-index 914af125a7fa..76a64290373f 100644
---- a/arch/mips/configs/mtx1_defconfig
-+++ b/arch/mips/configs/mtx1_defconfig
-@@ -1,8 +1,8 @@
-+CONFIG_PREEMPT=y
- # CONFIG_LOCALVERSION_AUTO is not set
- CONFIG_SYSVIPC=y
- CONFIG_POSIX_MQUEUE=y
- CONFIG_AUDIT=y
--CONFIG_PREEMPT_VOLUNTARY=y
- CONFIG_BSD_PROCESS_ACCT=y
- CONFIG_BSD_PROCESS_ACCT_V3=y
- CONFIG_RELAY=y
-diff --git a/arch/mips/configs/nlm_xlr_defconfig b/arch/mips/configs/nlm_xlr_defconfig
-index 4ecb157e56d4..ea7309283b01 100644
---- a/arch/mips/configs/nlm_xlr_defconfig
-+++ b/arch/mips/configs/nlm_xlr_defconfig
-@@ -1,10 +1,10 @@
-+CONFIG_PREEMPT=y
- # CONFIG_LOCALVERSION_AUTO is not set
- CONFIG_SYSVIPC=y
- CONFIG_POSIX_MQUEUE=y
- CONFIG_AUDIT=y
- CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
- CONFIG_BSD_PROCESS_ACCT=y
- CONFIG_BSD_PROCESS_ACCT_V3=y
- CONFIG_TASKSTATS=y
-diff --git a/arch/mips/configs/pic32mzda_defconfig b/arch/mips/configs/pic32mzda_defconfig
-index 63fe2da1b37f..7f08ee237345 100644
---- a/arch/mips/configs/pic32mzda_defconfig
-+++ b/arch/mips/configs/pic32mzda_defconfig
-@@ -1,7 +1,7 @@
-+CONFIG_PREEMPT=y
- CONFIG_SYSVIPC=y
- CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
- CONFIG_IKCONFIG=y
- CONFIG_IKCONFIG_PROC=y
- CONFIG_LOG_BUF_SHIFT=14
-diff --git a/arch/mips/configs/pistachio_defconfig b/arch/mips/configs/pistachio_defconfig
-index b9adf15ebbec..0025b56dc300 100644
---- a/arch/mips/configs/pistachio_defconfig
-+++ b/arch/mips/configs/pistachio_defconfig
-@@ -1,9 +1,9 @@
-+CONFIG_PREEMPT=y
- # CONFIG_LOCALVERSION_AUTO is not set
- CONFIG_DEFAULT_HOSTNAME="localhost"
- CONFIG_SYSVIPC=y
- CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
--CONFIG_PREEMPT_VOLUNTARY=y
- CONFIG_IKCONFIG=m
- CONFIG_IKCONFIG_PROC=y
- CONFIG_LOG_BUF_SHIFT=18
-diff --git a/arch/mips/configs/rm200_defconfig b/arch/mips/configs/rm200_defconfig
-index 30d7c3db884e..9e68acfa0d0e 100644
---- a/arch/mips/configs/rm200_defconfig
-+++ b/arch/mips/configs/rm200_defconfig
-@@ -1,6 +1,6 @@
-+CONFIG_PREEMPT=y
- CONFIG_SYSVIPC=y
- CONFIG_POSIX_MQUEUE=y
--CONFIG_PREEMPT_VOLUNTARY=y
- CONFIG_BSD_PROCESS_ACCT=y
- CONFIG_IKCONFIG=y
- CONFIG_IKCONFIG_PROC=y
-diff --git a/arch/parisc/configs/712_defconfig b/arch/parisc/configs/712_defconfig
-new file mode 100644
-index 000000000000..578524f80cc4
---- /dev/null
-+++ b/arch/parisc/configs/712_defconfig
-@@ -0,0 +1,181 @@
-+# CONFIG_LOCALVERSION_AUTO is not set
-+CONFIG_SYSVIPC=y
-+CONFIG_POSIX_MQUEUE=y
-+CONFIG_IKCONFIG=y
-+CONFIG_IKCONFIG_PROC=y
-+CONFIG_LOG_BUF_SHIFT=16
-+CONFIG_BLK_DEV_INITRD=y
-+CONFIG_KALLSYMS_ALL=y
-+CONFIG_SLAB=y
-+CONFIG_PROFILING=y
-+CONFIG_OPROFILE=m
-+CONFIG_MODULES=y
-+CONFIG_MODULE_UNLOAD=y
-+CONFIG_MODULE_FORCE_UNLOAD=y
-+CONFIG_PA7100LC=y
-+CONFIG_PREEMPT=y
-+CONFIG_GSC_LASI=y
-+# CONFIG_PDC_CHASSIS is not set
-+CONFIG_BINFMT_MISC=m
-+CONFIG_NET=y
-+CONFIG_PACKET=y
-+CONFIG_UNIX=y
-+CONFIG_XFRM_USER=m
-+CONFIG_NET_KEY=m
-+CONFIG_INET=y
-+CONFIG_IP_MULTICAST=y
-+CONFIG_IP_PNP=y
-+CONFIG_IP_PNP_DHCP=y
-+CONFIG_IP_PNP_BOOTP=y
-+CONFIG_INET_AH=m
-+CONFIG_INET_ESP=m
-+CONFIG_INET_DIAG=m
-+# CONFIG_IPV6 is not set
-+CONFIG_NETFILTER=y
-+CONFIG_LLC2=m
-+CONFIG_NET_PKTGEN=m
-+CONFIG_DEVTMPFS=y
-+CONFIG_DEVTMPFS_MOUNT=y
-+# CONFIG_STANDALONE is not set
-+# CONFIG_PREVENT_FIRMWARE_BUILD is not set
-+CONFIG_PARPORT=y
-+CONFIG_PARPORT_PC=m
-+CONFIG_BLK_DEV_LOOP=y
-+CONFIG_BLK_DEV_CRYPTOLOOP=y
-+CONFIG_BLK_DEV_RAM=y
-+CONFIG_BLK_DEV_RAM_SIZE=6144
-+CONFIG_ATA_OVER_ETH=m
-+CONFIG_SCSI=y
-+CONFIG_BLK_DEV_SD=y
-+CONFIG_CHR_DEV_ST=y
-+CONFIG_BLK_DEV_SR=y
-+CONFIG_CHR_DEV_SG=y
-+CONFIG_SCSI_ISCSI_ATTRS=m
-+CONFIG_SCSI_LASI700=y
-+CONFIG_SCSI_DEBUG=m
-+CONFIG_MD=y
-+CONFIG_BLK_DEV_MD=m
-+CONFIG_MD_LINEAR=m
-+CONFIG_MD_RAID0=m
-+CONFIG_MD_RAID1=m
-+CONFIG_NETDEVICES=y
-+CONFIG_BONDING=m
-+CONFIG_DUMMY=m
-+CONFIG_TUN=m
-+CONFIG_LASI_82596=y
-+CONFIG_PPP=m
-+CONFIG_PPP_BSDCOMP=m
-+CONFIG_PPP_DEFLATE=m
-+CONFIG_PPP_MPPE=m
-+CONFIG_PPPOE=m
-+CONFIG_PPP_ASYNC=m
-+CONFIG_PPP_SYNC_TTY=m
-+# CONFIG_KEYBOARD_HIL_OLD is not set
-+CONFIG_MOUSE_SERIAL=m
-+CONFIG_LEGACY_PTY_COUNT=64
-+CONFIG_SERIAL_8250=y
-+CONFIG_SERIAL_8250_CONSOLE=y
-+CONFIG_SERIAL_8250_NR_UARTS=17
-+CONFIG_SERIAL_8250_EXTENDED=y
-+CONFIG_SERIAL_8250_MANY_PORTS=y
-+CONFIG_SERIAL_8250_SHARE_IRQ=y
-+# CONFIG_SERIAL_MUX is not set
-+CONFIG_PDC_CONSOLE=y
-+CONFIG_PRINTER=m
-+CONFIG_PPDEV=m
-+# CONFIG_HW_RANDOM is not set
-+CONFIG_RAW_DRIVER=y
-+# CONFIG_HWMON is not set
-+CONFIG_FB=y
-+CONFIG_FB_MODE_HELPERS=y
-+CONFIG_FB_TILEBLITTING=y
-+CONFIG_DUMMY_CONSOLE_COLUMNS=128
-+CONFIG_DUMMY_CONSOLE_ROWS=48
-+CONFIG_FRAMEBUFFER_CONSOLE=y
-+CONFIG_LOGO=y
-+# CONFIG_LOGO_LINUX_MONO is not set
-+# CONFIG_LOGO_LINUX_VGA16 is not set
-+# CONFIG_LOGO_LINUX_CLUT224 is not set
-+CONFIG_SOUND=y
-+CONFIG_SND=y
-+CONFIG_SND_SEQUENCER=y
-+CONFIG_SND_HARMONY=y
-+CONFIG_EXT2_FS=y
-+CONFIG_EXT3_FS=y
-+CONFIG_JFS_FS=m
-+CONFIG_XFS_FS=m
-+CONFIG_AUTOFS4_FS=y
-+CONFIG_ISO9660_FS=y
-+CONFIG_JOLIET=y
-+CONFIG_UDF_FS=m
-+CONFIG_MSDOS_FS=m
-+CONFIG_VFAT_FS=m
-+CONFIG_PROC_KCORE=y
-+CONFIG_TMPFS=y
-+CONFIG_UFS_FS=m
-+CONFIG_NFS_FS=y
-+CONFIG_NFS_V4=y
-+CONFIG_ROOT_NFS=y
-+CONFIG_NFSD=m
-+CONFIG_NFSD_V4=y
-+CONFIG_CIFS=m
-+CONFIG_NLS_CODEPAGE_437=m
-+CONFIG_NLS_CODEPAGE_737=m
-+CONFIG_NLS_CODEPAGE_775=m
-+CONFIG_NLS_CODEPAGE_850=m
-+CONFIG_NLS_CODEPAGE_852=m
-+CONFIG_NLS_CODEPAGE_855=m
-+CONFIG_NLS_CODEPAGE_857=m
-+CONFIG_NLS_CODEPAGE_860=m
-+CONFIG_NLS_CODEPAGE_861=m
-+CONFIG_NLS_CODEPAGE_862=m
-+CONFIG_NLS_CODEPAGE_863=m
-+CONFIG_NLS_CODEPAGE_864=m
-+CONFIG_NLS_CODEPAGE_865=m
-+CONFIG_NLS_CODEPAGE_866=m
-+CONFIG_NLS_CODEPAGE_869=m
-+CONFIG_NLS_CODEPAGE_936=m
-+CONFIG_NLS_CODEPAGE_950=m
-+CONFIG_NLS_CODEPAGE_932=m
-+CONFIG_NLS_CODEPAGE_949=m
-+CONFIG_NLS_CODEPAGE_874=m
-+CONFIG_NLS_ISO8859_8=m
-+CONFIG_NLS_CODEPAGE_1250=m
-+CONFIG_NLS_CODEPAGE_1251=m
-+CONFIG_NLS_ASCII=m
-+CONFIG_NLS_ISO8859_1=m
-+CONFIG_NLS_ISO8859_2=m
-+CONFIG_NLS_ISO8859_3=m
-+CONFIG_NLS_ISO8859_4=m
-+CONFIG_NLS_ISO8859_5=m
-+CONFIG_NLS_ISO8859_6=m
-+CONFIG_NLS_ISO8859_7=m
-+CONFIG_NLS_ISO8859_9=m
-+CONFIG_NLS_ISO8859_13=m
-+CONFIG_NLS_ISO8859_14=m
-+CONFIG_NLS_ISO8859_15=m
-+CONFIG_NLS_KOI8_R=m
-+CONFIG_NLS_KOI8_U=m
-+CONFIG_NLS_UTF8=m
-+CONFIG_DEBUG_FS=y
-+CONFIG_MAGIC_SYSRQ=y
-+CONFIG_DEBUG_KERNEL=y
-+CONFIG_DEBUG_MUTEXES=y
-+CONFIG_CRYPTO_TEST=m
-+CONFIG_CRYPTO_HMAC=y
-+CONFIG_CRYPTO_MICHAEL_MIC=m
-+CONFIG_CRYPTO_SHA512=m
-+CONFIG_CRYPTO_TGR192=m
-+CONFIG_CRYPTO_WP512=m
-+CONFIG_CRYPTO_ANUBIS=m
-+CONFIG_CRYPTO_BLOWFISH=m
-+CONFIG_CRYPTO_CAST6=m
-+CONFIG_CRYPTO_KHAZAD=m
-+CONFIG_CRYPTO_SERPENT=m
-+CONFIG_CRYPTO_TEA=m
-+CONFIG_CRYPTO_TWOFISH=m
-+CONFIG_CRYPTO_DEFLATE=m
-+# CONFIG_CRYPTO_HW is not set
-+CONFIG_FONTS=y
-+CONFIG_FONT_8x8=y
-+CONFIG_FONT_8x16=y
-diff --git a/arch/parisc/configs/c3000_defconfig b/arch/parisc/configs/c3000_defconfig
-new file mode 100644
-index 000000000000..d1bdfad94048
---- /dev/null
-+++ b/arch/parisc/configs/c3000_defconfig
-@@ -0,0 +1,151 @@
-+# CONFIG_LOCALVERSION_AUTO is not set
-+CONFIG_SYSVIPC=y
-+CONFIG_IKCONFIG=y
-+CONFIG_IKCONFIG_PROC=y
-+CONFIG_LOG_BUF_SHIFT=16
-+CONFIG_BLK_DEV_INITRD=y
-+CONFIG_EXPERT=y
-+CONFIG_KALLSYMS_ALL=y
-+CONFIG_SLAB=y
-+CONFIG_PROFILING=y
-+CONFIG_OPROFILE=m
-+CONFIG_MODULES=y
-+CONFIG_MODULE_UNLOAD=y
-+CONFIG_MODULE_FORCE_UNLOAD=y
-+CONFIG_PA8X00=y
-+CONFIG_PREEMPT=y
-+# CONFIG_GSC is not set
-+CONFIG_PCI=y
-+CONFIG_PCI_LBA=y
-+# CONFIG_PDC_CHASSIS is not set
-+CONFIG_NET=y
-+CONFIG_PACKET=y
-+CONFIG_UNIX=y
-+CONFIG_XFRM_USER=m
-+CONFIG_NET_KEY=m
-+CONFIG_INET=y
-+CONFIG_IP_MULTICAST=y
-+CONFIG_IP_PNP=y
-+CONFIG_IP_PNP_BOOTP=y
-+# CONFIG_INET_DIAG is not set
-+CONFIG_INET6_IPCOMP=m
-+CONFIG_IPV6_TUNNEL=m
-+CONFIG_NETFILTER=y
-+CONFIG_NET_PKTGEN=m
-+CONFIG_DEVTMPFS=y
-+CONFIG_DEVTMPFS_MOUNT=y
-+# CONFIG_STANDALONE is not set
-+# CONFIG_PREVENT_FIRMWARE_BUILD is not set
-+CONFIG_BLK_DEV_UMEM=m
-+CONFIG_BLK_DEV_LOOP=y
-+CONFIG_BLK_DEV_CRYPTOLOOP=m
-+CONFIG_IDE=y
-+CONFIG_BLK_DEV_IDECD=y
-+CONFIG_BLK_DEV_NS87415=y
-+CONFIG_SCSI=y
-+CONFIG_BLK_DEV_SD=y
-+CONFIG_CHR_DEV_ST=y
-+CONFIG_BLK_DEV_SR=y
-+CONFIG_CHR_DEV_SG=y
-+CONFIG_SCSI_ISCSI_ATTRS=m
-+CONFIG_SCSI_SYM53C8XX_2=y
-+CONFIG_SCSI_SYM53C8XX_DMA_ADDRESSING_MODE=0
-+CONFIG_SCSI_DEBUG=m
-+CONFIG_MD=y
-+CONFIG_BLK_DEV_MD=y
-+CONFIG_MD_LINEAR=y
-+CONFIG_MD_RAID0=y
-+CONFIG_MD_RAID1=y
-+CONFIG_BLK_DEV_DM=m
-+CONFIG_DM_CRYPT=m
-+CONFIG_DM_SNAPSHOT=m
-+CONFIG_DM_MIRROR=m
-+CONFIG_DM_ZERO=m
-+CONFIG_DM_MULTIPATH=m
-+CONFIG_FUSION=y
-+CONFIG_FUSION_SPI=m
-+CONFIG_FUSION_CTL=m
-+CONFIG_NETDEVICES=y
-+CONFIG_BONDING=m
-+CONFIG_DUMMY=m
-+CONFIG_TUN=m
-+CONFIG_ACENIC=m
-+CONFIG_TIGON3=m
-+CONFIG_NET_TULIP=y
-+CONFIG_DE2104X=m
-+CONFIG_TULIP=y
-+CONFIG_TULIP_MMIO=y
-+CONFIG_E100=m
-+CONFIG_E1000=m
-+CONFIG_PPP=m
-+CONFIG_PPP_BSDCOMP=m
-+CONFIG_PPP_DEFLATE=m
-+CONFIG_PPPOE=m
-+CONFIG_PPP_ASYNC=m
-+CONFIG_PPP_SYNC_TTY=m
-+# CONFIG_KEYBOARD_ATKBD is not set
-+# CONFIG_MOUSE_PS2 is not set
-+CONFIG_SERIO=m
-+CONFIG_SERIO_LIBPS2=m
-+CONFIG_SERIAL_8250=y
-+CONFIG_SERIAL_8250_CONSOLE=y
-+CONFIG_SERIAL_8250_NR_UARTS=13
-+CONFIG_SERIAL_8250_EXTENDED=y
-+CONFIG_SERIAL_8250_MANY_PORTS=y
-+CONFIG_SERIAL_8250_SHARE_IRQ=y
-+# CONFIG_HW_RANDOM is not set
-+CONFIG_RAW_DRIVER=y
-+# CONFIG_HWMON is not set
-+CONFIG_FB=y
-+CONFIG_FRAMEBUFFER_CONSOLE=y
-+CONFIG_LOGO=y
-+# CONFIG_LOGO_LINUX_MONO is not set
-+# CONFIG_LOGO_LINUX_VGA16 is not set
-+# CONFIG_LOGO_LINUX_CLUT224 is not set
-+CONFIG_SOUND=y
-+CONFIG_SND=y
-+CONFIG_SND_SEQUENCER=y
-+CONFIG_SND_AD1889=y
-+CONFIG_USB_HIDDEV=y
-+CONFIG_USB=y
-+CONFIG_USB_OHCI_HCD=y
-+CONFIG_USB_PRINTER=m
-+CONFIG_USB_STORAGE=m
-+CONFIG_USB_STORAGE_USBAT=m
-+CONFIG_USB_STORAGE_SDDR09=m
-+CONFIG_USB_STORAGE_SDDR55=m
-+CONFIG_USB_STORAGE_JUMPSHOT=m
-+CONFIG_USB_MDC800=m
-+CONFIG_USB_MICROTEK=m
-+CONFIG_USB_LEGOTOWER=m
-+CONFIG_EXT2_FS=y
-+CONFIG_EXT3_FS=y
-+CONFIG_XFS_FS=m
-+CONFIG_AUTOFS4_FS=y
-+CONFIG_ISO9660_FS=y
-+CONFIG_JOLIET=y
-+CONFIG_MSDOS_FS=m
-+CONFIG_VFAT_FS=m
-+CONFIG_PROC_KCORE=y
-+CONFIG_TMPFS=y
-+CONFIG_NFS_FS=y
-+CONFIG_ROOT_NFS=y
-+CONFIG_NFSD=y
-+CONFIG_NFSD_V3=y
-+CONFIG_NLS_CODEPAGE_437=m
-+CONFIG_NLS_CODEPAGE_850=m
-+CONFIG_NLS_ASCII=m
-+CONFIG_NLS_ISO8859_1=m
-+CONFIG_NLS_ISO8859_15=m
-+CONFIG_NLS_UTF8=m
-+CONFIG_DEBUG_FS=y
-+CONFIG_HEADERS_INSTALL=y
-+CONFIG_HEADERS_CHECK=y
-+CONFIG_MAGIC_SYSRQ=y
-+CONFIG_DEBUG_MUTEXES=y
-+# CONFIG_DEBUG_BUGVERBOSE is not set
-+CONFIG_CRYPTO_TEST=m
-+CONFIG_CRYPTO_MD5=m
-+CONFIG_CRYPTO_BLOWFISH=m
-+CONFIG_CRYPTO_DES=m
-+# CONFIG_CRYPTO_HW is not set
-diff --git a/arch/parisc/configs/defconfig b/arch/parisc/configs/defconfig
-new file mode 100644
-index 000000000000..0d976614934c
---- /dev/null
-+++ b/arch/parisc/configs/defconfig
-@@ -0,0 +1,206 @@
-+# CONFIG_LOCALVERSION_AUTO is not set
-+CONFIG_SYSVIPC=y
-+CONFIG_POSIX_MQUEUE=y
-+CONFIG_IKCONFIG=y
-+CONFIG_IKCONFIG_PROC=y
-+CONFIG_LOG_BUF_SHIFT=16
-+CONFIG_BLK_DEV_INITRD=y
-+CONFIG_KALLSYMS_ALL=y
-+CONFIG_SLAB=y
-+CONFIG_PROFILING=y
-+CONFIG_OPROFILE=m
-+CONFIG_MODULES=y
-+CONFIG_MODULE_UNLOAD=y
-+CONFIG_MODULE_FORCE_UNLOAD=y
-+# CONFIG_BLK_DEV_BSG is not set
-+CONFIG_PA7100LC=y
-+CONFIG_PREEMPT=y
-+CONFIG_IOMMU_CCIO=y
-+CONFIG_GSC_LASI=y
-+CONFIG_GSC_WAX=y
-+CONFIG_EISA=y
-+CONFIG_PCI=y
-+CONFIG_GSC_DINO=y
-+CONFIG_PCI_LBA=y
-+CONFIG_PCCARD=y
-+CONFIG_YENTA=y
-+CONFIG_PD6729=y
-+CONFIG_I82092=y
-+CONFIG_BINFMT_MISC=m
-+CONFIG_NET=y
-+CONFIG_PACKET=y
-+CONFIG_UNIX=y
-+CONFIG_XFRM_USER=m
-+CONFIG_NET_KEY=m
-+CONFIG_INET=y
-+CONFIG_IP_MULTICAST=y
-+CONFIG_IP_PNP=y
-+CONFIG_IP_PNP_DHCP=y
-+CONFIG_IP_PNP_BOOTP=y
-+CONFIG_INET_AH=m
-+CONFIG_INET_ESP=m
-+CONFIG_INET_DIAG=m
-+CONFIG_INET6_AH=y
-+CONFIG_INET6_ESP=y
-+CONFIG_INET6_IPCOMP=y
-+CONFIG_LLC2=m
-+CONFIG_DEVTMPFS=y
-+CONFIG_DEVTMPFS_MOUNT=y
-+# CONFIG_STANDALONE is not set
-+# CONFIG_PREVENT_FIRMWARE_BUILD is not set
-+CONFIG_PARPORT=y
-+CONFIG_PARPORT_PC=m
-+CONFIG_PARPORT_PC_PCMCIA=m
-+CONFIG_PARPORT_1284=y
-+CONFIG_BLK_DEV_LOOP=y
-+CONFIG_BLK_DEV_CRYPTOLOOP=y
-+CONFIG_BLK_DEV_RAM=y
-+CONFIG_BLK_DEV_RAM_SIZE=6144
-+CONFIG_IDE=y
-+CONFIG_BLK_DEV_IDECS=y
-+CONFIG_BLK_DEV_IDECD=y
-+CONFIG_BLK_DEV_GENERIC=y
-+CONFIG_BLK_DEV_NS87415=y
-+CONFIG_SCSI=y
-+CONFIG_BLK_DEV_SD=y
-+CONFIG_CHR_DEV_ST=y
-+CONFIG_BLK_DEV_SR=y
-+CONFIG_CHR_DEV_SG=y
-+CONFIG_SCSI_LASI700=y
-+CONFIG_SCSI_SYM53C8XX_2=y
-+CONFIG_SCSI_ZALON=y
-+CONFIG_MD=y
-+CONFIG_BLK_DEV_MD=y
-+CONFIG_MD_LINEAR=y
-+CONFIG_MD_RAID0=y
-+CONFIG_MD_RAID1=y
-+CONFIG_MD_RAID10=y
-+CONFIG_BLK_DEV_DM=y
-+CONFIG_NETDEVICES=y
-+CONFIG_BONDING=m
-+CONFIG_DUMMY=m
-+CONFIG_TUN=m
-+CONFIG_ACENIC=y
-+CONFIG_TIGON3=y
-+CONFIG_NET_TULIP=y
-+CONFIG_TULIP=y
-+CONFIG_LASI_82596=y
-+CONFIG_PPP=m
-+CONFIG_PPP_BSDCOMP=m
-+CONFIG_PPP_DEFLATE=m
-+CONFIG_PPPOE=m
-+CONFIG_PPP_ASYNC=m
-+CONFIG_PPP_SYNC_TTY=m
-+# CONFIG_KEYBOARD_HIL_OLD is not set
-+CONFIG_MOUSE_SERIAL=y
-+CONFIG_LEGACY_PTY_COUNT=64
-+CONFIG_SERIAL_8250=y
-+CONFIG_SERIAL_8250_CONSOLE=y
-+CONFIG_SERIAL_8250_CS=y
-+CONFIG_SERIAL_8250_NR_UARTS=17
-+CONFIG_SERIAL_8250_EXTENDED=y
-+CONFIG_SERIAL_8250_MANY_PORTS=y
-+CONFIG_SERIAL_8250_SHARE_IRQ=y
-+CONFIG_PRINTER=m
-+CONFIG_PPDEV=m
-+# CONFIG_HW_RANDOM is not set
-+# CONFIG_HWMON is not set
-+CONFIG_FB=y
-+CONFIG_FB_MODE_HELPERS=y
-+CONFIG_FB_TILEBLITTING=y
-+CONFIG_DUMMY_CONSOLE_COLUMNS=128
-+CONFIG_DUMMY_CONSOLE_ROWS=48
-+CONFIG_FRAMEBUFFER_CONSOLE=y
-+CONFIG_LOGO=y
-+# CONFIG_LOGO_LINUX_MONO is not set
-+# CONFIG_LOGO_LINUX_VGA16 is not set
-+# CONFIG_LOGO_LINUX_CLUT224 is not set
-+CONFIG_SOUND=y
-+CONFIG_SND=y
-+CONFIG_SND_DYNAMIC_MINORS=y
-+CONFIG_SND_SEQUENCER=y
-+CONFIG_SND_AD1889=y
-+CONFIG_SND_HARMONY=y
-+CONFIG_HID_GYRATION=y
-+CONFIG_HID_NTRIG=y
-+CONFIG_HID_PANTHERLORD=y
-+CONFIG_HID_PETALYNX=y
-+CONFIG_HID_SAMSUNG=y
-+CONFIG_HID_SUNPLUS=y
-+CONFIG_HID_TOPSEED=y
-+CONFIG_USB=y
-+CONFIG_USB_MON=y
-+CONFIG_USB_OHCI_HCD=y
-+CONFIG_USB_UHCI_HCD=y
-+CONFIG_EXT2_FS=y
-+CONFIG_EXT3_FS=y
-+CONFIG_ISO9660_FS=y
-+CONFIG_JOLIET=y
-+CONFIG_VFAT_FS=y
-+CONFIG_PROC_KCORE=y
-+CONFIG_TMPFS=y
-+CONFIG_NFS_FS=y
-+CONFIG_ROOT_NFS=y
-+CONFIG_NFSD=y
-+CONFIG_NFSD_V4=y
-+CONFIG_CIFS=m
-+CONFIG_NLS_CODEPAGE_437=y
-+CONFIG_NLS_CODEPAGE_737=m
-+CONFIG_NLS_CODEPAGE_775=m
-+CONFIG_NLS_CODEPAGE_850=m
-+CONFIG_NLS_CODEPAGE_852=m
-+CONFIG_NLS_CODEPAGE_855=m
-+CONFIG_NLS_CODEPAGE_857=m
-+CONFIG_NLS_CODEPAGE_860=m
-+CONFIG_NLS_CODEPAGE_861=m
-+CONFIG_NLS_CODEPAGE_862=m
-+CONFIG_NLS_CODEPAGE_863=m
-+CONFIG_NLS_CODEPAGE_864=m
-+CONFIG_NLS_CODEPAGE_865=m
-+CONFIG_NLS_CODEPAGE_866=m
-+CONFIG_NLS_CODEPAGE_869=m
-+CONFIG_NLS_CODEPAGE_936=m
-+CONFIG_NLS_CODEPAGE_950=m
-+CONFIG_NLS_CODEPAGE_932=m
-+CONFIG_NLS_CODEPAGE_949=m
-+CONFIG_NLS_CODEPAGE_874=m
-+CONFIG_NLS_ISO8859_8=m
-+CONFIG_NLS_CODEPAGE_1250=y
-+CONFIG_NLS_CODEPAGE_1251=m
-+CONFIG_NLS_ASCII=m
-+CONFIG_NLS_ISO8859_1=y
-+CONFIG_NLS_ISO8859_2=m
-+CONFIG_NLS_ISO8859_3=m
-+CONFIG_NLS_ISO8859_4=m
-+CONFIG_NLS_ISO8859_5=m
-+CONFIG_NLS_ISO8859_6=m
-+CONFIG_NLS_ISO8859_7=m
-+CONFIG_NLS_ISO8859_9=m
-+CONFIG_NLS_ISO8859_13=m
-+CONFIG_NLS_ISO8859_14=m
-+CONFIG_NLS_ISO8859_15=m
-+CONFIG_NLS_KOI8_R=m
-+CONFIG_NLS_KOI8_U=m
-+CONFIG_NLS_UTF8=y
-+CONFIG_DEBUG_FS=y
-+CONFIG_HEADERS_INSTALL=y
-+CONFIG_HEADERS_CHECK=y
-+CONFIG_MAGIC_SYSRQ=y
-+CONFIG_DEBUG_KERNEL=y
-+CONFIG_DEBUG_MUTEXES=y
-+CONFIG_KEYS=y
-+CONFIG_CRYPTO_TEST=m
-+CONFIG_CRYPTO_MICHAEL_MIC=m
-+CONFIG_CRYPTO_SHA512=m
-+CONFIG_CRYPTO_TGR192=m
-+CONFIG_CRYPTO_WP512=m
-+CONFIG_CRYPTO_ANUBIS=m
-+CONFIG_CRYPTO_BLOWFISH=m
-+CONFIG_CRYPTO_CAST6=m
-+CONFIG_CRYPTO_KHAZAD=m
-+CONFIG_CRYPTO_SERPENT=m
-+CONFIG_CRYPTO_TEA=m
-+CONFIG_CRYPTO_TWOFISH=m
-+# CONFIG_CRYPTO_HW is not set
-+CONFIG_LIBCRC32C=m
-+CONFIG_FONTS=y
 diff --git a/arch/powerpc/Kconfig b/arch/powerpc/Kconfig
-index 5181872f9452..bf3a47193bb5 100644
+index 78dd6be8b31d..491f3193fea4 100644
 --- a/arch/powerpc/Kconfig
 +++ b/arch/powerpc/Kconfig
-@@ -888,6 +888,8 @@ config SCHED_SMT
+@@ -887,6 +887,8 @@ config SCHED_SMT
  	  when dealing with POWER5 cpus at a cost of slightly increased
  	  overhead in some places. If unsure say N here.
  
@@ -1645,19 +922,6 @@ index 5181872f9452..bf3a47193bb5 100644
  config PPC_DENORMALISATION
  	bool "PowerPC denormalisation exception handling"
  	depends on PPC_BOOK3S_64
-diff --git a/arch/powerpc/configs/ppc6xx_defconfig b/arch/powerpc/configs/ppc6xx_defconfig
-index 66e9a0fd64ff..c8531232efb7 100644
---- a/arch/powerpc/configs/ppc6xx_defconfig
-+++ b/arch/powerpc/configs/ppc6xx_defconfig
-@@ -73,7 +73,7 @@ CONFIG_QE_GPIO=y
- CONFIG_MCU_MPC8349EMITX=y
- CONFIG_HIGHMEM=y
- CONFIG_HZ_1000=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_BINFMT_MISC=y
- CONFIG_HIBERNATION=y
- CONFIG_PM_DEBUG=y
 diff --git a/arch/powerpc/platforms/cell/spufs/sched.c b/arch/powerpc/platforms/cell/spufs/sched.c
 index f18d5067cd0f..fe489fc01c73 100644
 --- a/arch/powerpc/platforms/cell/spufs/sched.c
@@ -1674,63 +938,11 @@ index f18d5067cd0f..fe489fc01c73 100644
  /*
   * Frequency of the spu scheduler tick.  By default we do one SPU scheduler
   * tick for every 10 CPU scheduler ticks.
-diff --git a/arch/sh/configs/se7712_defconfig b/arch/sh/configs/se7712_defconfig
-index ee6d28ae08de..827e4693c5b2 100644
---- a/arch/sh/configs/se7712_defconfig
-+++ b/arch/sh/configs/se7712_defconfig
-@@ -21,7 +21,7 @@ CONFIG_FLATMEM_MANUAL=y
- CONFIG_SH_SOLUTION_ENGINE=y
- CONFIG_SH_PCLK_FREQ=66666666
- CONFIG_HEARTBEAT=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_CMDLINE_OVERWRITE=y
- CONFIG_CMDLINE="console=ttySC0,115200 root=/dev/sda1"
- CONFIG_NET=y
-diff --git a/arch/sh/configs/se7721_defconfig b/arch/sh/configs/se7721_defconfig
-index bad921bc10f8..e8f42bc0d370 100644
---- a/arch/sh/configs/se7721_defconfig
-+++ b/arch/sh/configs/se7721_defconfig
-@@ -21,7 +21,7 @@ CONFIG_FLATMEM_MANUAL=y
- CONFIG_SH_7721_SOLUTION_ENGINE=y
- CONFIG_SH_PCLK_FREQ=33333333
- CONFIG_HEARTBEAT=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_CMDLINE_OVERWRITE=y
- CONFIG_CMDLINE="console=ttySC0,115200 root=/dev/sda2"
- CONFIG_NET=y
-diff --git a/arch/sh/configs/titan_defconfig b/arch/sh/configs/titan_defconfig
-index ba887f1351be..4434e93b70bc 100644
---- a/arch/sh/configs/titan_defconfig
-+++ b/arch/sh/configs/titan_defconfig
-@@ -19,7 +19,7 @@ CONFIG_SH_TITAN=y
- CONFIG_SH_PCLK_FREQ=30000000
- CONFIG_SH_DMA=y
- CONFIG_SH_DMA_API=y
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_CMDLINE_OVERWRITE=y
- CONFIG_CMDLINE="console=ttySC1,38400N81 root=/dev/nfs ip=:::::eth1:autoconf rw"
- CONFIG_PCI=y
-diff --git a/arch/sparc/configs/sparc64_defconfig b/arch/sparc/configs/sparc64_defconfig
-index bde4d21a8ac8..c054ec82d91b 100644
---- a/arch/sparc/configs/sparc64_defconfig
-+++ b/arch/sparc/configs/sparc64_defconfig
-@@ -22,7 +22,7 @@ CONFIG_NO_HZ=y
- CONFIG_HIGH_RES_TIMERS=y
- CONFIG_NUMA=y
- CONFIG_DEFAULT_MMAP_MIN_ADDR=8192
--CONFIG_PREEMPT_VOLUNTARY=y
-+CONFIG_PREEMPT=y
- CONFIG_SUN_LDOMS=y
- CONFIG_PCI=y
- CONFIG_PCI_MSI=y
 diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
-index fbf26e0f7a6a..ea408c778851 100644
+index 93a1f9937a9b..b0c263e9f083 100644
 --- a/arch/x86/Kconfig
 +++ b/arch/x86/Kconfig
-@@ -1008,6 +1008,22 @@ config NR_CPUS
+@@ -1000,6 +1000,22 @@ config NR_CPUS
  config SCHED_SMT
  	def_bool y if SMP
  
@@ -1753,7 +965,7 @@ index fbf26e0f7a6a..ea408c778851 100644
  config SCHED_MC
  	def_bool y
  	prompt "Multi-core scheduler support"
-@@ -1038,6 +1054,8 @@ config SCHED_MC_PRIO
+@@ -1030,6 +1046,8 @@ config SCHED_MC_PRIO
  
  	  If unsure say Y here.
  
@@ -1762,806 +974,11 @@ index fbf26e0f7a6a..ea408c778851 100644
  config UP_LATE_INIT
  	def_bool y
  	depends on !SMP && X86_LOCAL_APIC
-@@ -1422,7 +1440,7 @@ config HIGHMEM64G
- endchoice
- 
- choice
--	prompt "Memory split" if EXPERT
-+	prompt "Memory split"
- 	default VMSPLIT_3G
- 	depends on X86_32
- 	help
-@@ -1442,17 +1460,17 @@ choice
- 	  option alone!
- 
- 	config VMSPLIT_3G
--		bool "3G/1G user/kernel split"
-+		bool "Default 896MB lowmem (3G/1G user/kernel split)"
- 	config VMSPLIT_3G_OPT
- 		depends on !X86_PAE
--		bool "3G/1G user/kernel split (for full 1G low memory)"
-+		bool "1GB lowmem (3G/1G user/kernel split)"
- 	config VMSPLIT_2G
--		bool "2G/2G user/kernel split"
-+		bool "2GB lowmem (2G/2G user/kernel split)"
- 	config VMSPLIT_2G_OPT
- 		depends on !X86_PAE
--		bool "2G/2G user/kernel split (for full 2G low memory)"
-+		bool "2GB lowmem (2G/2G user/kernel split)"
- 	config VMSPLIT_1G
--		bool "1G/3G user/kernel split"
-+		bool "3GB lowmem (1G/3G user/kernel split)"
- endchoice
- 
- config PAGE_OFFSET
-diff --git a/arch/x86/configs/i386_defconfig b/arch/x86/configs/i386_defconfig
-index 78210793d357..0c4415b23002 100644
---- a/arch/x86/configs/i386_defconfig
-+++ b/arch/x86/configs/i386_defconfig
-@@ -23,6 +23,8 @@ CONFIG_PROFILING=y
- CONFIG_SMP=y
- CONFIG_X86_GENERIC=y
- CONFIG_HPET_TIMER=y
-+CONFIG_SCHED_SMT=y
-+CONFIG_PREEMPT=y
- CONFIG_X86_REROUTE_FOR_BROKEN_BOOT_IRQS=y
- CONFIG_X86_REBOOTFIXUPS=y
- CONFIG_MICROCODE_AMD=y
-diff --git a/arch/x86/configs/x86_64_defconfig b/arch/x86/configs/x86_64_defconfig
-index 9936528e1939..328c7d0a38a1 100644
---- a/arch/x86/configs/x86_64_defconfig
-+++ b/arch/x86/configs/x86_64_defconfig
-@@ -20,6 +20,9 @@ CONFIG_BLK_DEV_INITRD=y
- # CONFIG_COMPAT_BRK is not set
- CONFIG_PROFILING=y
- CONFIG_SMP=y
-+CONFIG_NR_CPUS=64
-+CONFIG_SCHED_SMT=y
-+CONFIG_PREEMPT=y
- CONFIG_X86_REROUTE_FOR_BROKEN_BOOT_IRQS=y
- CONFIG_MICROCODE_AMD=y
- CONFIG_X86_MSR=y
-diff --git a/drivers/accessibility/speakup/speakup_acntpc.c b/drivers/accessibility/speakup/speakup_acntpc.c
-index c94328a5bd4a..6e7d4671aa69 100644
---- a/drivers/accessibility/speakup/speakup_acntpc.c
-+++ b/drivers/accessibility/speakup/speakup_acntpc.c
-@@ -198,7 +198,7 @@ static void do_catch_up(struct spk_synth *synth)
- 		full_time_val = full_time->u.n.value;
- 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
- 		if (synth_full()) {
--			schedule_timeout(msecs_to_jiffies(full_time_val));
-+			schedule_msec_hrtimeout((full_time_val));
- 			continue;
- 		}
- 		set_current_state(TASK_RUNNING);
-@@ -226,7 +226,7 @@ static void do_catch_up(struct spk_synth *synth)
- 			jiffy_delta_val = jiffy_delta->u.n.value;
- 			delay_time_val = delay_time->u.n.value;
- 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
--			schedule_timeout(msecs_to_jiffies(delay_time_val));
-+			schedule_msec_hrtimeout(delay_time_val);
- 			jiff_max = jiffies + jiffy_delta_val;
- 		}
- 	}
-diff --git a/drivers/accessibility/speakup/speakup_apollo.c b/drivers/accessibility/speakup/speakup_apollo.c
-index 0877b4044c28..627102d048c1 100644
---- a/drivers/accessibility/speakup/speakup_apollo.c
-+++ b/drivers/accessibility/speakup/speakup_apollo.c
-@@ -165,7 +165,7 @@ static void do_catch_up(struct spk_synth *synth)
- 		if (!synth->io_ops->synth_out(synth, ch)) {
- 			synth->io_ops->tiocmset(0, UART_MCR_RTS);
- 			synth->io_ops->tiocmset(UART_MCR_RTS, 0);
--			schedule_timeout(msecs_to_jiffies(full_time_val));
-+			schedule_msec_hrtimeout(full_time_val);
- 			continue;
- 		}
- 		if (time_after_eq(jiffies, jiff_max) && (ch == SPACE)) {
-diff --git a/drivers/accessibility/speakup/speakup_decext.c b/drivers/accessibility/speakup/speakup_decext.c
-index 7408eb29cf38..938a0c35968f 100644
---- a/drivers/accessibility/speakup/speakup_decext.c
-+++ b/drivers/accessibility/speakup/speakup_decext.c
-@@ -180,7 +180,7 @@ static void do_catch_up(struct spk_synth *synth)
- 		if (ch == '\n')
- 			ch = 0x0D;
- 		if (synth_full() || !synth->io_ops->synth_out(synth, ch)) {
--			schedule_timeout(msecs_to_jiffies(delay_time_val));
-+			schedule_msec_hrtimeout(delay_time_val);
- 			continue;
- 		}
- 		set_current_state(TASK_RUNNING);
-diff --git a/drivers/accessibility/speakup/speakup_decpc.c b/drivers/accessibility/speakup/speakup_decpc.c
-index 96f24c848cc5..1130dfe4da6c 100644
---- a/drivers/accessibility/speakup/speakup_decpc.c
-+++ b/drivers/accessibility/speakup/speakup_decpc.c
-@@ -398,7 +398,7 @@ static void do_catch_up(struct spk_synth *synth)
- 		if (ch == '\n')
- 			ch = 0x0D;
- 		if (dt_sendchar(ch)) {
--			schedule_timeout(msecs_to_jiffies(delay_time_val));
-+			schedule_msec_hrtimeout((delay_time_val));
- 			continue;
- 		}
- 		set_current_state(TASK_RUNNING);
-diff --git a/drivers/accessibility/speakup/speakup_dectlk.c b/drivers/accessibility/speakup/speakup_dectlk.c
-index 780214b5ca16..7b91594c57aa 100644
---- a/drivers/accessibility/speakup/speakup_dectlk.c
-+++ b/drivers/accessibility/speakup/speakup_dectlk.c
-@@ -247,7 +247,7 @@ static void do_catch_up(struct spk_synth *synth)
- 		if (ch == '\n')
- 			ch = 0x0D;
- 		if (synth_full_val || !synth->io_ops->synth_out(synth, ch)) {
--			schedule_timeout(msecs_to_jiffies(delay_time_val));
-+			schedule_msec_hrtimeout(delay_time_val);
- 			continue;
- 		}
- 		set_current_state(TASK_RUNNING);
-diff --git a/drivers/accessibility/speakup/speakup_dtlk.c b/drivers/accessibility/speakup/speakup_dtlk.c
-index dbebed0eeeec..6d83c13ca4a6 100644
---- a/drivers/accessibility/speakup/speakup_dtlk.c
-+++ b/drivers/accessibility/speakup/speakup_dtlk.c
-@@ -211,7 +211,7 @@ static void do_catch_up(struct spk_synth *synth)
- 		delay_time_val = delay_time->u.n.value;
- 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
- 		if (synth_full()) {
--			schedule_timeout(msecs_to_jiffies(delay_time_val));
-+			schedule_msec_hrtimeout((delay_time_val));
- 			continue;
- 		}
- 		set_current_state(TASK_RUNNING);
-@@ -227,7 +227,7 @@ static void do_catch_up(struct spk_synth *synth)
- 			delay_time_val = delay_time->u.n.value;
- 			jiffy_delta_val = jiffy_delta->u.n.value;
- 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
--			schedule_timeout(msecs_to_jiffies(delay_time_val));
-+			schedule_msec_hrtimeout((delay_time_val));
- 			jiff_max = jiffies + jiffy_delta_val;
- 		}
- 	}
-diff --git a/drivers/accessibility/speakup/speakup_keypc.c b/drivers/accessibility/speakup/speakup_keypc.c
-index 414827e888fc..cb31c9176daa 100644
---- a/drivers/accessibility/speakup/speakup_keypc.c
-+++ b/drivers/accessibility/speakup/speakup_keypc.c
-@@ -199,7 +199,7 @@ static void do_catch_up(struct spk_synth *synth)
- 		full_time_val = full_time->u.n.value;
- 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
- 		if (synth_full()) {
--			schedule_timeout(msecs_to_jiffies(full_time_val));
-+			schedule_msec_hrtimeout((full_time_val));
- 			continue;
- 		}
- 		set_current_state(TASK_RUNNING);
-@@ -232,7 +232,7 @@ static void do_catch_up(struct spk_synth *synth)
- 			jiffy_delta_val = jiffy_delta->u.n.value;
- 			delay_time_val = delay_time->u.n.value;
- 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
--			schedule_timeout(msecs_to_jiffies(delay_time_val));
-+			schedule_msec_hrtimeout(delay_time_val);
- 			jiff_max = jiffies + jiffy_delta_val;
- 		}
- 	}
-diff --git a/drivers/accessibility/speakup/synth.c b/drivers/accessibility/speakup/synth.c
-index ac47dbac7207..09f6ba829dfd 100644
---- a/drivers/accessibility/speakup/synth.c
-+++ b/drivers/accessibility/speakup/synth.c
-@@ -93,12 +93,8 @@ static void _spk_do_catch_up(struct spk_synth *synth, int unicode)
- 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
- 		if (ch == '\n')
- 			ch = synth->procspeech;
--		if (unicode)
--			ret = synth->io_ops->synth_out_unicode(synth, ch);
--		else
--			ret = synth->io_ops->synth_out(synth, ch);
--		if (!ret) {
--			schedule_timeout(msecs_to_jiffies(full_time_val));
-+		if (!synth->io_ops->synth_out(synth, ch)) {
-+			schedule_msec_hrtimeout(full_time_val);
- 			continue;
- 		}
- 		if (time_after_eq(jiffies, jiff_max) && (ch == SPACE)) {
-@@ -108,11 +104,9 @@ static void _spk_do_catch_up(struct spk_synth *synth, int unicode)
- 			full_time_val = full_time->u.n.value;
- 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
- 			if (synth->io_ops->synth_out(synth, synth->procspeech))
--				schedule_timeout(
--					msecs_to_jiffies(delay_time_val));
-+				schedule_msec_hrtimeout(delay_time_val);
- 			else
--				schedule_timeout(
--					msecs_to_jiffies(full_time_val));
-+				schedule_msec_hrtimeout(full_time_val);
- 			jiff_max = jiffies + jiffy_delta_val;
- 		}
- 		set_current_state(TASK_RUNNING);
-diff --git a/drivers/block/swim.c b/drivers/block/swim.c
-index 52dd1efa00f9..c7131359232d 100644
---- a/drivers/block/swim.c
-+++ b/drivers/block/swim.c
-@@ -328,7 +328,7 @@ static inline void swim_motor(struct swim __iomem *base,
- 			if (swim_readbit(base, MOTOR_ON))
- 				break;
- 			set_current_state(TASK_INTERRUPTIBLE);
--			schedule_timeout(1);
-+			schedule_min_hrtimeout();
- 		}
- 	} else if (action == OFF) {
- 		swim_action(base, MOTOR_OFF);
-@@ -347,7 +347,7 @@ static inline void swim_eject(struct swim __iomem *base)
- 		if (!swim_readbit(base, DISK_IN))
- 			break;
- 		set_current_state(TASK_INTERRUPTIBLE);
--		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 	}
- 	swim_select(base, RELAX);
- }
-@@ -372,6 +372,7 @@ static inline int swim_step(struct swim __iomem *base)
- 
- 		set_current_state(TASK_INTERRUPTIBLE);
- 		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 
- 		swim_select(base, RELAX);
- 		if (!swim_readbit(base, STEP))
-diff --git a/drivers/char/ipmi/ipmi_msghandler.c b/drivers/char/ipmi/ipmi_msghandler.c
-index 8774a3b8ff95..0097c92bec48 100644
---- a/drivers/char/ipmi/ipmi_msghandler.c
-+++ b/drivers/char/ipmi/ipmi_msghandler.c
-@@ -3562,7 +3562,7 @@ static void cleanup_smi_msgs(struct ipmi_smi *intf)
- 	/* Current message first, to preserve order */
- 	while (intf->curr_msg && !list_empty(&intf->waiting_rcv_msgs)) {
- 		/* Wait for the message to clear out. */
--		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 	}
- 
- 	/* No need for locks, the interface is down. */
-diff --git a/drivers/char/ipmi/ipmi_ssif.c b/drivers/char/ipmi/ipmi_ssif.c
-index 0416b9c9d410..9ce5fae0f1cf 100644
---- a/drivers/char/ipmi/ipmi_ssif.c
-+++ b/drivers/char/ipmi/ipmi_ssif.c
-@@ -1288,7 +1288,7 @@ static void shutdown_ssif(void *send_info)
- 
- 	/* make sure the driver is not looking for flags any more. */
- 	while (ssif_info->ssif_state != SSIF_NORMAL)
--		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 
- 	ssif_info->stopping = true;
- 	del_timer_sync(&ssif_info->watch_timer);
-diff --git a/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c b/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c
-index a95156fc5db7..8f07c8900184 100644
---- a/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c
-+++ b/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c
-@@ -235,7 +235,7 @@ static int vmw_fifo_wait_noirq(struct vmw_private *dev_priv,
- 			DRM_ERROR("SVGA device lockup.\n");
- 			break;
- 		}
--		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 		if (interruptible && signal_pending(current)) {
- 			ret = -ERESTARTSYS;
- 			break;
-diff --git a/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c b/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c
-index 75f3efee21a4..09b1932ce85b 100644
---- a/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c
-+++ b/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c
-@@ -203,7 +203,7 @@ int vmw_fallback_wait(struct vmw_private *dev_priv,
- 			break;
- 		}
- 		if (lazy)
--			schedule_timeout(1);
-+			schedule_min_hrtimeout();
- 		else if ((++count & 0x0F) == 0) {
- 			/**
- 			 * FIXME: Use schedule_hr_timeout here for
-diff --git a/drivers/hwmon/fam15h_power.c b/drivers/hwmon/fam15h_power.c
-index 29f5fed28c2a..974cb08c7aa7 100644
---- a/drivers/hwmon/fam15h_power.c
-+++ b/drivers/hwmon/fam15h_power.c
-@@ -221,7 +221,7 @@ static ssize_t power1_average_show(struct device *dev,
- 		prev_ptsc[cu] = data->cpu_sw_pwr_ptsc[cu];
- 	}
- 
--	leftover = schedule_timeout_interruptible(msecs_to_jiffies(data->power_period));
-+	leftover = schedule_msec_hrtimeout_interruptible((data->power_period));
- 	if (leftover)
- 		return 0;
- 
-diff --git a/drivers/iio/light/tsl2563.c b/drivers/iio/light/tsl2563.c
-index abc8d7db8dc1..baa9d6338a52 100644
---- a/drivers/iio/light/tsl2563.c
-+++ b/drivers/iio/light/tsl2563.c
-@@ -269,11 +269,7 @@ static void tsl2563_wait_adc(struct tsl2563_chip *chip)
- 	default:
- 		delay = 402;
- 	}
--	/*
--	 * TODO: Make sure that we wait at least required delay but why we
--	 * have to extend it one tick more?
--	 */
--	schedule_timeout_interruptible(msecs_to_jiffies(delay) + 2);
-+	schedule_msec_hrtimeout_interruptible(delay + 1);
- }
- 
- static int tsl2563_adjust_gainlevel(struct tsl2563_chip *chip, u16 adc)
-diff --git a/drivers/media/i2c/msp3400-driver.c b/drivers/media/i2c/msp3400-driver.c
-index 39530d43590e..a7caf2eb5771 100644
---- a/drivers/media/i2c/msp3400-driver.c
-+++ b/drivers/media/i2c/msp3400-driver.c
-@@ -170,7 +170,7 @@ static int msp_read(struct i2c_client *client, int dev, int addr)
- 			break;
- 		dev_warn(&client->dev, "I/O error #%d (read 0x%02x/0x%02x)\n", err,
- 		       dev, addr);
--		schedule_timeout_interruptible(msecs_to_jiffies(10));
-+		schedule_msec_hrtimeout_interruptible((10));
- 	}
- 	if (err == 3) {
- 		dev_warn(&client->dev, "resetting chip, sound will go off.\n");
-@@ -211,7 +211,7 @@ static int msp_write(struct i2c_client *client, int dev, int addr, int val)
- 			break;
- 		dev_warn(&client->dev, "I/O error #%d (write 0x%02x/0x%02x)\n", err,
- 		       dev, addr);
--		schedule_timeout_interruptible(msecs_to_jiffies(10));
-+		schedule_msec_hrtimeout_interruptible((10));
- 	}
- 	if (err == 3) {
- 		dev_warn(&client->dev, "resetting chip, sound will go off.\n");
-diff --git a/drivers/media/pci/cx18/cx18-gpio.c b/drivers/media/pci/cx18/cx18-gpio.c
-index cf7cfda94107..f63e17489547 100644
---- a/drivers/media/pci/cx18/cx18-gpio.c
-+++ b/drivers/media/pci/cx18/cx18-gpio.c
-@@ -81,11 +81,11 @@ static void gpio_reset_seq(struct cx18 *cx, u32 active_lo, u32 active_hi,
- 
- 	/* Assert */
- 	gpio_update(cx, mask, ~active_lo);
--	schedule_timeout_uninterruptible(msecs_to_jiffies(assert_msecs));
-+	schedule_msec_hrtimeout_uninterruptible((assert_msecs));
- 
- 	/* Deassert */
- 	gpio_update(cx, mask, ~active_hi);
--	schedule_timeout_uninterruptible(msecs_to_jiffies(recovery_msecs));
-+	schedule_msec_hrtimeout_uninterruptible((recovery_msecs));
- }
- 
- /*
-diff --git a/drivers/media/pci/ivtv/ivtv-gpio.c b/drivers/media/pci/ivtv/ivtv-gpio.c
-index 856e7ab7f33e..766a26251337 100644
---- a/drivers/media/pci/ivtv/ivtv-gpio.c
-+++ b/drivers/media/pci/ivtv/ivtv-gpio.c
-@@ -105,7 +105,7 @@ void ivtv_reset_ir_gpio(struct ivtv *itv)
- 	curout = (curout & ~0xF) | 1;
- 	write_reg(curout, IVTV_REG_GPIO_OUT);
- 	/* We could use something else for smaller time */
--	schedule_timeout_interruptible(msecs_to_jiffies(1));
-+	schedule_msec_hrtimeout_interruptible((1));
- 	curout |= 2;
- 	write_reg(curout, IVTV_REG_GPIO_OUT);
- 	curdir &= ~0x80;
-@@ -125,11 +125,11 @@ int ivtv_reset_tuner_gpio(void *dev, int component, int cmd, int value)
- 	curout = read_reg(IVTV_REG_GPIO_OUT);
- 	curout &= ~(1 << itv->card->xceive_pin);
- 	write_reg(curout, IVTV_REG_GPIO_OUT);
--	schedule_timeout_interruptible(msecs_to_jiffies(1));
-+	schedule_msec_hrtimeout_interruptible((1));
- 
- 	curout |= 1 << itv->card->xceive_pin;
- 	write_reg(curout, IVTV_REG_GPIO_OUT);
--	schedule_timeout_interruptible(msecs_to_jiffies(1));
-+	schedule_msec_hrtimeout_interruptible((1));
- 	return 0;
- }
- 
-diff --git a/drivers/media/pci/ivtv/ivtv-ioctl.c b/drivers/media/pci/ivtv/ivtv-ioctl.c
-index 35dccb31174c..8181cd65e876 100644
---- a/drivers/media/pci/ivtv/ivtv-ioctl.c
-+++ b/drivers/media/pci/ivtv/ivtv-ioctl.c
-@@ -1139,7 +1139,7 @@ void ivtv_s_std_dec(struct ivtv *itv, v4l2_std_id std)
- 				TASK_UNINTERRUPTIBLE);
- 		if ((read_reg(IVTV_REG_DEC_LINE_FIELD) >> 16) < 100)
- 			break;
--		schedule_timeout(msecs_to_jiffies(25));
-+		schedule_msec_hrtimeout((25));
- 	}
- 	finish_wait(&itv->vsync_waitq, &wait);
- 	mutex_lock(&itv->serialize_lock);
-diff --git a/drivers/media/pci/ivtv/ivtv-streams.c b/drivers/media/pci/ivtv/ivtv-streams.c
-index f04ee84bab5f..c4469b4b8f99 100644
---- a/drivers/media/pci/ivtv/ivtv-streams.c
-+++ b/drivers/media/pci/ivtv/ivtv-streams.c
-@@ -849,7 +849,7 @@ int ivtv_stop_v4l2_encode_stream(struct ivtv_stream *s, int gop_end)
- 			while (!test_bit(IVTV_F_I_EOS, &itv->i_flags) &&
- 				time_before(jiffies,
- 					    then + msecs_to_jiffies(2000))) {
--				schedule_timeout(msecs_to_jiffies(10));
-+				schedule_msec_hrtimeout((10));
- 			}
- 
- 			/* To convert jiffies to ms, we must multiply by 1000
-diff --git a/drivers/media/radio/radio-mr800.c b/drivers/media/radio/radio-mr800.c
-index cb0437b4c331..163fffc0e1d4 100644
---- a/drivers/media/radio/radio-mr800.c
-+++ b/drivers/media/radio/radio-mr800.c
-@@ -366,7 +366,7 @@ static int vidioc_s_hw_freq_seek(struct file *file, void *priv,
- 			retval = -ENODATA;
- 			break;
- 		}
--		if (schedule_timeout_interruptible(msecs_to_jiffies(10))) {
-+		if (schedule_msec_hrtimeout_interruptible((10))) {
- 			retval = -ERESTARTSYS;
- 			break;
- 		}
-diff --git a/drivers/media/radio/radio-tea5777.c b/drivers/media/radio/radio-tea5777.c
-index fb9de7bbcd19..e53cf45e7f3f 100644
---- a/drivers/media/radio/radio-tea5777.c
-+++ b/drivers/media/radio/radio-tea5777.c
-@@ -235,7 +235,7 @@ static int radio_tea5777_update_read_reg(struct radio_tea5777 *tea, int wait)
- 	}
- 
- 	if (wait) {
--		if (schedule_timeout_interruptible(msecs_to_jiffies(wait)))
-+		if (schedule_msec_hrtimeout_interruptible((wait)))
- 			return -ERESTARTSYS;
- 	}
- 
-diff --git a/drivers/media/radio/tea575x.c b/drivers/media/radio/tea575x.c
-index c37315226c42..e73e6393403c 100644
---- a/drivers/media/radio/tea575x.c
-+++ b/drivers/media/radio/tea575x.c
-@@ -401,7 +401,7 @@ int snd_tea575x_s_hw_freq_seek(struct file *file, struct snd_tea575x *tea,
- 	for (;;) {
- 		if (time_after(jiffies, timeout))
- 			break;
--		if (schedule_timeout_interruptible(msecs_to_jiffies(10))) {
-+		if (schedule_msec_hrtimeout_interruptible((10))) {
- 			/* some signal arrived, stop search */
- 			tea->val &= ~TEA575X_BIT_SEARCH;
- 			snd_tea575x_set_freq(tea);
-diff --git a/drivers/mfd/ucb1x00-core.c b/drivers/mfd/ucb1x00-core.c
-index b690796d24d4..448b13da62b4 100644
---- a/drivers/mfd/ucb1x00-core.c
-+++ b/drivers/mfd/ucb1x00-core.c
-@@ -250,7 +250,7 @@ unsigned int ucb1x00_adc_read(struct ucb1x00 *ucb, int adc_channel, int sync)
- 			break;
- 		/* yield to other processes */
- 		set_current_state(TASK_INTERRUPTIBLE);
--		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 	}
- 
- 	return UCB_ADC_DAT(val);
-diff --git a/drivers/misc/sgi-xp/xpc_channel.c b/drivers/misc/sgi-xp/xpc_channel.c
-index 8e6607fc8a67..b9ab770bbdb5 100644
---- a/drivers/misc/sgi-xp/xpc_channel.c
-+++ b/drivers/misc/sgi-xp/xpc_channel.c
-@@ -834,7 +834,7 @@ xpc_allocate_msg_wait(struct xpc_channel *ch)
- 
- 	atomic_inc(&ch->n_on_msg_allocate_wq);
- 	prepare_to_wait(&ch->msg_allocate_wq, &wait, TASK_INTERRUPTIBLE);
--	ret = schedule_timeout(1);
-+	ret = schedule_min_hrtimeout();
- 	finish_wait(&ch->msg_allocate_wq, &wait);
- 	atomic_dec(&ch->n_on_msg_allocate_wq);
- 
-diff --git a/drivers/net/caif/caif_hsi.c b/drivers/net/caif/caif_hsi.c
-index 3d63b15bbaa1..164071e9d457 100644
---- a/drivers/net/caif/caif_hsi.c
-+++ b/drivers/net/caif/caif_hsi.c
-@@ -924,7 +924,7 @@ static void cfhsi_wake_down(struct work_struct *work)
- 			break;
- 
- 		set_current_state(TASK_INTERRUPTIBLE);
--		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 		retry--;
- 	}
- 
-diff --git a/drivers/net/can/usb/peak_usb/pcan_usb.c b/drivers/net/can/usb/peak_usb/pcan_usb.c
-index 63bd2ed96697..80111182faf9 100644
---- a/drivers/net/can/usb/peak_usb/pcan_usb.c
-+++ b/drivers/net/can/usb/peak_usb/pcan_usb.c
-@@ -290,7 +290,7 @@ static int pcan_usb_write_mode(struct peak_usb_device *dev, u8 onoff)
- 	} else {
- 		/* the PCAN-USB needs time to init */
- 		set_current_state(TASK_INTERRUPTIBLE);
--		schedule_timeout(msecs_to_jiffies(PCAN_USB_STARTUP_TIMEOUT));
-+		schedule_msec_hrtimeout((PCAN_USB_STARTUP_TIMEOUT));
- 	}
- 
- 	return err;
-diff --git a/drivers/net/usb/lan78xx.c b/drivers/net/usb/lan78xx.c
-index 65b315bc60ab..2b3f71086f5f 100644
---- a/drivers/net/usb/lan78xx.c
-+++ b/drivers/net/usb/lan78xx.c
-@@ -2666,7 +2666,7 @@ static void lan78xx_terminate_urbs(struct lan78xx_net *dev)
- 	while (!skb_queue_empty(&dev->rxq) &&
- 	       !skb_queue_empty(&dev->txq) &&
- 	       !skb_queue_empty(&dev->done)) {
--		schedule_timeout(msecs_to_jiffies(UNLINK_TIMEOUT_MS));
-+		schedule_msec_hrtimeout((UNLINK_TIMEOUT_MS));
- 		set_current_state(TASK_UNINTERRUPTIBLE);
- 		netif_dbg(dev, ifdown, dev->net,
- 			  "waited for %d urb completions\n", temp);
-diff --git a/drivers/net/usb/usbnet.c b/drivers/net/usb/usbnet.c
-index 6062dc27870e..d00eff8640d2 100644
---- a/drivers/net/usb/usbnet.c
-+++ b/drivers/net/usb/usbnet.c
-@@ -764,7 +764,7 @@ static void wait_skb_queue_empty(struct sk_buff_head *q)
- 	spin_lock_irqsave(&q->lock, flags);
- 	while (!skb_queue_empty(q)) {
- 		spin_unlock_irqrestore(&q->lock, flags);
--		schedule_timeout(msecs_to_jiffies(UNLINK_TIMEOUT_MS));
-+		schedule_msec_hrtimeout((UNLINK_TIMEOUT_MS));
- 		set_current_state(TASK_UNINTERRUPTIBLE);
- 		spin_lock_irqsave(&q->lock, flags);
- 	}
-diff --git a/drivers/net/wireless/intel/ipw2x00/ipw2100.c b/drivers/net/wireless/intel/ipw2x00/ipw2100.c
-index 23fbddd0c1f8..534ab3b894e2 100644
---- a/drivers/net/wireless/intel/ipw2x00/ipw2100.c
-+++ b/drivers/net/wireless/intel/ipw2x00/ipw2100.c
-@@ -815,7 +815,7 @@ static int ipw2100_hw_send_command(struct ipw2100_priv *priv,
- 	 * doesn't seem to have as many firmware restart cycles...
- 	 *
- 	 * As a test, we're sticking in a 1/100s delay here */
--	schedule_timeout_uninterruptible(msecs_to_jiffies(10));
-+	schedule_msec_hrtimeout_uninterruptible((10));
- 
- 	return 0;
- 
-@@ -1266,7 +1266,7 @@ static int ipw2100_start_adapter(struct ipw2100_priv *priv)
- 	IPW_DEBUG_FW("Waiting for f/w initialization to complete...\n");
- 	i = 5000;
- 	do {
--		schedule_timeout_uninterruptible(msecs_to_jiffies(40));
-+		schedule_msec_hrtimeout_uninterruptible((40));
- 		/* Todo... wait for sync command ... */
- 
- 		read_register(priv->net_dev, IPW_REG_INTA, &inta);
-diff --git a/drivers/parport/ieee1284.c b/drivers/parport/ieee1284.c
-index 4547ac44c8d4..8fa1a7fdf12c 100644
---- a/drivers/parport/ieee1284.c
-+++ b/drivers/parport/ieee1284.c
-@@ -202,7 +202,7 @@ int parport_wait_peripheral(struct parport *port,
- 			/* parport_wait_event didn't time out, but the
- 			 * peripheral wasn't actually ready either.
- 			 * Wait for another 10ms. */
--			schedule_timeout_interruptible(msecs_to_jiffies(10));
-+			schedule_msec_hrtimeout_interruptible((10));
- 		}
- 	}
- 
-diff --git a/drivers/parport/ieee1284_ops.c b/drivers/parport/ieee1284_ops.c
-index 2c11bd3fe1fd..8cb6b61c0880 100644
---- a/drivers/parport/ieee1284_ops.c
-+++ b/drivers/parport/ieee1284_ops.c
-@@ -520,7 +520,7 @@ size_t parport_ieee1284_ecp_read_data (struct parport *port,
- 			/* Yield the port for a while. */
- 			if (count && dev->port->irq != PARPORT_IRQ_NONE) {
- 				parport_release (dev);
--				schedule_timeout_interruptible(msecs_to_jiffies(40));
-+				schedule_msec_hrtimeout_interruptible((40));
- 				parport_claim_or_block (dev);
- 			}
- 			else
-diff --git a/drivers/platform/x86/intel_ips.c b/drivers/platform/x86/intel_ips.c
-index bffe548187ee..c2918ee3e100 100644
---- a/drivers/platform/x86/intel_ips.c
-+++ b/drivers/platform/x86/intel_ips.c
-@@ -798,7 +798,7 @@ static int ips_adjust(void *data)
- 			ips_gpu_lower(ips);
- 
- sleep:
--		schedule_timeout_interruptible(msecs_to_jiffies(IPS_ADJUST_PERIOD));
-+		schedule_msec_hrtimeout_interruptible((IPS_ADJUST_PERIOD));
- 	} while (!kthread_should_stop());
- 
- 	dev_dbg(ips->dev, "ips-adjust thread stopped\n");
-@@ -974,7 +974,7 @@ static int ips_monitor(void *data)
- 	seqno_timestamp = get_jiffies_64();
- 
- 	old_cpu_power = thm_readl(THM_CEC);
--	schedule_timeout_interruptible(msecs_to_jiffies(IPS_SAMPLE_PERIOD));
-+	schedule_msec_hrtimeout_interruptible((IPS_SAMPLE_PERIOD));
- 
- 	/* Collect an initial average */
- 	for (i = 0; i < IPS_SAMPLE_COUNT; i++) {
-@@ -1001,7 +1001,7 @@ static int ips_monitor(void *data)
- 			mchp_samples[i] = mchp;
- 		}
- 
--		schedule_timeout_interruptible(msecs_to_jiffies(IPS_SAMPLE_PERIOD));
-+		schedule_msec_hrtimeout_interruptible((IPS_SAMPLE_PERIOD));
- 		if (kthread_should_stop())
- 			break;
- 	}
-@@ -1028,7 +1028,7 @@ static int ips_monitor(void *data)
- 	 * us to reduce the sample frequency if the CPU and GPU are idle.
- 	 */
- 	old_cpu_power = thm_readl(THM_CEC);
--	schedule_timeout_interruptible(msecs_to_jiffies(IPS_SAMPLE_PERIOD));
-+	schedule_msec_hrtimeout_interruptible((IPS_SAMPLE_PERIOD));
- 	last_sample_period = IPS_SAMPLE_PERIOD;
- 
- 	timer_setup(&ips->timer, monitor_timeout, TIMER_DEFERRABLE);
-diff --git a/drivers/rtc/rtc-wm8350.c b/drivers/rtc/rtc-wm8350.c
-index 2018614f258f..fc19b312c345 100644
---- a/drivers/rtc/rtc-wm8350.c
-+++ b/drivers/rtc/rtc-wm8350.c
-@@ -114,7 +114,7 @@ static int wm8350_rtc_settime(struct device *dev, struct rtc_time *tm)
- 	/* Wait until confirmation of stopping */
- 	do {
- 		rtc_ctrl = wm8350_reg_read(wm8350, WM8350_RTC_TIME_CONTROL);
--		schedule_timeout_uninterruptible(msecs_to_jiffies(1));
-+		schedule_msec_hrtimeout_uninterruptible((1));
- 	} while (--retries && !(rtc_ctrl & WM8350_RTC_STS));
- 
- 	if (!retries) {
-@@ -197,7 +197,7 @@ static int wm8350_rtc_stop_alarm(struct wm8350 *wm8350)
- 	/* Wait until confirmation of stopping */
- 	do {
- 		rtc_ctrl = wm8350_reg_read(wm8350, WM8350_RTC_TIME_CONTROL);
--		schedule_timeout_uninterruptible(msecs_to_jiffies(1));
-+		schedule_msec_hrtimeout_uninterruptible((1));
- 	} while (retries-- && !(rtc_ctrl & WM8350_RTC_ALMSTS));
- 
- 	if (!(rtc_ctrl & WM8350_RTC_ALMSTS))
-@@ -220,7 +220,7 @@ static int wm8350_rtc_start_alarm(struct wm8350 *wm8350)
- 	/* Wait until confirmation */
- 	do {
- 		rtc_ctrl = wm8350_reg_read(wm8350, WM8350_RTC_TIME_CONTROL);
--		schedule_timeout_uninterruptible(msecs_to_jiffies(1));
-+		schedule_msec_hrtimeout_uninterruptible((1));
- 	} while (retries-- && rtc_ctrl & WM8350_RTC_ALMSTS);
- 
- 	if (rtc_ctrl & WM8350_RTC_ALMSTS)
-diff --git a/drivers/scsi/fnic/fnic_scsi.c b/drivers/scsi/fnic/fnic_scsi.c
-index d1f7b84bbfe8..94da04ef6174 100644
---- a/drivers/scsi/fnic/fnic_scsi.c
-+++ b/drivers/scsi/fnic/fnic_scsi.c
-@@ -217,7 +217,7 @@ int fnic_fw_reset_handler(struct fnic *fnic)
- 
- 	/* wait for io cmpl */
- 	while (atomic_read(&fnic->in_flight))
--		schedule_timeout(msecs_to_jiffies(1));
-+		schedule_msec_hrtimeout((1));
- 
- 	spin_lock_irqsave(&fnic->wq_copy_lock[0], flags);
- 
-@@ -2277,7 +2277,7 @@ static int fnic_clean_pending_aborts(struct fnic *fnic,
- 		}
- 	}
- 
--	schedule_timeout(msecs_to_jiffies(2 * fnic->config.ed_tov));
-+	schedule_msec_hrtimeout((2 * fnic->config.ed_tov));
- 
- 	/* walk again to check, if IOs are still pending in fw */
- 	if (fnic_is_abts_pending(fnic, lr_sc))
-diff --git a/drivers/scsi/lpfc/lpfc_scsi.c b/drivers/scsi/lpfc/lpfc_scsi.c
-index 983eeb0e3d07..007966930f94 100644
---- a/drivers/scsi/lpfc/lpfc_scsi.c
-+++ b/drivers/scsi/lpfc/lpfc_scsi.c
-@@ -5194,7 +5194,7 @@ lpfc_reset_flush_io_context(struct lpfc_vport *vport, uint16_t tgt_id,
- 					tgt_id, lun_id, context);
- 	later = msecs_to_jiffies(2 * vport->cfg_devloss_tmo * 1000) + jiffies;
- 	while (time_after(later, jiffies) && cnt) {
--		schedule_timeout_uninterruptible(msecs_to_jiffies(20));
-+		schedule_msec_hrtimeout_uninterruptible((20));
- 		cnt = lpfc_sli_sum_iocb(vport, tgt_id, lun_id, context);
- 	}
- 	if (cnt) {
-diff --git a/drivers/scsi/snic/snic_scsi.c b/drivers/scsi/snic/snic_scsi.c
-index 6dd0ff188bb4..aedf0b78f622 100644
---- a/drivers/scsi/snic/snic_scsi.c
-+++ b/drivers/scsi/snic/snic_scsi.c
-@@ -2349,7 +2349,7 @@ snic_reset(struct Scsi_Host *shost, struct scsi_cmnd *sc)
- 
- 	/* Wait for all the IOs that are entered in Qcmd */
- 	while (atomic_read(&snic->ios_inflight))
--		schedule_timeout(msecs_to_jiffies(1));
-+		schedule_msec_hrtimeout((1));
- 
- 	ret = snic_issue_hba_reset(snic, sc);
- 	if (ret) {
-diff --git a/drivers/staging/comedi/drivers/ni_mio_common.c b/drivers/staging/comedi/drivers/ni_mio_common.c
-index 9266e13f6271..df5c53216d78 100644
---- a/drivers/staging/comedi/drivers/ni_mio_common.c
-+++ b/drivers/staging/comedi/drivers/ni_mio_common.c
-@@ -4748,7 +4748,7 @@ static int cs5529_wait_for_idle(struct comedi_device *dev)
- 		if ((status & NI67XX_CAL_STATUS_BUSY) == 0)
- 			break;
- 		set_current_state(TASK_INTERRUPTIBLE);
--		if (schedule_timeout(1))
-+		if (schedule_min_hrtimeout())
- 			return -EIO;
- 	}
- 	if (i == timeout) {
-diff --git a/drivers/staging/rts5208/rtsx.c b/drivers/staging/rts5208/rtsx.c
-index 898add4d1fc8..0aa9dd467349 100644
---- a/drivers/staging/rts5208/rtsx.c
-+++ b/drivers/staging/rts5208/rtsx.c
-@@ -477,7 +477,7 @@ static int rtsx_polling_thread(void *__dev)
- 
- 	for (;;) {
- 		set_current_state(TASK_INTERRUPTIBLE);
--		schedule_timeout(msecs_to_jiffies(POLLING_INTERVAL));
-+		schedule_msec_hrtimeout((POLLING_INTERVAL));
- 
- 		/* lock the device pointers */
- 		mutex_lock(&dev->dev_mutex);
-diff --git a/drivers/staging/unisys/visornic/visornic_main.c b/drivers/staging/unisys/visornic/visornic_main.c
-index 0433536930a9..d8726f28843f 100644
---- a/drivers/staging/unisys/visornic/visornic_main.c
-+++ b/drivers/staging/unisys/visornic/visornic_main.c
-@@ -549,7 +549,7 @@ static int visornic_disable_with_timeout(struct net_device *netdev,
- 		}
- 		set_current_state(TASK_INTERRUPTIBLE);
- 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
--		wait += schedule_timeout(msecs_to_jiffies(10));
-+		wait += schedule_msec_hrtimeout((10));
- 		spin_lock_irqsave(&devdata->priv_lock, flags);
- 	}
- 
-@@ -560,7 +560,7 @@ static int visornic_disable_with_timeout(struct net_device *netdev,
- 		while (1) {
- 			set_current_state(TASK_INTERRUPTIBLE);
- 			spin_unlock_irqrestore(&devdata->priv_lock, flags);
--			schedule_timeout(msecs_to_jiffies(10));
-+			schedule_msec_hrtimeout((10));
- 			spin_lock_irqsave(&devdata->priv_lock, flags);
- 			if (atomic_read(&devdata->usage))
- 				break;
-@@ -714,7 +714,7 @@ static int visornic_enable_with_timeout(struct net_device *netdev,
- 		}
- 		set_current_state(TASK_INTERRUPTIBLE);
- 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
--		wait += schedule_timeout(msecs_to_jiffies(10));
-+		wait += schedule_msec_hrtimeout((10));
- 		spin_lock_irqsave(&devdata->priv_lock, flags);
- 	}
- 
-diff --git a/drivers/video/fbdev/omap/hwa742.c b/drivers/video/fbdev/omap/hwa742.c
-index cfe63932f825..71c00ef772a3 100644
---- a/drivers/video/fbdev/omap/hwa742.c
-+++ b/drivers/video/fbdev/omap/hwa742.c
-@@ -913,7 +913,7 @@ static void hwa742_resume(void)
- 		if (hwa742_read_reg(HWA742_PLL_DIV_REG) & (1 << 7))
- 			break;
- 		set_current_state(TASK_UNINTERRUPTIBLE);
--		schedule_timeout(msecs_to_jiffies(5));
-+		schedule_msec_hrtimeout((5));
- 	}
- 	hwa742_set_update_mode(hwa742.update_mode_before_suspend);
- }
-diff --git a/drivers/video/fbdev/pxafb.c b/drivers/video/fbdev/pxafb.c
-index f1551e00eb12..f0f651e92504 100644
---- a/drivers/video/fbdev/pxafb.c
-+++ b/drivers/video/fbdev/pxafb.c
-@@ -1287,7 +1287,7 @@ static int pxafb_smart_thread(void *arg)
- 		mutex_unlock(&fbi->ctrlr_lock);
- 
- 		set_current_state(TASK_INTERRUPTIBLE);
--		schedule_timeout(msecs_to_jiffies(30));
-+		schedule_msec_hrtimeout((30));
- 	}
- 
- 	pr_debug("%s(): task ending\n", __func__);
-diff --git a/fs/btrfs/inode-map.c b/fs/btrfs/inode-map.c
-index 76d2e43817ea..6ba0604e2162 100644
---- a/fs/btrfs/inode-map.c
-+++ b/fs/btrfs/inode-map.c
-@@ -91,7 +91,7 @@ static int caching_kthread(void *data)
- 				btrfs_release_path(path);
- 				root->ino_cache_progress = last;
- 				up_read(&fs_info->commit_root_sem);
--				schedule_timeout(1);
-+				schedule_min_hrtimeout();
- 				goto again;
- 			} else
- 				continue;
 diff --git a/fs/proc/base.c b/fs/proc/base.c
-index b362523a9829..38e4f305ddf0 100644
+index b09cc9e6d591..e8f81f4c71ff 100644
 --- a/fs/proc/base.c
 +++ b/fs/proc/base.c
-@@ -479,7 +479,7 @@ static int proc_pid_schedstat(struct seq_file *m, struct pid_namespace *ns,
+@@ -514,7 +514,7 @@ static int proc_pid_schedstat(struct seq_file *m, struct pid_namespace *ns,
  		seq_puts(m, "0 0 0\n");
  	else
  		seq_printf(m, "%llu %llu %lu\n",
@@ -2570,18 +987,6 @@ index b362523a9829..38e4f305ddf0 100644
  		   (unsigned long long)task->sched_info.run_delay,
  		   task->sched_info.pcount);
  
-diff --git a/include/linux/freezer.h b/include/linux/freezer.h
-index 27828145ca09..504cc97bf475 100644
---- a/include/linux/freezer.h
-+++ b/include/linux/freezer.h
-@@ -311,6 +311,7 @@ static inline void set_freezable(void) {}
- #define wait_event_freezekillable_unsafe(wq, condition)			\
- 		wait_event_killable(wq, condition)
- 
-+#define pm_freezing (false)
- #endif /* !CONFIG_FREEZER */
- 
- #endif	/* FREEZER_H_INCLUDED */
 diff --git a/include/linux/init_task.h b/include/linux/init_task.h
 index b2412b4d4c20..0db390aeae9f 100644
 --- a/include/linux/init_task.h
@@ -2612,10 +1017,10 @@ index e9bfe6972aed..16ba1c7e5bde 100644
  }
  
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 76cd21fa5501..98f30ab29195 100644
+index 3613c3f43b83..5f9a13444db2 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -35,6 +35,10 @@
+@@ -34,6 +34,10 @@
  #include <linux/seqlock.h>
  #include <linux/kcsan.h>
  
@@ -2626,50 +1031,7 @@ index 76cd21fa5501..98f30ab29195 100644
  /* task_struct member predeclarations (sorted alphabetically): */
  struct audit_context;
  struct backing_dev_info;
-@@ -214,13 +218,40 @@ struct io_uring_task;
- 
- extern void scheduler_tick(void);
- 
--#define	MAX_SCHEDULE_TIMEOUT		LONG_MAX
--
-+#define	MAX_SCHEDULE_TIMEOUT	LONG_MAX
- extern long schedule_timeout(long timeout);
- extern long schedule_timeout_interruptible(long timeout);
- extern long schedule_timeout_killable(long timeout);
- extern long schedule_timeout_uninterruptible(long timeout);
- extern long schedule_timeout_idle(long timeout);
-+
-+#ifdef CONFIG_HIGH_RES_TIMERS
-+extern long schedule_msec_hrtimeout(long timeout);
-+extern long schedule_min_hrtimeout(void);
-+extern long schedule_msec_hrtimeout_interruptible(long timeout);
-+extern long schedule_msec_hrtimeout_uninterruptible(long timeout);
-+#else
-+static inline long schedule_msec_hrtimeout(long timeout)
-+{
-+	return schedule_timeout(msecs_to_jiffies(timeout));
-+}
-+
-+static inline long schedule_min_hrtimeout(void)
-+{
-+	return schedule_timeout(1);
-+}
-+
-+static inline long schedule_msec_hrtimeout_interruptible(long timeout)
-+{
-+	return schedule_timeout_interruptible(msecs_to_jiffies(timeout));
-+}
-+
-+static inline long schedule_msec_hrtimeout_uninterruptible(long timeout)
-+{
-+	return schedule_timeout_uninterruptible(msecs_to_jiffies(timeout));
-+}
-+#endif
-+
- asmlinkage void schedule(void);
- extern void schedule_preempt_disabled(void);
- asmlinkage void preempt_schedule_irq(void);
-@@ -660,8 +691,10 @@ struct task_struct {
+@@ -663,8 +667,10 @@ struct task_struct {
  	unsigned int			flags;
  	unsigned int			ptrace;
  
@@ -2681,7 +1043,7 @@ index 76cd21fa5501..98f30ab29195 100644
  	struct __call_single_node	wake_entry;
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/* Current CPU: */
-@@ -687,10 +720,25 @@ struct task_struct {
+@@ -690,10 +696,25 @@ struct task_struct {
  	int				static_prio;
  	int				normal_prio;
  	unsigned int			rt_priority;
@@ -2707,7 +1069,7 @@ index 76cd21fa5501..98f30ab29195 100644
  #ifdef CONFIG_CGROUP_SCHED
  	struct task_group		*sched_task_group;
  #endif
-@@ -886,6 +934,10 @@ struct task_struct {
+@@ -892,6 +913,10 @@ struct task_struct {
  #ifdef CONFIG_ARCH_HAS_SCALED_CPUTIME
  	u64				utimescaled;
  	u64				stimescaled;
@@ -2718,7 +1080,7 @@ index 76cd21fa5501..98f30ab29195 100644
  #endif
  	u64				gtime;
  	struct prev_cputime		prev_cputime;
-@@ -1365,6 +1417,40 @@ struct task_struct {
+@@ -1373,6 +1398,40 @@ struct task_struct {
  	 */
  };
  
@@ -2834,10 +1196,10 @@ index e5af028c08b4..010b2244e0b6 100644
  }
  
 diff --git a/include/linux/sched/task.h b/include/linux/sched/task.h
-index 85fb2f34c59b..5feb3faee812 100644
+index de21a45a4ee7..a4ccfe41497b 100644
 --- a/include/linux/sched/task.h
 +++ b/include/linux/sched/task.h
-@@ -93,7 +93,7 @@ int kernel_wait(pid_t pid, int *stat);
+@@ -97,7 +97,7 @@ int kernel_wait(pid_t pid, int *stat);
  extern void free_task(struct task_struct *tsk);
  
  /* sched_exec is called by processes performing an exec */
@@ -2908,10 +1270,10 @@ index 3bac0a8ceab2..f48c5c5da651 100644
  /* Can be ORed in to make sure the process is reverted back to SCHED_NORMAL on fork */
  #define SCHED_RESET_ON_FORK     0x40000000
 diff --git a/init/Kconfig b/init/Kconfig
-index 0872a5a2e759..f8aa9d2a9f51 100644
+index 233166e54df3..cb8754385739 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -96,6 +96,18 @@ config THREAD_INFO_IN_TASK
+@@ -113,6 +113,18 @@ config THREAD_INFO_IN_TASK
  
  menu "General setup"
  
@@ -2930,7 +1292,7 @@ index 0872a5a2e759..f8aa9d2a9f51 100644
  config BROKEN
  	bool
  
-@@ -514,6 +526,7 @@ config SCHED_THERMAL_PRESSURE
+@@ -530,6 +542,7 @@ config SCHED_THERMAL_PRESSURE
  	default y if ARM64
  	depends on SMP
  	depends on CPU_FREQ_THERMAL
@@ -2938,7 +1300,7 @@ index 0872a5a2e759..f8aa9d2a9f51 100644
  	help
  	  Select this option to enable thermal pressure accounting in the
  	  scheduler. Thermal pressure is the value conveyed to the scheduler
-@@ -863,6 +876,7 @@ config NUMA_BALANCING
+@@ -879,6 +892,7 @@ config NUMA_BALANCING
  	depends on ARCH_SUPPORTS_NUMA_BALANCING
  	depends on !ARCH_WANT_NUMA_VARIABLE_LOCALITY
  	depends on SMP && NUMA && MIGRATION
@@ -2946,7 +1308,7 @@ index 0872a5a2e759..f8aa9d2a9f51 100644
  	help
  	  This option adds support for automatic NUMA aware memory/task placement.
  	  The mechanism is quite primitive and is based on migrating memory when
-@@ -947,9 +961,13 @@ menuconfig CGROUP_SCHED
+@@ -963,9 +977,13 @@ menuconfig CGROUP_SCHED
  	help
  	  This feature lets CPU scheduler recognize task groups and control CPU
  	  bandwidth allocation to such task groups. It uses cgroups to group
@@ -2962,7 +1324,7 @@ index 0872a5a2e759..f8aa9d2a9f51 100644
  config FAIR_GROUP_SCHED
  	bool "Group scheduling for SCHED_OTHER"
  	depends on CGROUP_SCHED
-@@ -1078,6 +1096,7 @@ config CGROUP_DEVICE
+@@ -1094,6 +1112,7 @@ config CGROUP_DEVICE
  
  config CGROUP_CPUACCT
  	bool "Simple CPU accounting controller"
@@ -2970,7 +1332,7 @@ index 0872a5a2e759..f8aa9d2a9f51 100644
  	help
  	  Provides a simple controller for monitoring the
  	  total CPU consumed by the tasks in a cgroup.
-@@ -1205,6 +1224,7 @@ config CHECKPOINT_RESTORE
+@@ -1222,6 +1241,7 @@ config CHECKPOINT_RESTORE
  
  config SCHED_AUTOGROUP
  	bool "Automatic process group scheduling"
@@ -2979,7 +1341,7 @@ index 0872a5a2e759..f8aa9d2a9f51 100644
  	select CGROUP_SCHED
  	select FAIR_GROUP_SCHED
 diff --git a/init/init_task.c b/init/init_task.c
-index a56f0abb63e9..d337ec0f36fc 100644
+index 5fa18ed59d33..26feb9d1effe 100644
 --- a/init/init_task.c
 +++ b/init/init_task.c
 @@ -75,9 +75,17 @@ struct task_struct init_task
@@ -3017,10 +1379,10 @@ index a56f0abb63e9..d337ec0f36fc 100644
  #ifdef CONFIG_SMP
  	.pushable_tasks	= PLIST_NODE_INIT(init_task.pushable_tasks, MAX_PRIO),
 diff --git a/init/main.c b/init/main.c
-index 32b2a8affafd..d3c0b60ff0cf 100644
+index b1593bdaf3b9..2b4904d816ba 100644
 --- a/init/main.c
 +++ b/init/main.c
-@@ -1433,6 +1433,8 @@ static int __ref kernel_init(void *unused)
+@@ -1421,6 +1421,8 @@ static int __ref kernel_init(void *unused)
  
  	do_sysctl_args();
  
@@ -3140,108 +1502,8 @@ index 000000000000..a6a58781ef91
 +	default 3 if RQ_MC_LLC
 +	default 4 if RQ_SMP
 +	default 5 if RQ_ALL
-diff --git a/kernel/Kconfig.hz b/kernel/Kconfig.hz
-index 38ef6d06888e..89ed751ac4e4 100644
---- a/kernel/Kconfig.hz
-+++ b/kernel/Kconfig.hz
-@@ -5,7 +5,8 @@
- 
- choice
- 	prompt "Timer frequency"
--	default HZ_250
-+	default HZ_100 if SCHED_MUQSS
-+	default HZ_250_NODEF if !SCHED_MUQSS
- 	help
- 	 Allows the configuration of the timer frequency. It is customary
- 	 to have the timer interrupt run at 1000 Hz but 100 Hz may be more
-@@ -20,11 +21,18 @@ choice
- 	config HZ_100
- 		bool "100 HZ"
- 	help
-+	  100 Hz is a suitable choice in combination with MuQSS which does
-+	  not rely on ticks for rescheduling interrupts, and is not Hz limited
-+	  for timeouts and sleeps from both the kernel and userspace.
-+	  This allows us to benefit from the lower overhead and higher
-+	  throughput of fewer timer ticks.
-+
-+	  Non-MuQSS kernels:
- 	  100 Hz is a typical choice for servers, SMP and NUMA systems
- 	  with lots of processors that may show reduced performance if
- 	  too many timer interrupts are occurring.
- 
--	config HZ_250
-+	config HZ_250_NODEF
- 		bool "250 HZ"
- 	help
- 	 250 Hz is a good compromise choice allowing server performance
-@@ -32,7 +40,10 @@ choice
- 	 on SMP and NUMA systems. If you are going to be using NTSC video
- 	 or multimedia, selected 300Hz instead.
- 
--	config HZ_300
-+	 250 Hz is the default choice for the mainline scheduler but not
-+	 advantageous in combination with MuQSS.
-+
-+	config HZ_300_NODEF
- 		bool "300 HZ"
- 	help
- 	 300 Hz is a good compromise choice allowing server performance
-@@ -40,7 +51,7 @@ choice
- 	 on SMP and NUMA systems and exactly dividing by both PAL and
- 	 NTSC frame rates for video and multimedia work.
- 
--	config HZ_1000
-+	config HZ_1000_NODEF
- 		bool "1000 HZ"
- 	help
- 	 1000 Hz is the preferred choice for desktop systems and other
-@@ -51,9 +62,9 @@ endchoice
- config HZ
- 	int
- 	default 100 if HZ_100
--	default 250 if HZ_250
--	default 300 if HZ_300
--	default 1000 if HZ_1000
-+	default 250 if HZ_250_NODEF
-+	default 300 if HZ_300_NODEF
-+	default 1000 if HZ_1000_NODEF
- 
- config SCHED_HRTICK
- 	def_bool HIGH_RES_TIMERS
-diff --git a/kernel/Kconfig.preempt b/kernel/Kconfig.preempt
-index bf82259cff96..d9438eb6f91c 100644
---- a/kernel/Kconfig.preempt
-+++ b/kernel/Kconfig.preempt
-@@ -2,7 +2,7 @@
- 
- choice
- 	prompt "Preemption Model"
--	default PREEMPT_NONE
-+	default PREEMPT
- 
- config PREEMPT_NONE
- 	bool "No Forced Preemption (Server)"
-@@ -18,7 +18,7 @@ config PREEMPT_NONE
- 	  latencies.
- 
- config PREEMPT_VOLUNTARY
--	bool "Voluntary Kernel Preemption (Desktop)"
-+	bool "Voluntary Kernel Preemption (Nothing)"
- 	depends on !ARCH_NO_PREEMPT
- 	help
- 	  This option reduces the latency of the kernel by adding more
-@@ -33,7 +33,8 @@ config PREEMPT_VOLUNTARY
- 	  applications to run more 'smoothly' even when the system is
- 	  under load.
- 
--	  Select this if you are building a kernel for a desktop system.
-+	  Select this for no system in particular (choose Preemptible
-+	  instead on a desktop if you know what's good for you).
- 
- config PREEMPT
- 	bool "Preemptible Kernel (Low-Latency Desktop)"
 diff --git a/kernel/Makefile b/kernel/Makefile
-index 6c9f19911be0..bbd99777a89a 100644
+index 82e9c843617f..d2ee962409ed 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -10,7 +10,8 @@ obj-y     = fork.o exec_domain.o panic.o \
@@ -3268,10 +1530,10 @@ index 27725754ac99..769d773c7182 100644
  	d->cpu_count += t1;
  
 diff --git a/kernel/exit.c b/kernel/exit.c
-index 1f236ed375f8..f400301e2086 100644
+index af9c8e794e4d..dd5396276da0 100644
 --- a/kernel/exit.c
 +++ b/kernel/exit.c
-@@ -121,7 +121,7 @@ static void __exit_signal(struct task_struct *tsk)
+@@ -169,7 +169,7 @@ static void __exit_signal(struct task_struct *tsk)
  			sig->curr_target = next_thread(tsk);
  	}
  
@@ -3280,7 +1542,7 @@ index 1f236ed375f8..f400301e2086 100644
  			      sizeof(unsigned long long));
  
  	/*
-@@ -142,7 +142,7 @@ static void __exit_signal(struct task_struct *tsk)
+@@ -190,7 +190,7 @@ static void __exit_signal(struct task_struct *tsk)
  	sig->inblock += task_io_get_inblock(tsk);
  	sig->oublock += task_io_get_oublock(tsk);
  	task_io_accounting_add(&sig->ioac, &tsk->ioac);
@@ -3289,64 +1551,11 @@ index 1f236ed375f8..f400301e2086 100644
  	sig->nr_threads--;
  	__unhash_process(tsk, group_dead);
  	write_sequnlock(&sig->stats_lock);
-diff --git a/kernel/irq/Kconfig b/kernel/irq/Kconfig
-index 164a031cfdb6..016a445f589e 100644
---- a/kernel/irq/Kconfig
-+++ b/kernel/irq/Kconfig
-@@ -113,6 +113,23 @@ config GENERIC_IRQ_RESERVATION_MODE
- config IRQ_FORCED_THREADING
-        bool
- 
-+config FORCE_IRQ_THREADING
-+	bool "Make IRQ threading compulsory"
-+	depends on IRQ_FORCED_THREADING
-+	default n
-+	help
-+
-+	  Make IRQ threading mandatory for any IRQ handlers that support it
-+	  instead of being optional and requiring the threadirqs kernel
-+	  parameter. Instead they can be optionally disabled with the
-+	  nothreadirqs kernel parameter.
-+
-+	  Enabling this may make some architectures not boot with runqueue
-+	  sharing and MuQSS.
-+
-+	  Enable if you are building for a desktop or low latency system,
-+	  otherwise say N.
-+
- config SPARSE_IRQ
- 	bool "Support sparse irq numbering" if MAY_HAVE_SPARSE_IRQ
- 	help
-diff --git a/kernel/irq/manage.c b/kernel/irq/manage.c
-index c460e0496006..218fbcbb94e6 100644
---- a/kernel/irq/manage.c
-+++ b/kernel/irq/manage.c
-@@ -25,9 +25,20 @@
- #include "internals.h"
- 
- #if defined(CONFIG_IRQ_FORCED_THREADING) && !defined(CONFIG_PREEMPT_RT)
-+#ifdef CONFIG_FORCE_IRQ_THREADING
-+__read_mostly bool force_irqthreads = true;
-+#else
- __read_mostly bool force_irqthreads;
-+#endif
- EXPORT_SYMBOL_GPL(force_irqthreads);
- 
-+static int __init setup_noforced_irqthreads(char *arg)
-+{
-+	force_irqthreads = false;
-+	return 0;
-+}
-+early_param("nothreadirqs", setup_noforced_irqthreads);
-+
- static int __init setup_forced_irqthreads(char *arg)
- {
- 	force_irqthreads = true;
 diff --git a/kernel/kthread.c b/kernel/kthread.c
-index 933a625621b8..93ee79fc2b48 100644
+index 8cf3609d3f52..8f147d4e64e7 100644
 --- a/kernel/kthread.c
 +++ b/kernel/kthread.c
-@@ -471,6 +471,34 @@ void kthread_bind(struct task_struct *p, unsigned int cpu)
+@@ -507,6 +507,34 @@ void kthread_bind(struct task_struct *p, unsigned int cpu)
  }
  EXPORT_SYMBOL(kthread_bind);
  
@@ -3381,17 +1590,17 @@ index 933a625621b8..93ee79fc2b48 100644
  /**
   * kthread_create_on_cpu - Create a cpu bound kthread
   * @threadfn: the function to run until signal_pending(current).
-@@ -491,7 +519,7 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
+@@ -527,7 +555,7 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
  				   cpu);
  	if (IS_ERR(p))
  		return p;
 -	kthread_bind(p, cpu);
 +	new_kthread_bind(p, cpu);
  	/* CPU hotplug need to bind once again when unparking the thread. */
- 	set_bit(KTHREAD_IS_PER_CPU, &to_kthread(p)->flags);
  	to_kthread(p)->cpu = cpu;
+ 	return p;
 diff --git a/kernel/livepatch/transition.c b/kernel/livepatch/transition.c
-index f6310f848f34..825f9b8e228f 100644
+index b04b87a4e0a7..3c92421a5c02 100644
 --- a/kernel/livepatch/transition.c
 +++ b/kernel/livepatch/transition.c
 @@ -282,7 +282,7 @@ static bool klp_try_switch_task(struct task_struct *task)
@@ -12399,10 +10608,10 @@ index 000000000000..09a1f2fe64ba
 +
 +#endif /* MUQSS_SCHED_H */
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
-index 97d318b0cd0c..fb466c681a1f 100644
+index c1307bbdc291..d9f3e307045e 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
-@@ -172,6 +172,12 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
+@@ -182,6 +182,12 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
  	return cpufreq_driver_resolve_freq(policy, freq);
  }
  
@@ -12415,7 +10624,7 @@ index 97d318b0cd0c..fb466c681a1f 100644
  /*
   * This function computes an effective utilization for the given CPU, to be
   * used for frequency selection given the linear relation: f = u * f_max.
-@@ -200,7 +206,7 @@ unsigned long schedutil_cpu_util(int cpu, unsigned long util_cfs,
+@@ -210,7 +216,7 @@ unsigned long schedutil_cpu_util(int cpu, unsigned long util_cfs,
  	struct rq *rq = cpu_rq(cpu);
  
  	if (!uclamp_is_used() &&
@@ -12424,7 +10633,7 @@ index 97d318b0cd0c..fb466c681a1f 100644
  		return max;
  	}
  
-@@ -642,7 +648,11 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
+@@ -660,7 +666,11 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
  	struct task_struct *thread;
  	struct sched_attr attr = {
  		.size		= sizeof(struct sched_attr),
@@ -12454,7 +10663,7 @@ index efbb492bb94c..f0288c32ab17 100644
  #endif
 +#endif
 diff --git a/kernel/sched/cputime.c b/kernel/sched/cputime.c
-index 5a55d2300452..283a580754a7 100644
+index f03b3af2fb79..052bce47be73 100644
 --- a/kernel/sched/cputime.c
 +++ b/kernel/sched/cputime.c
 @@ -266,26 +266,6 @@ static inline u64 account_other_time(u64 max)
@@ -12484,7 +10693,7 @@ index 5a55d2300452..283a580754a7 100644
  /*
   * Accumulate raw cputime values of dead tasks (sig->[us]time) and live
   * tasks (sum on group iteration) belonging to @tsk's group.
-@@ -614,7 +594,7 @@ void cputime_adjust(struct task_cputime *curr, struct prev_cputime *prev,
+@@ -620,7 +600,7 @@ void cputime_adjust(struct task_cputime *curr, struct prev_cputime *prev,
  void task_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
  {
  	struct task_cputime cputime = {
@@ -12494,10 +10703,10 @@ index 5a55d2300452..283a580754a7 100644
  
  	task_cputime(p, &cputime.utime, &cputime.stime);
 diff --git a/kernel/sched/idle.c b/kernel/sched/idle.c
-index c6932b8f4467..3fc76869cf5f 100644
+index cdc3e690de71..7dadf4b908ee 100644
 --- a/kernel/sched/idle.c
 +++ b/kernel/sched/idle.c
-@@ -395,6 +395,7 @@ void cpu_startup_entry(enum cpuhp_state state)
+@@ -402,6 +402,7 @@ void cpu_startup_entry(enum cpuhp_state state)
  		do_idle();
  }
  
@@ -12505,13 +10714,13 @@ index c6932b8f4467..3fc76869cf5f 100644
  /*
   * idle-task scheduling class.
   */
-@@ -508,3 +509,4 @@ const struct sched_class idle_sched_class
+@@ -515,3 +516,4 @@ const struct sched_class idle_sched_class
  	.switched_to		= switched_to_idle,
  	.update_curr		= update_curr_idle,
  };
 +#endif /* CONFIG_SCHED_MUQSS */
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index df80bfcea92e..e17785e91f0e 100644
+index 5f17507bd66b..596373624d90 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
 @@ -2,6 +2,19 @@
@@ -12534,7 +10743,7 @@ index df80bfcea92e..e17785e91f0e 100644
  #include <linux/sched.h>
  
  #include <linux/sched/autogroup.h>
-@@ -2633,3 +2646,25 @@ static inline bool is_per_cpu_kthread(struct task_struct *p)
+@@ -2720,3 +2733,25 @@ static inline bool is_per_cpu_kthread(struct task_struct *p)
  
  void swake_up_all_locked(struct swait_queue_head *q);
  void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait);
@@ -12561,7 +10770,7 @@ index df80bfcea92e..e17785e91f0e 100644
 +#endif
 +#endif /* CONFIG_SCHED_MUQSS */
 diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index dd7770226086..4bd57a89aa6a 100644
+index 6eb0996ef859..b2591d21a2c8 100644
 --- a/kernel/sched/topology.c
 +++ b/kernel/sched/topology.c
 @@ -454,7 +454,11 @@ void rq_attach_root(struct rq *rq, struct root_domain *rd)
@@ -12743,14 +10952,13 @@ index 000000000000..bf5c6e97e139
 +	l->entries--;
 +}
 diff --git a/kernel/sysctl.c b/kernel/sysctl.c
-index afad085960b8..d2e35cd54f94 100644
+index abe0f16d5364..c9604d7afce5 100644
 --- a/kernel/sysctl.c
 +++ b/kernel/sysctl.c
-@@ -120,7 +120,17 @@ static unsigned long long_max = LONG_MAX;
- static int one_hundred = 100;
- static int two_hundred = 200;
- static int one_thousand = 1000;
--#ifdef CONFIG_PRINTK
+@@ -104,6 +104,15 @@
+ #include <linux/nmi.h>
+ #endif
+ 
 +static int zero = 0;
 +static int one = 1;
 +#ifdef CONFIG_SCHED_MUQSS
@@ -12759,13 +10967,11 @@ index afad085960b8..d2e35cd54f94 100644
 +extern int sched_iso_cpu;
 +extern int sched_yield_type;
 +#endif
-+extern int hrtimer_granularity_us;
-+extern int hrtimeout_min_us;
-+#if defined(CONFIG_PRINTK) || defined(CONFIG_SCHED_MUQSS)
- static int ten_thousand = 10000;
- #endif
- #ifdef CONFIG_PERF_EVENTS
-@@ -184,7 +194,7 @@ static enum sysctl_writes_mode sysctl_writes_strict = SYSCTL_WRITES_STRICT;
++
+ #if defined(CONFIG_SYSCTL)
+ 
+ /* Constants used for minimum and  maximum */
+@@ -181,7 +190,7 @@ static enum sysctl_writes_mode sysctl_writes_strict = SYSCTL_WRITES_STRICT;
  int sysctl_legacy_va_layout;
  #endif
  
@@ -12774,7 +10980,7 @@ index afad085960b8..d2e35cd54f94 100644
  static int min_sched_granularity_ns = 100000;		/* 100 usecs */
  static int max_sched_granularity_ns = NSEC_PER_SEC;	/* 1 second */
  static int min_wakeup_granularity_ns;			/* 0 usecs */
-@@ -193,7 +203,7 @@ static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
+@@ -190,7 +199,7 @@ static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
  static int min_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
  static int max_sched_tunable_scaling = SCHED_TUNABLESCALING_END-1;
  #endif /* CONFIG_SMP */
@@ -12783,7 +10989,51 @@ index afad085960b8..d2e35cd54f94 100644
  
  #ifdef CONFIG_COMPACTION
  static int min_extfrag_threshold;
-@@ -1652,6 +1662,7 @@ int proc_do_static_key(struct ctl_table *table, int write,
+@@ -615,12 +624,12 @@ static int __do_proc_dointvec(void *tbl_data, struct ctl_table *table,
+ 	int *i, vleft, first = 1, err = 0;
+ 	size_t left;
+ 	char *p;
+-	
++
+ 	if (!tbl_data || !table->maxlen || !*lenp || (*ppos && !write)) {
+ 		*lenp = 0;
+ 		return 0;
+ 	}
+-	
++
+ 	i = (int *) tbl_data;
+ 	vleft = table->maxlen / sizeof(*i);
+ 	left = *lenp;
+@@ -852,7 +861,7 @@ int proc_dobool(struct ctl_table *table, int write, void *buffer,
+  * @ppos: file position
+  *
+  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
+- * values from/to the user buffer, treated as an ASCII string. 
++ * values from/to the user buffer, treated as an ASCII string.
+  *
+  * Returns 0 on success.
+  */
+@@ -1443,7 +1452,7 @@ static int do_proc_dointvec_ms_jiffies_conv(bool *negp, unsigned long *lvalp,
+  * @ppos: file position
+  *
+  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
+- * values from/to the user buffer, treated as an ASCII string. 
++ * values from/to the user buffer, treated as an ASCII string.
+  * The values read are assumed to be in seconds, and are converted into
+  * jiffies.
+  *
+@@ -1465,8 +1474,8 @@ int proc_dointvec_jiffies(struct ctl_table *table, int write,
+  * @ppos: pointer to the file position
+  *
+  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
+- * values from/to the user buffer, treated as an ASCII string. 
+- * The values read are assumed to be in 1/USER_HZ seconds, and 
++ * values from/to the user buffer, treated as an ASCII string.
++ * The values read are assumed to be in 1/USER_HZ seconds, and
+  * are converted into jiffies.
+  *
+  * Returns 0 on success.
+@@ -1785,6 +1794,7 @@ int proc_do_static_key(struct ctl_table *table, int write,
  }
  
  static struct ctl_table kern_table[] = {
@@ -12791,7 +11041,7 @@ index afad085960b8..d2e35cd54f94 100644
  	{
  		.procname	= "sched_child_runs_first",
  		.data		= &sysctl_sched_child_runs_first,
-@@ -1843,6 +1854,73 @@ static struct ctl_table kern_table[] = {
+@@ -1980,6 +1990,56 @@ static struct ctl_table kern_table[] = {
  		.extra1		= SYSCTL_ONE,
  	},
  #endif
@@ -12844,62 +11094,15 @@ index afad085960b8..d2e35cd54f94 100644
 +	},
 +#endif /* CONFIG_SMP && CONFIG_SCHEDSTATS */
 +#endif /* CONFIG_SCHED_MUQSS */
-+	{
-+		.procname	= "hrtimer_granularity_us",
-+		.data		= &hrtimer_granularity_us,
-+		.maxlen		= sizeof(int),
-+		.mode		= 0644,
-+		.proc_handler	= &proc_dointvec_minmax,
-+		.extra1		= &one,
-+		.extra2		= &ten_thousand,
-+	},
-+	{
-+		.procname	= "hrtimeout_min_us",
-+		.data		= &hrtimeout_min_us,
-+		.maxlen		= sizeof(int),
-+		.mode		= 0644,
-+		.proc_handler	= &proc_dointvec_minmax,
-+		.extra1		= &one,
-+		.extra2		= &ten_thousand,
-+	},
++
  #if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
  	{
  		.procname	= "sched_energy_aware",
 diff --git a/kernel/time/Kconfig b/kernel/time/Kconfig
-index a09b1d61df6a..e7662101fcc3 100644
+index a09b1d61df6a..3c6267b7a630 100644
 --- a/kernel/time/Kconfig
 +++ b/kernel/time/Kconfig
-@@ -75,6 +75,9 @@ config NO_HZ_COMMON
- 	depends on !ARCH_USES_GETTIMEOFFSET && GENERIC_CLOCKEVENTS
- 	select TICK_ONESHOT
- 
-+config NO_HZ_FULL
-+	bool
-+
- choice
- 	prompt "Timer tick handling"
- 	default NO_HZ_IDLE if NO_HZ
-@@ -96,8 +99,9 @@ config NO_HZ_IDLE
- 
- 	  Most of the time you want to say Y here.
- 
--config NO_HZ_FULL
-+config NO_HZ_FULL_NODEF
- 	bool "Full dynticks system (tickless)"
-+	select NO_HZ_FULL
- 	# NO_HZ_COMMON dependency
- 	depends on !ARCH_USES_GETTIMEOFFSET && GENERIC_CLOCKEVENTS
- 	# We need at least one periodic CPU for timekeeping
-@@ -123,6 +127,8 @@ config NO_HZ_FULL
- 	 transitions: syscalls, exceptions and interrupts. Even when it's
- 	 dynamically off.
- 
-+	 Not recommended for desktops,laptops, or mobile devices.
-+
- 	 Say N.
- 
- endchoice
-@@ -132,7 +138,7 @@ config CONTEXT_TRACKING
+@@ -132,7 +132,7 @@ config CONTEXT_TRACKING
  
  config CONTEXT_TRACKING_FORCE
  	bool "Force context tracking"
@@ -12909,26 +11112,1161 @@ index a09b1d61df6a..e7662101fcc3 100644
  	help
  	  The major pre-requirement for full dynticks to work is to
 diff --git a/kernel/time/clockevents.c b/kernel/time/clockevents.c
-index f5490222e134..544c58c29267 100644
+index f5490222e134..7a61971cca74 100644
 --- a/kernel/time/clockevents.c
 +++ b/kernel/time/clockevents.c
-@@ -190,8 +190,9 @@ int clockevents_tick_resume(struct clock_event_device *dev)
+@@ -190,8 +190,13 @@ int clockevents_tick_resume(struct clock_event_device *dev)
  
  #ifdef CONFIG_GENERIC_CLOCKEVENTS_MIN_ADJUST
  
--/* Limit min_delta to a jiffie */
--#define MIN_DELTA_LIMIT		(NSEC_PER_SEC / HZ)
-+int __read_mostly hrtimer_granularity_us = 100;
++#ifdef CONFIG_SCHED_MUQSS
 +/* Limit min_delta to 100us */
-+#define MIN_DELTA_LIMIT		(hrtimer_granularity_us * NSEC_PER_USEC)
++#define MIN_DELTA_LIMIT		(NSEC_PER_SEC / 10000)
++#else
+ /* Limit min_delta to a jiffie */
+ #define MIN_DELTA_LIMIT		(NSEC_PER_SEC / HZ)
++#endif
  
  /**
   * clockevents_increase_min_delta - raise minimum delta of a clock event device
+diff --git a/kernel/time/posix-cpu-timers.c b/kernel/time/posix-cpu-timers.c
+index bede1e608d95..d6b3e0c04db9 100644
+--- a/kernel/time/posix-cpu-timers.c
++++ b/kernel/time/posix-cpu-timers.c
+@@ -216,7 +216,7 @@ static void task_sample_cputime(struct task_struct *p, u64 *samples)
+ 	u64 stime, utime;
+ 
+ 	task_cputime(p, &utime, &stime);
+-	store_samples(samples, stime, utime, p->se.sum_exec_runtime);
++	store_samples(samples, stime, utime, tsk_seruntime(p));
+ }
+ 
+ static void proc_sample_cputime_atomic(struct task_cputime_atomic *at,
+@@ -852,7 +852,7 @@ static void check_thread_timers(struct task_struct *tsk,
+ 	soft = task_rlimit(tsk, RLIMIT_RTTIME);
+ 	if (soft != RLIM_INFINITY) {
+ 		/* Task RT timeout is accounted in jiffies. RTTIME is usec */
+-		unsigned long rttime = tsk->rt.timeout * (USEC_PER_SEC / HZ);
++		unsigned long rttime = tsk_rttimeout(tsk) * (USEC_PER_SEC / HZ);
+ 		unsigned long hard = task_rlimit_max(tsk, RLIMIT_RTTIME);
+ 
+ 		/* At the hard limit, send SIGKILL. No further action. */
+diff --git a/kernel/time/timer.c b/kernel/time/timer.c
+index c135cefa44ac..c46c3e67e92c 100644
+--- a/kernel/time/timer.c
++++ b/kernel/time/timer.c
+@@ -1619,7 +1619,7 @@ static unsigned long __next_timer_interrupt(struct timer_base *base)
+  * Check, if the next hrtimer event is before the next timer wheel
+  * event:
+  */
+-static u64 cmp_next_hrtimer_event(u64 basem, u64 expires)
++static u64 cmp_next_hrtimer_event(struct timer_base *base, u64 basem, u64 expires)
+ {
+ 	u64 nextevt = hrtimer_get_next_event();
+ 
+@@ -1637,6 +1637,9 @@ static u64 cmp_next_hrtimer_event(u64 basem, u64 expires)
+ 	if (nextevt <= basem)
+ 		return basem;
+ 
++	if (nextevt < expires && nextevt - basem <= TICK_NSEC)
++		base->is_idle = false;
++
+ 	/*
+ 	 * Round up to the next jiffie. High resolution timers are
+ 	 * off, so the hrtimers are expired in the tick and we need to
+@@ -1704,7 +1707,7 @@ u64 get_next_timer_interrupt(unsigned long basej, u64 basem)
+ 	}
+ 	raw_spin_unlock(&base->lock);
+ 
+-	return cmp_next_hrtimer_event(basem, expires);
++	return cmp_next_hrtimer_event(base, basem, expires);
+ }
+ 
+ /**
+diff --git a/kernel/trace/trace_selftest.c b/kernel/trace/trace_selftest.c
+index 6f28b8b11ead..2150d47329b1 100644
+--- a/kernel/trace/trace_selftest.c
++++ b/kernel/trace/trace_selftest.c
+@@ -1053,10 +1053,15 @@ static int trace_wakeup_test_thread(void *data)
+ {
+ 	/* Make this a -deadline thread */
+ 	static const struct sched_attr attr = {
++#ifdef CONFIG_SCHED_MUQSS
++		/* No deadline on MuQSS, use RR */
++		.sched_policy = SCHED_RR,
++#else
+ 		.sched_policy = SCHED_DEADLINE,
+ 		.sched_runtime = 100000ULL,
+ 		.sched_deadline = 10000000ULL,
+ 		.sched_period = 10000000ULL
++#endif
+ 	};
+ 	struct wakeup_test_data *x = data;
+ 
+-- 
+2.49.0
+
+
+From b435c853a45f83d5cf6980dd1992aa92b9913805 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Sat, 29 Oct 2016 11:20:37 +1100
+Subject: [PATCH 02/17] Make preemptible kernel default.
+
+Make full preempt default on all arches.
+---
+ arch/arc/configs/tb10x_defconfig      |   2 +-
+ arch/arm/configs/bcm2835_defconfig    |   2 +-
+ arch/arm/configs/imx_v6_v7_defconfig  |   1 +
+ arch/arm/configs/mps2_defconfig       |   2 +-
+ arch/arm/configs/mxs_defconfig        |   9 +-
+ arch/mips/configs/fuloong2e_defconfig |   2 +-
+ arch/mips/configs/gpr_defconfig       |   2 +-
+ arch/mips/configs/ip22_defconfig      |   2 +-
+ arch/mips/configs/ip28_defconfig      |   2 +-
+ arch/mips/configs/jazz_defconfig      |   2 +-
+ arch/mips/configs/mtx1_defconfig      |   2 +-
+ arch/mips/configs/nlm_xlr_defconfig   |   2 +-
+ arch/mips/configs/pic32mzda_defconfig |   2 +-
+ arch/mips/configs/pistachio_defconfig |   2 +-
+ arch/mips/configs/rm200_defconfig     |   2 +-
+ arch/parisc/configs/712_defconfig     | 181 ++++++++++++++++++++++
+ arch/parisc/configs/c3000_defconfig   | 151 +++++++++++++++++++
+ arch/parisc/configs/defconfig         | 206 ++++++++++++++++++++++++++
+ arch/powerpc/configs/ppc6xx_defconfig |   2 +-
+ arch/sh/configs/se7712_defconfig      |   2 +-
+ arch/sh/configs/se7721_defconfig      |   2 +-
+ arch/sh/configs/titan_defconfig       |   2 +-
+ arch/sparc/configs/sparc64_defconfig  |   2 +-
+ arch/x86/configs/i386_defconfig       |   2 +
+ arch/x86/configs/x86_64_defconfig     |   3 +
+ kernel/Kconfig.preempt                |   7 +-
+ 26 files changed, 574 insertions(+), 22 deletions(-)
+ create mode 100644 arch/parisc/configs/712_defconfig
+ create mode 100644 arch/parisc/configs/c3000_defconfig
+ create mode 100644 arch/parisc/configs/defconfig
+
+diff --git a/arch/arc/configs/tb10x_defconfig b/arch/arc/configs/tb10x_defconfig
+index a12656ec0072..b46b6ddc7636 100644
+--- a/arch/arc/configs/tb10x_defconfig
++++ b/arch/arc/configs/tb10x_defconfig
+@@ -29,7 +29,7 @@ CONFIG_ARC_PLAT_TB10X=y
+ CONFIG_ARC_CACHE_LINE_SHIFT=5
+ CONFIG_HZ=250
+ CONFIG_ARC_BUILTIN_DTB_NAME="abilis_tb100_dvk"
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ # CONFIG_COMPACTION is not set
+ CONFIG_NET=y
+ CONFIG_PACKET=y
+diff --git a/arch/arm/configs/bcm2835_defconfig b/arch/arm/configs/bcm2835_defconfig
+index 44ff9cd88d81..9c639c998015 100644
+--- a/arch/arm/configs/bcm2835_defconfig
++++ b/arch/arm/configs/bcm2835_defconfig
+@@ -29,7 +29,7 @@ CONFIG_MODULE_UNLOAD=y
+ CONFIG_ARCH_MULTI_V6=y
+ CONFIG_ARCH_BCM=y
+ CONFIG_ARCH_BCM2835=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_AEABI=y
+ CONFIG_KSM=y
+ CONFIG_CLEANCACHE=y
+diff --git a/arch/arm/configs/imx_v6_v7_defconfig b/arch/arm/configs/imx_v6_v7_defconfig
+index 221f5c340c86..2cb7a9a08a05 100644
+--- a/arch/arm/configs/imx_v6_v7_defconfig
++++ b/arch/arm/configs/imx_v6_v7_defconfig
+@@ -33,6 +33,7 @@ CONFIG_PCI_MSI=y
+ CONFIG_PCI_IMX6=y
+ CONFIG_SMP=y
+ CONFIG_ARM_PSCI=y
++CONFIG_PREEMPT=y
+ CONFIG_HIGHMEM=y
+ CONFIG_FORCE_MAX_ZONEORDER=14
+ CONFIG_CMDLINE="noinitrd console=ttymxc0,115200"
+diff --git a/arch/arm/configs/mps2_defconfig b/arch/arm/configs/mps2_defconfig
+index 1d923dbb9928..9c1931f1fafd 100644
+--- a/arch/arm/configs/mps2_defconfig
++++ b/arch/arm/configs/mps2_defconfig
+@@ -18,7 +18,7 @@ CONFIG_ARCH_MPS2=y
+ CONFIG_SET_MEM_PARAM=y
+ CONFIG_DRAM_BASE=0x21000000
+ CONFIG_DRAM_SIZE=0x1000000
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ # CONFIG_ATAGS is not set
+ CONFIG_ZBOOT_ROM_TEXT=0x0
+ CONFIG_ZBOOT_ROM_BSS=0x0
+diff --git a/arch/arm/configs/mxs_defconfig b/arch/arm/configs/mxs_defconfig
+index a9c6f32a9b1c..870866aaa39d 100644
+--- a/arch/arm/configs/mxs_defconfig
++++ b/arch/arm/configs/mxs_defconfig
+@@ -1,7 +1,7 @@
+ CONFIG_SYSVIPC=y
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT_VOLUNTARY=n
+ CONFIG_TASKSTATS=y
+ CONFIG_TASK_DELAY_ACCT=y
+ CONFIG_TASK_XACCT=y
+@@ -25,6 +25,13 @@ CONFIG_MODULE_UNLOAD=y
+ CONFIG_MODULE_FORCE_UNLOAD=y
+ CONFIG_MODVERSIONS=y
+ CONFIG_BLK_DEV_INTEGRITY=y
++# CONFIG_IOSCHED_DEADLINE is not set
++# CONFIG_IOSCHED_CFQ is not set
++# CONFIG_ARCH_MULTI_V7 is not set
++CONFIG_ARCH_MXS=y
++# CONFIG_ARM_THUMB is not set
++CONFIG_PREEMPT=y
++CONFIG_AEABI=y
+ CONFIG_NET=y
+ CONFIG_PACKET=y
+ CONFIG_UNIX=y
+diff --git a/arch/mips/configs/fuloong2e_defconfig b/arch/mips/configs/fuloong2e_defconfig
+index 023b4e644b1c..013e630b96a6 100644
+--- a/arch/mips/configs/fuloong2e_defconfig
++++ b/arch/mips/configs/fuloong2e_defconfig
+@@ -4,7 +4,7 @@ CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_BSD_PROCESS_ACCT=y
+ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+diff --git a/arch/mips/configs/gpr_defconfig b/arch/mips/configs/gpr_defconfig
+index 5b9b59a8fe68..6c9c02519aad 100644
+--- a/arch/mips/configs/gpr_defconfig
++++ b/arch/mips/configs/gpr_defconfig
+@@ -1,8 +1,8 @@
++CONFIG_PREEMPT=y
+ # CONFIG_LOCALVERSION_AUTO is not set
+ CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
+ CONFIG_BSD_PROCESS_ACCT=y
+ CONFIG_BSD_PROCESS_ACCT_V3=y
+ CONFIG_RELAY=y
+diff --git a/arch/mips/configs/ip22_defconfig b/arch/mips/configs/ip22_defconfig
+index 21a1168ae301..529a1b1007cf 100644
+--- a/arch/mips/configs/ip22_defconfig
++++ b/arch/mips/configs/ip22_defconfig
+@@ -1,7 +1,7 @@
+ CONFIG_SYSVIPC=y
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+ CONFIG_LOG_BUF_SHIFT=14
+diff --git a/arch/mips/configs/ip28_defconfig b/arch/mips/configs/ip28_defconfig
+index 0921ef38e9fb..6da05cef46f8 100644
+--- a/arch/mips/configs/ip28_defconfig
++++ b/arch/mips/configs/ip28_defconfig
+@@ -1,5 +1,5 @@
+ CONFIG_SYSVIPC=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+ CONFIG_LOG_BUF_SHIFT=14
+diff --git a/arch/mips/configs/jazz_defconfig b/arch/mips/configs/jazz_defconfig
+index 8c223035921f..a3bf87450343 100644
+--- a/arch/mips/configs/jazz_defconfig
++++ b/arch/mips/configs/jazz_defconfig
+@@ -1,8 +1,8 @@
++CONFIG_PREEMPT=y
+ CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
+ CONFIG_BSD_PROCESS_ACCT=y
+ CONFIG_LOG_BUF_SHIFT=14
+ CONFIG_RELAY=y
+diff --git a/arch/mips/configs/mtx1_defconfig b/arch/mips/configs/mtx1_defconfig
+index d6578536d77c..85ccf30f2e8c 100644
+--- a/arch/mips/configs/mtx1_defconfig
++++ b/arch/mips/configs/mtx1_defconfig
+@@ -1,8 +1,8 @@
++CONFIG_PREEMPT=y
+ # CONFIG_LOCALVERSION_AUTO is not set
+ CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+ CONFIG_AUDIT=y
+-CONFIG_PREEMPT_VOLUNTARY=y
+ CONFIG_BSD_PROCESS_ACCT=y
+ CONFIG_BSD_PROCESS_ACCT_V3=y
+ CONFIG_RELAY=y
+diff --git a/arch/mips/configs/nlm_xlr_defconfig b/arch/mips/configs/nlm_xlr_defconfig
+index 1081972c81da..6b33565d1b22 100644
+--- a/arch/mips/configs/nlm_xlr_defconfig
++++ b/arch/mips/configs/nlm_xlr_defconfig
+@@ -1,10 +1,10 @@
++CONFIG_PREEMPT=y
+ # CONFIG_LOCALVERSION_AUTO is not set
+ CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+ CONFIG_AUDIT=y
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
+ CONFIG_BSD_PROCESS_ACCT=y
+ CONFIG_BSD_PROCESS_ACCT_V3=y
+ CONFIG_TASKSTATS=y
+diff --git a/arch/mips/configs/pic32mzda_defconfig b/arch/mips/configs/pic32mzda_defconfig
+index 63fe2da1b37f..7f08ee237345 100644
+--- a/arch/mips/configs/pic32mzda_defconfig
++++ b/arch/mips/configs/pic32mzda_defconfig
+@@ -1,7 +1,7 @@
++CONFIG_PREEMPT=y
+ CONFIG_SYSVIPC=y
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
+ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+ CONFIG_LOG_BUF_SHIFT=14
+diff --git a/arch/mips/configs/pistachio_defconfig b/arch/mips/configs/pistachio_defconfig
+index b9adf15ebbec..0025b56dc300 100644
+--- a/arch/mips/configs/pistachio_defconfig
++++ b/arch/mips/configs/pistachio_defconfig
+@@ -1,9 +1,9 @@
++CONFIG_PREEMPT=y
+ # CONFIG_LOCALVERSION_AUTO is not set
+ CONFIG_DEFAULT_HOSTNAME="localhost"
+ CONFIG_SYSVIPC=y
+ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+-CONFIG_PREEMPT_VOLUNTARY=y
+ CONFIG_IKCONFIG=m
+ CONFIG_IKCONFIG_PROC=y
+ CONFIG_LOG_BUF_SHIFT=18
+diff --git a/arch/mips/configs/rm200_defconfig b/arch/mips/configs/rm200_defconfig
+index 2d0506159dfa..e919238569a1 100644
+--- a/arch/mips/configs/rm200_defconfig
++++ b/arch/mips/configs/rm200_defconfig
+@@ -1,6 +1,6 @@
++CONFIG_PREEMPT=y
+ CONFIG_SYSVIPC=y
+ CONFIG_POSIX_MQUEUE=y
+-CONFIG_PREEMPT_VOLUNTARY=y
+ CONFIG_BSD_PROCESS_ACCT=y
+ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+diff --git a/arch/parisc/configs/712_defconfig b/arch/parisc/configs/712_defconfig
+new file mode 100644
+index 000000000000..578524f80cc4
+--- /dev/null
++++ b/arch/parisc/configs/712_defconfig
+@@ -0,0 +1,181 @@
++# CONFIG_LOCALVERSION_AUTO is not set
++CONFIG_SYSVIPC=y
++CONFIG_POSIX_MQUEUE=y
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
++CONFIG_LOG_BUF_SHIFT=16
++CONFIG_BLK_DEV_INITRD=y
++CONFIG_KALLSYMS_ALL=y
++CONFIG_SLAB=y
++CONFIG_PROFILING=y
++CONFIG_OPROFILE=m
++CONFIG_MODULES=y
++CONFIG_MODULE_UNLOAD=y
++CONFIG_MODULE_FORCE_UNLOAD=y
++CONFIG_PA7100LC=y
++CONFIG_PREEMPT=y
++CONFIG_GSC_LASI=y
++# CONFIG_PDC_CHASSIS is not set
++CONFIG_BINFMT_MISC=m
++CONFIG_NET=y
++CONFIG_PACKET=y
++CONFIG_UNIX=y
++CONFIG_XFRM_USER=m
++CONFIG_NET_KEY=m
++CONFIG_INET=y
++CONFIG_IP_MULTICAST=y
++CONFIG_IP_PNP=y
++CONFIG_IP_PNP_DHCP=y
++CONFIG_IP_PNP_BOOTP=y
++CONFIG_INET_AH=m
++CONFIG_INET_ESP=m
++CONFIG_INET_DIAG=m
++# CONFIG_IPV6 is not set
++CONFIG_NETFILTER=y
++CONFIG_LLC2=m
++CONFIG_NET_PKTGEN=m
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++# CONFIG_STANDALONE is not set
++# CONFIG_PREVENT_FIRMWARE_BUILD is not set
++CONFIG_PARPORT=y
++CONFIG_PARPORT_PC=m
++CONFIG_BLK_DEV_LOOP=y
++CONFIG_BLK_DEV_CRYPTOLOOP=y
++CONFIG_BLK_DEV_RAM=y
++CONFIG_BLK_DEV_RAM_SIZE=6144
++CONFIG_ATA_OVER_ETH=m
++CONFIG_SCSI=y
++CONFIG_BLK_DEV_SD=y
++CONFIG_CHR_DEV_ST=y
++CONFIG_BLK_DEV_SR=y
++CONFIG_CHR_DEV_SG=y
++CONFIG_SCSI_ISCSI_ATTRS=m
++CONFIG_SCSI_LASI700=y
++CONFIG_SCSI_DEBUG=m
++CONFIG_MD=y
++CONFIG_BLK_DEV_MD=m
++CONFIG_MD_LINEAR=m
++CONFIG_MD_RAID0=m
++CONFIG_MD_RAID1=m
++CONFIG_NETDEVICES=y
++CONFIG_BONDING=m
++CONFIG_DUMMY=m
++CONFIG_TUN=m
++CONFIG_LASI_82596=y
++CONFIG_PPP=m
++CONFIG_PPP_BSDCOMP=m
++CONFIG_PPP_DEFLATE=m
++CONFIG_PPP_MPPE=m
++CONFIG_PPPOE=m
++CONFIG_PPP_ASYNC=m
++CONFIG_PPP_SYNC_TTY=m
++# CONFIG_KEYBOARD_HIL_OLD is not set
++CONFIG_MOUSE_SERIAL=m
++CONFIG_LEGACY_PTY_COUNT=64
++CONFIG_SERIAL_8250=y
++CONFIG_SERIAL_8250_CONSOLE=y
++CONFIG_SERIAL_8250_NR_UARTS=17
++CONFIG_SERIAL_8250_EXTENDED=y
++CONFIG_SERIAL_8250_MANY_PORTS=y
++CONFIG_SERIAL_8250_SHARE_IRQ=y
++# CONFIG_SERIAL_MUX is not set
++CONFIG_PDC_CONSOLE=y
++CONFIG_PRINTER=m
++CONFIG_PPDEV=m
++# CONFIG_HW_RANDOM is not set
++CONFIG_RAW_DRIVER=y
++# CONFIG_HWMON is not set
++CONFIG_FB=y
++CONFIG_FB_MODE_HELPERS=y
++CONFIG_FB_TILEBLITTING=y
++CONFIG_DUMMY_CONSOLE_COLUMNS=128
++CONFIG_DUMMY_CONSOLE_ROWS=48
++CONFIG_FRAMEBUFFER_CONSOLE=y
++CONFIG_LOGO=y
++# CONFIG_LOGO_LINUX_MONO is not set
++# CONFIG_LOGO_LINUX_VGA16 is not set
++# CONFIG_LOGO_LINUX_CLUT224 is not set
++CONFIG_SOUND=y
++CONFIG_SND=y
++CONFIG_SND_SEQUENCER=y
++CONFIG_SND_HARMONY=y
++CONFIG_EXT2_FS=y
++CONFIG_EXT3_FS=y
++CONFIG_JFS_FS=m
++CONFIG_XFS_FS=m
++CONFIG_AUTOFS4_FS=y
++CONFIG_ISO9660_FS=y
++CONFIG_JOLIET=y
++CONFIG_UDF_FS=m
++CONFIG_MSDOS_FS=m
++CONFIG_VFAT_FS=m
++CONFIG_PROC_KCORE=y
++CONFIG_TMPFS=y
++CONFIG_UFS_FS=m
++CONFIG_NFS_FS=y
++CONFIG_NFS_V4=y
++CONFIG_ROOT_NFS=y
++CONFIG_NFSD=m
++CONFIG_NFSD_V4=y
++CONFIG_CIFS=m
++CONFIG_NLS_CODEPAGE_437=m
++CONFIG_NLS_CODEPAGE_737=m
++CONFIG_NLS_CODEPAGE_775=m
++CONFIG_NLS_CODEPAGE_850=m
++CONFIG_NLS_CODEPAGE_852=m
++CONFIG_NLS_CODEPAGE_855=m
++CONFIG_NLS_CODEPAGE_857=m
++CONFIG_NLS_CODEPAGE_860=m
++CONFIG_NLS_CODEPAGE_861=m
++CONFIG_NLS_CODEPAGE_862=m
++CONFIG_NLS_CODEPAGE_863=m
++CONFIG_NLS_CODEPAGE_864=m
++CONFIG_NLS_CODEPAGE_865=m
++CONFIG_NLS_CODEPAGE_866=m
++CONFIG_NLS_CODEPAGE_869=m
++CONFIG_NLS_CODEPAGE_936=m
++CONFIG_NLS_CODEPAGE_950=m
++CONFIG_NLS_CODEPAGE_932=m
++CONFIG_NLS_CODEPAGE_949=m
++CONFIG_NLS_CODEPAGE_874=m
++CONFIG_NLS_ISO8859_8=m
++CONFIG_NLS_CODEPAGE_1250=m
++CONFIG_NLS_CODEPAGE_1251=m
++CONFIG_NLS_ASCII=m
++CONFIG_NLS_ISO8859_1=m
++CONFIG_NLS_ISO8859_2=m
++CONFIG_NLS_ISO8859_3=m
++CONFIG_NLS_ISO8859_4=m
++CONFIG_NLS_ISO8859_5=m
++CONFIG_NLS_ISO8859_6=m
++CONFIG_NLS_ISO8859_7=m
++CONFIG_NLS_ISO8859_9=m
++CONFIG_NLS_ISO8859_13=m
++CONFIG_NLS_ISO8859_14=m
++CONFIG_NLS_ISO8859_15=m
++CONFIG_NLS_KOI8_R=m
++CONFIG_NLS_KOI8_U=m
++CONFIG_NLS_UTF8=m
++CONFIG_DEBUG_FS=y
++CONFIG_MAGIC_SYSRQ=y
++CONFIG_DEBUG_KERNEL=y
++CONFIG_DEBUG_MUTEXES=y
++CONFIG_CRYPTO_TEST=m
++CONFIG_CRYPTO_HMAC=y
++CONFIG_CRYPTO_MICHAEL_MIC=m
++CONFIG_CRYPTO_SHA512=m
++CONFIG_CRYPTO_TGR192=m
++CONFIG_CRYPTO_WP512=m
++CONFIG_CRYPTO_ANUBIS=m
++CONFIG_CRYPTO_BLOWFISH=m
++CONFIG_CRYPTO_CAST6=m
++CONFIG_CRYPTO_KHAZAD=m
++CONFIG_CRYPTO_SERPENT=m
++CONFIG_CRYPTO_TEA=m
++CONFIG_CRYPTO_TWOFISH=m
++CONFIG_CRYPTO_DEFLATE=m
++# CONFIG_CRYPTO_HW is not set
++CONFIG_FONTS=y
++CONFIG_FONT_8x8=y
++CONFIG_FONT_8x16=y
+diff --git a/arch/parisc/configs/c3000_defconfig b/arch/parisc/configs/c3000_defconfig
+new file mode 100644
+index 000000000000..d1bdfad94048
+--- /dev/null
++++ b/arch/parisc/configs/c3000_defconfig
+@@ -0,0 +1,151 @@
++# CONFIG_LOCALVERSION_AUTO is not set
++CONFIG_SYSVIPC=y
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
++CONFIG_LOG_BUF_SHIFT=16
++CONFIG_BLK_DEV_INITRD=y
++CONFIG_EXPERT=y
++CONFIG_KALLSYMS_ALL=y
++CONFIG_SLAB=y
++CONFIG_PROFILING=y
++CONFIG_OPROFILE=m
++CONFIG_MODULES=y
++CONFIG_MODULE_UNLOAD=y
++CONFIG_MODULE_FORCE_UNLOAD=y
++CONFIG_PA8X00=y
++CONFIG_PREEMPT=y
++# CONFIG_GSC is not set
++CONFIG_PCI=y
++CONFIG_PCI_LBA=y
++# CONFIG_PDC_CHASSIS is not set
++CONFIG_NET=y
++CONFIG_PACKET=y
++CONFIG_UNIX=y
++CONFIG_XFRM_USER=m
++CONFIG_NET_KEY=m
++CONFIG_INET=y
++CONFIG_IP_MULTICAST=y
++CONFIG_IP_PNP=y
++CONFIG_IP_PNP_BOOTP=y
++# CONFIG_INET_DIAG is not set
++CONFIG_INET6_IPCOMP=m
++CONFIG_IPV6_TUNNEL=m
++CONFIG_NETFILTER=y
++CONFIG_NET_PKTGEN=m
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++# CONFIG_STANDALONE is not set
++# CONFIG_PREVENT_FIRMWARE_BUILD is not set
++CONFIG_BLK_DEV_UMEM=m
++CONFIG_BLK_DEV_LOOP=y
++CONFIG_BLK_DEV_CRYPTOLOOP=m
++CONFIG_IDE=y
++CONFIG_BLK_DEV_IDECD=y
++CONFIG_BLK_DEV_NS87415=y
++CONFIG_SCSI=y
++CONFIG_BLK_DEV_SD=y
++CONFIG_CHR_DEV_ST=y
++CONFIG_BLK_DEV_SR=y
++CONFIG_CHR_DEV_SG=y
++CONFIG_SCSI_ISCSI_ATTRS=m
++CONFIG_SCSI_SYM53C8XX_2=y
++CONFIG_SCSI_SYM53C8XX_DMA_ADDRESSING_MODE=0
++CONFIG_SCSI_DEBUG=m
++CONFIG_MD=y
++CONFIG_BLK_DEV_MD=y
++CONFIG_MD_LINEAR=y
++CONFIG_MD_RAID0=y
++CONFIG_MD_RAID1=y
++CONFIG_BLK_DEV_DM=m
++CONFIG_DM_CRYPT=m
++CONFIG_DM_SNAPSHOT=m
++CONFIG_DM_MIRROR=m
++CONFIG_DM_ZERO=m
++CONFIG_DM_MULTIPATH=m
++CONFIG_FUSION=y
++CONFIG_FUSION_SPI=m
++CONFIG_FUSION_CTL=m
++CONFIG_NETDEVICES=y
++CONFIG_BONDING=m
++CONFIG_DUMMY=m
++CONFIG_TUN=m
++CONFIG_ACENIC=m
++CONFIG_TIGON3=m
++CONFIG_NET_TULIP=y
++CONFIG_DE2104X=m
++CONFIG_TULIP=y
++CONFIG_TULIP_MMIO=y
++CONFIG_E100=m
++CONFIG_E1000=m
++CONFIG_PPP=m
++CONFIG_PPP_BSDCOMP=m
++CONFIG_PPP_DEFLATE=m
++CONFIG_PPPOE=m
++CONFIG_PPP_ASYNC=m
++CONFIG_PPP_SYNC_TTY=m
++# CONFIG_KEYBOARD_ATKBD is not set
++# CONFIG_MOUSE_PS2 is not set
++CONFIG_SERIO=m
++CONFIG_SERIO_LIBPS2=m
++CONFIG_SERIAL_8250=y
++CONFIG_SERIAL_8250_CONSOLE=y
++CONFIG_SERIAL_8250_NR_UARTS=13
++CONFIG_SERIAL_8250_EXTENDED=y
++CONFIG_SERIAL_8250_MANY_PORTS=y
++CONFIG_SERIAL_8250_SHARE_IRQ=y
++# CONFIG_HW_RANDOM is not set
++CONFIG_RAW_DRIVER=y
++# CONFIG_HWMON is not set
++CONFIG_FB=y
++CONFIG_FRAMEBUFFER_CONSOLE=y
++CONFIG_LOGO=y
++# CONFIG_LOGO_LINUX_MONO is not set
++# CONFIG_LOGO_LINUX_VGA16 is not set
++# CONFIG_LOGO_LINUX_CLUT224 is not set
++CONFIG_SOUND=y
++CONFIG_SND=y
++CONFIG_SND_SEQUENCER=y
++CONFIG_SND_AD1889=y
++CONFIG_USB_HIDDEV=y
++CONFIG_USB=y
++CONFIG_USB_OHCI_HCD=y
++CONFIG_USB_PRINTER=m
++CONFIG_USB_STORAGE=m
++CONFIG_USB_STORAGE_USBAT=m
++CONFIG_USB_STORAGE_SDDR09=m
++CONFIG_USB_STORAGE_SDDR55=m
++CONFIG_USB_STORAGE_JUMPSHOT=m
++CONFIG_USB_MDC800=m
++CONFIG_USB_MICROTEK=m
++CONFIG_USB_LEGOTOWER=m
++CONFIG_EXT2_FS=y
++CONFIG_EXT3_FS=y
++CONFIG_XFS_FS=m
++CONFIG_AUTOFS4_FS=y
++CONFIG_ISO9660_FS=y
++CONFIG_JOLIET=y
++CONFIG_MSDOS_FS=m
++CONFIG_VFAT_FS=m
++CONFIG_PROC_KCORE=y
++CONFIG_TMPFS=y
++CONFIG_NFS_FS=y
++CONFIG_ROOT_NFS=y
++CONFIG_NFSD=y
++CONFIG_NFSD_V3=y
++CONFIG_NLS_CODEPAGE_437=m
++CONFIG_NLS_CODEPAGE_850=m
++CONFIG_NLS_ASCII=m
++CONFIG_NLS_ISO8859_1=m
++CONFIG_NLS_ISO8859_15=m
++CONFIG_NLS_UTF8=m
++CONFIG_DEBUG_FS=y
++CONFIG_HEADERS_INSTALL=y
++CONFIG_HEADERS_CHECK=y
++CONFIG_MAGIC_SYSRQ=y
++CONFIG_DEBUG_MUTEXES=y
++# CONFIG_DEBUG_BUGVERBOSE is not set
++CONFIG_CRYPTO_TEST=m
++CONFIG_CRYPTO_MD5=m
++CONFIG_CRYPTO_BLOWFISH=m
++CONFIG_CRYPTO_DES=m
++# CONFIG_CRYPTO_HW is not set
+diff --git a/arch/parisc/configs/defconfig b/arch/parisc/configs/defconfig
+new file mode 100644
+index 000000000000..0d976614934c
+--- /dev/null
++++ b/arch/parisc/configs/defconfig
+@@ -0,0 +1,206 @@
++# CONFIG_LOCALVERSION_AUTO is not set
++CONFIG_SYSVIPC=y
++CONFIG_POSIX_MQUEUE=y
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
++CONFIG_LOG_BUF_SHIFT=16
++CONFIG_BLK_DEV_INITRD=y
++CONFIG_KALLSYMS_ALL=y
++CONFIG_SLAB=y
++CONFIG_PROFILING=y
++CONFIG_OPROFILE=m
++CONFIG_MODULES=y
++CONFIG_MODULE_UNLOAD=y
++CONFIG_MODULE_FORCE_UNLOAD=y
++# CONFIG_BLK_DEV_BSG is not set
++CONFIG_PA7100LC=y
++CONFIG_PREEMPT=y
++CONFIG_IOMMU_CCIO=y
++CONFIG_GSC_LASI=y
++CONFIG_GSC_WAX=y
++CONFIG_EISA=y
++CONFIG_PCI=y
++CONFIG_GSC_DINO=y
++CONFIG_PCI_LBA=y
++CONFIG_PCCARD=y
++CONFIG_YENTA=y
++CONFIG_PD6729=y
++CONFIG_I82092=y
++CONFIG_BINFMT_MISC=m
++CONFIG_NET=y
++CONFIG_PACKET=y
++CONFIG_UNIX=y
++CONFIG_XFRM_USER=m
++CONFIG_NET_KEY=m
++CONFIG_INET=y
++CONFIG_IP_MULTICAST=y
++CONFIG_IP_PNP=y
++CONFIG_IP_PNP_DHCP=y
++CONFIG_IP_PNP_BOOTP=y
++CONFIG_INET_AH=m
++CONFIG_INET_ESP=m
++CONFIG_INET_DIAG=m
++CONFIG_INET6_AH=y
++CONFIG_INET6_ESP=y
++CONFIG_INET6_IPCOMP=y
++CONFIG_LLC2=m
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++# CONFIG_STANDALONE is not set
++# CONFIG_PREVENT_FIRMWARE_BUILD is not set
++CONFIG_PARPORT=y
++CONFIG_PARPORT_PC=m
++CONFIG_PARPORT_PC_PCMCIA=m
++CONFIG_PARPORT_1284=y
++CONFIG_BLK_DEV_LOOP=y
++CONFIG_BLK_DEV_CRYPTOLOOP=y
++CONFIG_BLK_DEV_RAM=y
++CONFIG_BLK_DEV_RAM_SIZE=6144
++CONFIG_IDE=y
++CONFIG_BLK_DEV_IDECS=y
++CONFIG_BLK_DEV_IDECD=y
++CONFIG_BLK_DEV_GENERIC=y
++CONFIG_BLK_DEV_NS87415=y
++CONFIG_SCSI=y
++CONFIG_BLK_DEV_SD=y
++CONFIG_CHR_DEV_ST=y
++CONFIG_BLK_DEV_SR=y
++CONFIG_CHR_DEV_SG=y
++CONFIG_SCSI_LASI700=y
++CONFIG_SCSI_SYM53C8XX_2=y
++CONFIG_SCSI_ZALON=y
++CONFIG_MD=y
++CONFIG_BLK_DEV_MD=y
++CONFIG_MD_LINEAR=y
++CONFIG_MD_RAID0=y
++CONFIG_MD_RAID1=y
++CONFIG_MD_RAID10=y
++CONFIG_BLK_DEV_DM=y
++CONFIG_NETDEVICES=y
++CONFIG_BONDING=m
++CONFIG_DUMMY=m
++CONFIG_TUN=m
++CONFIG_ACENIC=y
++CONFIG_TIGON3=y
++CONFIG_NET_TULIP=y
++CONFIG_TULIP=y
++CONFIG_LASI_82596=y
++CONFIG_PPP=m
++CONFIG_PPP_BSDCOMP=m
++CONFIG_PPP_DEFLATE=m
++CONFIG_PPPOE=m
++CONFIG_PPP_ASYNC=m
++CONFIG_PPP_SYNC_TTY=m
++# CONFIG_KEYBOARD_HIL_OLD is not set
++CONFIG_MOUSE_SERIAL=y
++CONFIG_LEGACY_PTY_COUNT=64
++CONFIG_SERIAL_8250=y
++CONFIG_SERIAL_8250_CONSOLE=y
++CONFIG_SERIAL_8250_CS=y
++CONFIG_SERIAL_8250_NR_UARTS=17
++CONFIG_SERIAL_8250_EXTENDED=y
++CONFIG_SERIAL_8250_MANY_PORTS=y
++CONFIG_SERIAL_8250_SHARE_IRQ=y
++CONFIG_PRINTER=m
++CONFIG_PPDEV=m
++# CONFIG_HW_RANDOM is not set
++# CONFIG_HWMON is not set
++CONFIG_FB=y
++CONFIG_FB_MODE_HELPERS=y
++CONFIG_FB_TILEBLITTING=y
++CONFIG_DUMMY_CONSOLE_COLUMNS=128
++CONFIG_DUMMY_CONSOLE_ROWS=48
++CONFIG_FRAMEBUFFER_CONSOLE=y
++CONFIG_LOGO=y
++# CONFIG_LOGO_LINUX_MONO is not set
++# CONFIG_LOGO_LINUX_VGA16 is not set
++# CONFIG_LOGO_LINUX_CLUT224 is not set
++CONFIG_SOUND=y
++CONFIG_SND=y
++CONFIG_SND_DYNAMIC_MINORS=y
++CONFIG_SND_SEQUENCER=y
++CONFIG_SND_AD1889=y
++CONFIG_SND_HARMONY=y
++CONFIG_HID_GYRATION=y
++CONFIG_HID_NTRIG=y
++CONFIG_HID_PANTHERLORD=y
++CONFIG_HID_PETALYNX=y
++CONFIG_HID_SAMSUNG=y
++CONFIG_HID_SUNPLUS=y
++CONFIG_HID_TOPSEED=y
++CONFIG_USB=y
++CONFIG_USB_MON=y
++CONFIG_USB_OHCI_HCD=y
++CONFIG_USB_UHCI_HCD=y
++CONFIG_EXT2_FS=y
++CONFIG_EXT3_FS=y
++CONFIG_ISO9660_FS=y
++CONFIG_JOLIET=y
++CONFIG_VFAT_FS=y
++CONFIG_PROC_KCORE=y
++CONFIG_TMPFS=y
++CONFIG_NFS_FS=y
++CONFIG_ROOT_NFS=y
++CONFIG_NFSD=y
++CONFIG_NFSD_V4=y
++CONFIG_CIFS=m
++CONFIG_NLS_CODEPAGE_437=y
++CONFIG_NLS_CODEPAGE_737=m
++CONFIG_NLS_CODEPAGE_775=m
++CONFIG_NLS_CODEPAGE_850=m
++CONFIG_NLS_CODEPAGE_852=m
++CONFIG_NLS_CODEPAGE_855=m
++CONFIG_NLS_CODEPAGE_857=m
++CONFIG_NLS_CODEPAGE_860=m
++CONFIG_NLS_CODEPAGE_861=m
++CONFIG_NLS_CODEPAGE_862=m
++CONFIG_NLS_CODEPAGE_863=m
++CONFIG_NLS_CODEPAGE_864=m
++CONFIG_NLS_CODEPAGE_865=m
++CONFIG_NLS_CODEPAGE_866=m
++CONFIG_NLS_CODEPAGE_869=m
++CONFIG_NLS_CODEPAGE_936=m
++CONFIG_NLS_CODEPAGE_950=m
++CONFIG_NLS_CODEPAGE_932=m
++CONFIG_NLS_CODEPAGE_949=m
++CONFIG_NLS_CODEPAGE_874=m
++CONFIG_NLS_ISO8859_8=m
++CONFIG_NLS_CODEPAGE_1250=y
++CONFIG_NLS_CODEPAGE_1251=m
++CONFIG_NLS_ASCII=m
++CONFIG_NLS_ISO8859_1=y
++CONFIG_NLS_ISO8859_2=m
++CONFIG_NLS_ISO8859_3=m
++CONFIG_NLS_ISO8859_4=m
++CONFIG_NLS_ISO8859_5=m
++CONFIG_NLS_ISO8859_6=m
++CONFIG_NLS_ISO8859_7=m
++CONFIG_NLS_ISO8859_9=m
++CONFIG_NLS_ISO8859_13=m
++CONFIG_NLS_ISO8859_14=m
++CONFIG_NLS_ISO8859_15=m
++CONFIG_NLS_KOI8_R=m
++CONFIG_NLS_KOI8_U=m
++CONFIG_NLS_UTF8=y
++CONFIG_DEBUG_FS=y
++CONFIG_HEADERS_INSTALL=y
++CONFIG_HEADERS_CHECK=y
++CONFIG_MAGIC_SYSRQ=y
++CONFIG_DEBUG_KERNEL=y
++CONFIG_DEBUG_MUTEXES=y
++CONFIG_KEYS=y
++CONFIG_CRYPTO_TEST=m
++CONFIG_CRYPTO_MICHAEL_MIC=m
++CONFIG_CRYPTO_SHA512=m
++CONFIG_CRYPTO_TGR192=m
++CONFIG_CRYPTO_WP512=m
++CONFIG_CRYPTO_ANUBIS=m
++CONFIG_CRYPTO_BLOWFISH=m
++CONFIG_CRYPTO_CAST6=m
++CONFIG_CRYPTO_KHAZAD=m
++CONFIG_CRYPTO_SERPENT=m
++CONFIG_CRYPTO_TEA=m
++CONFIG_CRYPTO_TWOFISH=m
++# CONFIG_CRYPTO_HW is not set
++CONFIG_LIBCRC32C=m
++CONFIG_FONTS=y
+diff --git a/arch/powerpc/configs/ppc6xx_defconfig b/arch/powerpc/configs/ppc6xx_defconfig
+index 021da6736570..45c28b40858b 100644
+--- a/arch/powerpc/configs/ppc6xx_defconfig
++++ b/arch/powerpc/configs/ppc6xx_defconfig
+@@ -73,7 +73,7 @@ CONFIG_QE_GPIO=y
+ CONFIG_MCU_MPC8349EMITX=y
+ CONFIG_HIGHMEM=y
+ CONFIG_HZ_1000=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_BINFMT_MISC=y
+ CONFIG_HIBERNATION=y
+ CONFIG_PM_DEBUG=y
+diff --git a/arch/sh/configs/se7712_defconfig b/arch/sh/configs/se7712_defconfig
+index ee6d28ae08de..827e4693c5b2 100644
+--- a/arch/sh/configs/se7712_defconfig
++++ b/arch/sh/configs/se7712_defconfig
+@@ -21,7 +21,7 @@ CONFIG_FLATMEM_MANUAL=y
+ CONFIG_SH_SOLUTION_ENGINE=y
+ CONFIG_SH_PCLK_FREQ=66666666
+ CONFIG_HEARTBEAT=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_CMDLINE_OVERWRITE=y
+ CONFIG_CMDLINE="console=ttySC0,115200 root=/dev/sda1"
+ CONFIG_NET=y
+diff --git a/arch/sh/configs/se7721_defconfig b/arch/sh/configs/se7721_defconfig
+index bad921bc10f8..e8f42bc0d370 100644
+--- a/arch/sh/configs/se7721_defconfig
++++ b/arch/sh/configs/se7721_defconfig
+@@ -21,7 +21,7 @@ CONFIG_FLATMEM_MANUAL=y
+ CONFIG_SH_7721_SOLUTION_ENGINE=y
+ CONFIG_SH_PCLK_FREQ=33333333
+ CONFIG_HEARTBEAT=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_CMDLINE_OVERWRITE=y
+ CONFIG_CMDLINE="console=ttySC0,115200 root=/dev/sda2"
+ CONFIG_NET=y
+diff --git a/arch/sh/configs/titan_defconfig b/arch/sh/configs/titan_defconfig
+index ba887f1351be..4434e93b70bc 100644
+--- a/arch/sh/configs/titan_defconfig
++++ b/arch/sh/configs/titan_defconfig
+@@ -19,7 +19,7 @@ CONFIG_SH_TITAN=y
+ CONFIG_SH_PCLK_FREQ=30000000
+ CONFIG_SH_DMA=y
+ CONFIG_SH_DMA_API=y
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_CMDLINE_OVERWRITE=y
+ CONFIG_CMDLINE="console=ttySC1,38400N81 root=/dev/nfs ip=:::::eth1:autoconf rw"
+ CONFIG_PCI=y
+diff --git a/arch/sparc/configs/sparc64_defconfig b/arch/sparc/configs/sparc64_defconfig
+index bde4d21a8ac8..c054ec82d91b 100644
+--- a/arch/sparc/configs/sparc64_defconfig
++++ b/arch/sparc/configs/sparc64_defconfig
+@@ -22,7 +22,7 @@ CONFIG_NO_HZ=y
+ CONFIG_HIGH_RES_TIMERS=y
+ CONFIG_NUMA=y
+ CONFIG_DEFAULT_MMAP_MIN_ADDR=8192
+-CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_PREEMPT=y
+ CONFIG_SUN_LDOMS=y
+ CONFIG_PCI=y
+ CONFIG_PCI_MSI=y
+diff --git a/arch/x86/configs/i386_defconfig b/arch/x86/configs/i386_defconfig
+index 38d7acb9610c..7ad3138f4669 100644
+--- a/arch/x86/configs/i386_defconfig
++++ b/arch/x86/configs/i386_defconfig
+@@ -23,6 +23,8 @@ CONFIG_PROFILING=y
+ CONFIG_SMP=y
+ CONFIG_X86_GENERIC=y
+ CONFIG_HPET_TIMER=y
++CONFIG_SCHED_SMT=y
++CONFIG_PREEMPT=y
+ CONFIG_X86_REROUTE_FOR_BROKEN_BOOT_IRQS=y
+ CONFIG_X86_REBOOTFIXUPS=y
+ CONFIG_MICROCODE_AMD=y
+diff --git a/arch/x86/configs/x86_64_defconfig b/arch/x86/configs/x86_64_defconfig
+index c6e587a9a6f8..2486ba2cbcf1 100644
+--- a/arch/x86/configs/x86_64_defconfig
++++ b/arch/x86/configs/x86_64_defconfig
+@@ -20,6 +20,9 @@ CONFIG_BLK_DEV_INITRD=y
+ # CONFIG_COMPAT_BRK is not set
+ CONFIG_PROFILING=y
+ CONFIG_SMP=y
++CONFIG_NR_CPUS=64
++CONFIG_SCHED_SMT=y
++CONFIG_PREEMPT=y
+ CONFIG_X86_REROUTE_FOR_BROKEN_BOOT_IRQS=y
+ CONFIG_MICROCODE_AMD=y
+ CONFIG_X86_MSR=y
+diff --git a/kernel/Kconfig.preempt b/kernel/Kconfig.preempt
+index bf82259cff96..d9438eb6f91c 100644
+--- a/kernel/Kconfig.preempt
++++ b/kernel/Kconfig.preempt
+@@ -2,7 +2,7 @@
+ 
+ choice
+ 	prompt "Preemption Model"
+-	default PREEMPT_NONE
++	default PREEMPT
+ 
+ config PREEMPT_NONE
+ 	bool "No Forced Preemption (Server)"
+@@ -18,7 +18,7 @@ config PREEMPT_NONE
+ 	  latencies.
+ 
+ config PREEMPT_VOLUNTARY
+-	bool "Voluntary Kernel Preemption (Desktop)"
++	bool "Voluntary Kernel Preemption (Nothing)"
+ 	depends on !ARCH_NO_PREEMPT
+ 	help
+ 	  This option reduces the latency of the kernel by adding more
+@@ -33,7 +33,8 @@ config PREEMPT_VOLUNTARY
+ 	  applications to run more 'smoothly' even when the system is
+ 	  under load.
+ 
+-	  Select this if you are building a kernel for a desktop system.
++	  Select this for no system in particular (choose Preemptible
++	  instead on a desktop if you know what's good for you).
+ 
+ config PREEMPT
+ 	bool "Preemptible Kernel (Low-Latency Desktop)"
+-- 
+2.49.0
+
+
+From b3375ac37bd3318727f7e1dda4a6167925ce36e0 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Fri, 12 May 2017 13:07:37 +1000
+Subject: [PATCH 03/17] Expose vmsplit for our poor 32 bit users.
+
+---
+ arch/x86/Kconfig | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index b0c263e9f083..818dbb6910b2 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -1432,7 +1432,7 @@ config HIGHMEM64G
+ endchoice
+ 
+ choice
+-	prompt "Memory split" if EXPERT
++	prompt "Memory split"
+ 	default VMSPLIT_3G
+ 	depends on X86_32
+ 	help
+@@ -1452,17 +1452,17 @@ choice
+ 	  option alone!
+ 
+ 	config VMSPLIT_3G
+-		bool "3G/1G user/kernel split"
++		bool "Default 896MB lowmem (3G/1G user/kernel split)"
+ 	config VMSPLIT_3G_OPT
+ 		depends on !X86_PAE
+-		bool "3G/1G user/kernel split (for full 1G low memory)"
++		bool "1GB lowmem (3G/1G user/kernel split)"
+ 	config VMSPLIT_2G
+-		bool "2G/2G user/kernel split"
++		bool "2GB lowmem (2G/2G user/kernel split)"
+ 	config VMSPLIT_2G_OPT
+ 		depends on !X86_PAE
+-		bool "2G/2G user/kernel split (for full 2G low memory)"
++		bool "2GB lowmem (2G/2G user/kernel split)"
+ 	config VMSPLIT_1G
+-		bool "1G/3G user/kernel split"
++		bool "3GB lowmem (1G/3G user/kernel split)"
+ endchoice
+ 
+ config PAGE_OFFSET
+-- 
+2.49.0
+
+
+From 651d7894d20d0caa9417b5f9379fea67ec37d26f Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Sat, 12 Aug 2017 11:53:39 +1000
+Subject: [PATCH 04/17] Create highres timeout variants of schedule_timeout
+ functions.
+
+---
+ include/linux/freezer.h |  1 +
+ include/linux/sched.h   | 31 ++++++++++++++++--
+ kernel/time/hrtimer.c   | 69 +++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 99 insertions(+), 2 deletions(-)
+
+diff --git a/include/linux/freezer.h b/include/linux/freezer.h
+index 27828145ca09..504cc97bf475 100644
+--- a/include/linux/freezer.h
++++ b/include/linux/freezer.h
+@@ -311,6 +311,7 @@ static inline void set_freezable(void) {}
+ #define wait_event_freezekillable_unsafe(wq, condition)			\
+ 		wait_event_killable(wq, condition)
+ 
++#define pm_freezing (false)
+ #endif /* !CONFIG_FREEZER */
+ 
+ #endif	/* FREEZER_H_INCLUDED */
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 5f9a13444db2..aeccb3002bcc 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -217,13 +217,40 @@ struct io_uring_task;
+ 
+ extern void scheduler_tick(void);
+ 
+-#define	MAX_SCHEDULE_TIMEOUT		LONG_MAX
+-
++#define	MAX_SCHEDULE_TIMEOUT	LONG_MAX
+ extern long schedule_timeout(long timeout);
+ extern long schedule_timeout_interruptible(long timeout);
+ extern long schedule_timeout_killable(long timeout);
+ extern long schedule_timeout_uninterruptible(long timeout);
+ extern long schedule_timeout_idle(long timeout);
++
++#ifdef CONFIG_HIGH_RES_TIMERS
++extern long schedule_msec_hrtimeout(long timeout);
++extern long schedule_min_hrtimeout(void);
++extern long schedule_msec_hrtimeout_interruptible(long timeout);
++extern long schedule_msec_hrtimeout_uninterruptible(long timeout);
++#else
++static inline long schedule_msec_hrtimeout(long timeout)
++{
++	return schedule_timeout(msecs_to_jiffies(timeout));
++}
++
++static inline long schedule_min_hrtimeout(void)
++{
++	return schedule_timeout(1);
++}
++
++static inline long schedule_msec_hrtimeout_interruptible(long timeout)
++{
++	return schedule_timeout_interruptible(msecs_to_jiffies(timeout));
++}
++
++static inline long schedule_msec_hrtimeout_uninterruptible(long timeout)
++{
++	return schedule_timeout_uninterruptible(msecs_to_jiffies(timeout));
++}
++#endif
++
+ asmlinkage void schedule(void);
+ extern void schedule_preempt_disabled(void);
+ asmlinkage void preempt_schedule_irq(void);
 diff --git a/kernel/time/hrtimer.c b/kernel/time/hrtimer.c
-index 387b4bef7dd1..fffc7c5f712f 100644
+index c202488695c4..1d8fd235e6e2 100644
 --- a/kernel/time/hrtimer.c
 +++ b/kernel/time/hrtimer.c
-@@ -2218,3 +2218,113 @@ int __sched schedule_hrtimeout(ktime_t *expires,
+@@ -2300,3 +2300,72 @@ int __sched schedule_hrtimeout(ktime_t *expires,
  	return schedule_hrtimeout_range(expires, 0, mode);
  }
  EXPORT_SYMBOL_GPL(schedule_hrtimeout);
@@ -12940,7 +12278,7 @@ index 387b4bef7dd1..fffc7c5f712f 100644
 +long __sched schedule_msec_hrtimeout(long timeout)
 +{
 +	struct hrtimer_sleeper t;
-+	int delta, jiffs;
++	int delta, secs, jiffs;
 +	ktime_t expires;
 +
 +	if (!timeout) {
@@ -12954,11 +12292,12 @@ index 387b4bef7dd1..fffc7c5f712f 100644
 +	 * (yet) better than Hz, as would occur during startup, use regular
 +	 * timers.
 +	 */
-+	if (jiffs > 4 || hrtimer_resolution >= NSEC_PER_SEC / HZ || pm_freezing)
++	if (jiffs > 4 || hrtimer_resolution >= NSEC_PER_SEC / HZ)
 +		return schedule_timeout(jiffs);
 +
++	secs = timeout / 1000;
 +	delta = (timeout % 1000) * NSEC_PER_MSEC;
-+	expires = ktime_set(0, delta);
++	expires = ktime_set(secs, delta);
 +
 +	hrtimer_init_sleeper_on_stack(&t, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 +	hrtimer_set_expires_range_ns(&t.timer, expires, delta);
@@ -12980,51 +12319,9 @@ index 387b4bef7dd1..fffc7c5f712f 100644
 +
 +EXPORT_SYMBOL(schedule_msec_hrtimeout);
 +
-+#define USECS_PER_SEC 1000000
-+extern int hrtimer_granularity_us;
-+
-+static inline long schedule_usec_hrtimeout(long timeout)
-+{
-+	struct hrtimer_sleeper t;
-+	ktime_t expires;
-+	int delta;
-+
-+	if (!timeout) {
-+		__set_current_state(TASK_RUNNING);
-+		return 0;
-+	}
-+
-+	if (hrtimer_resolution >= NSEC_PER_SEC / HZ)
-+		return schedule_timeout(usecs_to_jiffies(timeout));
-+
-+	if (timeout < hrtimer_granularity_us)
-+		timeout = hrtimer_granularity_us;
-+	delta = (timeout % USECS_PER_SEC) * NSEC_PER_USEC;
-+	expires = ktime_set(0, delta);
-+
-+	hrtimer_init_sleeper_on_stack(&t, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-+	hrtimer_set_expires_range_ns(&t.timer, expires, delta);
-+
-+	hrtimer_sleeper_start_expires(&t, HRTIMER_MODE_REL);
-+
-+	if (likely(t.task))
-+		schedule();
-+
-+	hrtimer_cancel(&t.timer);
-+	destroy_hrtimer_on_stack(&t.timer);
-+
-+	__set_current_state(TASK_RUNNING);
-+
-+	expires = hrtimer_expires_remaining(&t.timer);
-+	timeout = ktime_to_us(expires);
-+	return timeout < 0 ? 0 : timeout;
-+}
-+
-+int __read_mostly hrtimeout_min_us = 500;
-+
 +long __sched schedule_min_hrtimeout(void)
 +{
-+	return usecs_to_jiffies(schedule_usec_hrtimeout(hrtimeout_min_us));
++	return schedule_msec_hrtimeout(1);
 +}
 +
 +EXPORT_SYMBOL(schedule_min_hrtimeout);
@@ -13042,69 +12339,25 @@ index 387b4bef7dd1..fffc7c5f712f 100644
 +	return schedule_msec_hrtimeout(timeout);
 +}
 +EXPORT_SYMBOL(schedule_msec_hrtimeout_uninterruptible);
-diff --git a/kernel/time/posix-cpu-timers.c b/kernel/time/posix-cpu-timers.c
-index a71758e34e45..ebb84a65d928 100644
---- a/kernel/time/posix-cpu-timers.c
-+++ b/kernel/time/posix-cpu-timers.c
-@@ -216,7 +216,7 @@ static void task_sample_cputime(struct task_struct *p, u64 *samples)
- 	u64 stime, utime;
- 
- 	task_cputime(p, &utime, &stime);
--	store_samples(samples, stime, utime, p->se.sum_exec_runtime);
-+	store_samples(samples, stime, utime, tsk_seruntime(p));
- }
- 
- static void proc_sample_cputime_atomic(struct task_cputime_atomic *at,
-@@ -850,7 +850,7 @@ static void check_thread_timers(struct task_struct *tsk,
- 	soft = task_rlimit(tsk, RLIMIT_RTTIME);
- 	if (soft != RLIM_INFINITY) {
- 		/* Task RT timeout is accounted in jiffies. RTTIME is usec */
--		unsigned long rttime = tsk->rt.timeout * (USEC_PER_SEC / HZ);
-+		unsigned long rttime = tsk_rttimeout(tsk) * (USEC_PER_SEC / HZ);
- 		unsigned long hard = task_rlimit_max(tsk, RLIMIT_RTTIME);
- 
- 		/* At the hard limit, send SIGKILL. No further action. */
+-- 
+2.49.0
+
+
+From 6ce5efec20218aa9f4037d421bd66e02c4b29daf Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Sat, 5 Nov 2016 09:27:36 +1100
+Subject: [PATCH 05/17] Special case calls of schedule_timeout(1) to use the
+ min hrtimeout of 1ms, working around low Hz resolutions.
+
+---
+ kernel/time/timer.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
 diff --git a/kernel/time/timer.c b/kernel/time/timer.c
-index c3ad64fb9d8b..0411a289ccde 100644
+index c46c3e67e92c..4141222b657b 100644
 --- a/kernel/time/timer.c
 +++ b/kernel/time/timer.c
-@@ -44,6 +44,7 @@
- #include <linux/slab.h>
- #include <linux/compat.h>
- #include <linux/random.h>
-+#include <linux/freezer.h>
- 
- #include <linux/uaccess.h>
- #include <asm/unistd.h>
-@@ -1584,7 +1585,7 @@ static unsigned long __next_timer_interrupt(struct timer_base *base)
-  * Check, if the next hrtimer event is before the next timer wheel
-  * event:
-  */
--static u64 cmp_next_hrtimer_event(u64 basem, u64 expires)
-+static u64 cmp_next_hrtimer_event(struct timer_base *base, u64 basem, u64 expires)
- {
- 	u64 nextevt = hrtimer_get_next_event();
- 
-@@ -1602,6 +1603,9 @@ static u64 cmp_next_hrtimer_event(u64 basem, u64 expires)
- 	if (nextevt <= basem)
- 		return basem;
- 
-+	if (nextevt < expires && nextevt - basem <= TICK_NSEC)
-+		base->is_idle = false;
-+
- 	/*
- 	 * Round up to the next jiffie. High resolution timers are
- 	 * off, so the hrtimers are expired in the tick and we need to
-@@ -1671,7 +1675,7 @@ u64 get_next_timer_interrupt(unsigned long basej, u64 basem)
- 	}
- 	raw_spin_unlock(&base->lock);
- 
--	return cmp_next_hrtimer_event(basem, expires);
-+	return cmp_next_hrtimer_event(base, basem, expires);
- }
- 
- /**
-@@ -1865,6 +1869,18 @@ signed long __sched schedule_timeout(signed long timeout)
+@@ -1904,6 +1904,18 @@ signed long __sched schedule_timeout(signed long timeout)
  
  	expire = timeout + jiffies;
  
@@ -13123,7 +12376,7 @@ index c3ad64fb9d8b..0411a289ccde 100644
  	timer.task = current;
  	timer_setup_on_stack(&timer.timer, process_timeout, 0);
  	__mod_timer(&timer.timer, expire, MOD_TIMER_NOTPENDING);
-@@ -1873,10 +1889,10 @@ signed long __sched schedule_timeout(signed long timeout)
+@@ -1912,10 +1924,10 @@ signed long __sched schedule_timeout(signed long timeout)
  
  	/* Remove the timer from the object tracker */
  	destroy_timer_on_stack(&timer.timer);
@@ -13136,7 +12389,24 @@ index c3ad64fb9d8b..0411a289ccde 100644
  	return timeout < 0 ? 0 : timeout;
  }
  EXPORT_SYMBOL(schedule_timeout);
-@@ -2019,7 +2035,19 @@ void __init init_timers(void)
+-- 
+2.49.0
+
+
+From c5d22e63b7b16e84e8ebfa8a4ecb4f29c867d4fd Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Fri, 4 Nov 2016 09:25:54 +1100
+Subject: [PATCH 06/17] Convert msleep to use hrtimers when active.
+
+---
+ kernel/time/timer.c | 24 ++++++++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/time/timer.c b/kernel/time/timer.c
+index 4141222b657b..379e20515624 100644
+--- a/kernel/time/timer.c
++++ b/kernel/time/timer.c
+@@ -2071,7 +2071,19 @@ void __init init_timers(void)
   */
  void msleep(unsigned int msecs)
  {
@@ -13148,16 +12418,16 @@ index c3ad64fb9d8b..0411a289ccde 100644
 +	 * Use high resolution timers where the resolution of tick based
 +	 * timers is inadequate.
 +	 */
-+	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ && !pm_freezing) {
++	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ) {
 +		while (msecs)
 +			msecs = schedule_msec_hrtimeout_uninterruptible(msecs);
 +		return;
 +	}
-+	timeout = jiffs + 1;
++	timeout = msecs_to_jiffies(msecs) + 1;
  
  	while (timeout)
  		timeout = schedule_timeout_uninterruptible(timeout);
-@@ -2033,7 +2061,15 @@ EXPORT_SYMBOL(msleep);
+@@ -2085,7 +2097,15 @@ EXPORT_SYMBOL(msleep);
   */
  unsigned long msleep_interruptible(unsigned int msecs)
  {
@@ -13165,50 +12435,779 @@ index c3ad64fb9d8b..0411a289ccde 100644
 +	int jiffs = msecs_to_jiffies(msecs);
 +	unsigned long timeout;
 +
-+	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ && !pm_freezing) {
++	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ) {
 +		while (msecs && !signal_pending(current))
 +			msecs = schedule_msec_hrtimeout_interruptible(msecs);
 +		return msecs;
 +	}
-+	timeout = jiffs + 1;
++	timeout = msecs_to_jiffies(msecs) + 1;
  
  	while (timeout && !signal_pending(current))
  		timeout = schedule_timeout_interruptible(timeout);
-diff --git a/kernel/trace/trace_selftest.c b/kernel/trace/trace_selftest.c
-index 4738ad48a667..f050201c0574 100644
---- a/kernel/trace/trace_selftest.c
-+++ b/kernel/trace/trace_selftest.c
-@@ -1053,10 +1053,15 @@ static int trace_wakeup_test_thread(void *data)
+-- 
+2.49.0
+
+
+From 761b5cd6ff85ec45794bb2d767bbe968241b5a32 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Mon, 20 Feb 2017 13:28:30 +1100
+Subject: [PATCH 07/17] Replace all schedule timeout(1) with
+ schedule_min_hrtimeout()
+
+---
+ drivers/accessibility/speakup/speakup_acntpc.c  |  4 ++--
+ drivers/accessibility/speakup/speakup_apollo.c  |  2 +-
+ drivers/accessibility/speakup/speakup_decext.c  |  2 +-
+ drivers/accessibility/speakup/speakup_decpc.c   |  2 +-
+ drivers/accessibility/speakup/speakup_dectlk.c  |  2 +-
+ drivers/accessibility/speakup/speakup_dtlk.c    |  4 ++--
+ drivers/accessibility/speakup/speakup_keypc.c   |  4 ++--
+ drivers/accessibility/speakup/synth.c           | 14 ++++----------
+ drivers/block/swim.c                            |  5 +++--
+ drivers/char/ipmi/ipmi_msghandler.c             |  2 +-
+ drivers/char/ipmi/ipmi_ssif.c                   |  2 +-
+ drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c            |  2 +-
+ drivers/gpu/drm/vmwgfx/vmwgfx_irq.c             |  2 +-
+ drivers/media/pci/ivtv/ivtv-ioctl.c             |  2 +-
+ drivers/media/pci/ivtv/ivtv-streams.c           |  2 +-
+ drivers/mfd/ucb1x00-core.c                      |  2 +-
+ drivers/misc/sgi-xp/xpc_channel.c               |  2 +-
+ drivers/net/caif/caif_hsi.c                     |  2 +-
+ drivers/net/can/usb/peak_usb/pcan_usb.c         |  2 +-
+ drivers/net/usb/lan78xx.c                       |  2 +-
+ drivers/net/usb/usbnet.c                        |  2 +-
+ drivers/scsi/fnic/fnic_scsi.c                   |  4 ++--
+ drivers/scsi/snic/snic_scsi.c                   |  2 +-
+ drivers/staging/comedi/drivers/ni_mio_common.c  |  2 +-
+ drivers/staging/rts5208/rtsx.c                  |  2 +-
+ drivers/staging/unisys/visornic/visornic_main.c |  6 +++---
+ drivers/video/fbdev/omap/hwa742.c               |  2 +-
+ drivers/video/fbdev/pxafb.c                     |  2 +-
+ fs/btrfs/inode-map.c                            |  2 +-
+ sound/usb/line6/pcm.c                           |  2 +-
+ 30 files changed, 41 insertions(+), 46 deletions(-)
+
+diff --git a/drivers/accessibility/speakup/speakup_acntpc.c b/drivers/accessibility/speakup/speakup_acntpc.c
+index c94328a5bd4a..6e7d4671aa69 100644
+--- a/drivers/accessibility/speakup/speakup_acntpc.c
++++ b/drivers/accessibility/speakup/speakup_acntpc.c
+@@ -198,7 +198,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 		full_time_val = full_time->u.n.value;
+ 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+ 		if (synth_full()) {
+-			schedule_timeout(msecs_to_jiffies(full_time_val));
++			schedule_msec_hrtimeout((full_time_val));
+ 			continue;
+ 		}
+ 		set_current_state(TASK_RUNNING);
+@@ -226,7 +226,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 			jiffy_delta_val = jiffy_delta->u.n.value;
+ 			delay_time_val = delay_time->u.n.value;
+ 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+-			schedule_timeout(msecs_to_jiffies(delay_time_val));
++			schedule_msec_hrtimeout(delay_time_val);
+ 			jiff_max = jiffies + jiffy_delta_val;
+ 		}
+ 	}
+diff --git a/drivers/accessibility/speakup/speakup_apollo.c b/drivers/accessibility/speakup/speakup_apollo.c
+index 0877b4044c28..627102d048c1 100644
+--- a/drivers/accessibility/speakup/speakup_apollo.c
++++ b/drivers/accessibility/speakup/speakup_apollo.c
+@@ -165,7 +165,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 		if (!synth->io_ops->synth_out(synth, ch)) {
+ 			synth->io_ops->tiocmset(0, UART_MCR_RTS);
+ 			synth->io_ops->tiocmset(UART_MCR_RTS, 0);
+-			schedule_timeout(msecs_to_jiffies(full_time_val));
++			schedule_msec_hrtimeout(full_time_val);
+ 			continue;
+ 		}
+ 		if (time_after_eq(jiffies, jiff_max) && (ch == SPACE)) {
+diff --git a/drivers/accessibility/speakup/speakup_decext.c b/drivers/accessibility/speakup/speakup_decext.c
+index 7408eb29cf38..938a0c35968f 100644
+--- a/drivers/accessibility/speakup/speakup_decext.c
++++ b/drivers/accessibility/speakup/speakup_decext.c
+@@ -180,7 +180,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 		if (ch == '\n')
+ 			ch = 0x0D;
+ 		if (synth_full() || !synth->io_ops->synth_out(synth, ch)) {
+-			schedule_timeout(msecs_to_jiffies(delay_time_val));
++			schedule_msec_hrtimeout(delay_time_val);
+ 			continue;
+ 		}
+ 		set_current_state(TASK_RUNNING);
+diff --git a/drivers/accessibility/speakup/speakup_decpc.c b/drivers/accessibility/speakup/speakup_decpc.c
+index 96f24c848cc5..1130dfe4da6c 100644
+--- a/drivers/accessibility/speakup/speakup_decpc.c
++++ b/drivers/accessibility/speakup/speakup_decpc.c
+@@ -398,7 +398,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 		if (ch == '\n')
+ 			ch = 0x0D;
+ 		if (dt_sendchar(ch)) {
+-			schedule_timeout(msecs_to_jiffies(delay_time_val));
++			schedule_msec_hrtimeout((delay_time_val));
+ 			continue;
+ 		}
+ 		set_current_state(TASK_RUNNING);
+diff --git a/drivers/accessibility/speakup/speakup_dectlk.c b/drivers/accessibility/speakup/speakup_dectlk.c
+index d689ec5e276f..76e28f7ab1ff 100644
+--- a/drivers/accessibility/speakup/speakup_dectlk.c
++++ b/drivers/accessibility/speakup/speakup_dectlk.c
+@@ -248,7 +248,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 		if (ch == '\n')
+ 			ch = 0x0D;
+ 		if (synth_full_val || !synth->io_ops->synth_out(synth, ch)) {
+-			schedule_timeout(msecs_to_jiffies(delay_time_val));
++			schedule_msec_hrtimeout(delay_time_val);
+ 			continue;
+ 		}
+ 		set_current_state(TASK_RUNNING);
+diff --git a/drivers/accessibility/speakup/speakup_dtlk.c b/drivers/accessibility/speakup/speakup_dtlk.c
+index dbebed0eeeec..6d83c13ca4a6 100644
+--- a/drivers/accessibility/speakup/speakup_dtlk.c
++++ b/drivers/accessibility/speakup/speakup_dtlk.c
+@@ -211,7 +211,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 		delay_time_val = delay_time->u.n.value;
+ 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+ 		if (synth_full()) {
+-			schedule_timeout(msecs_to_jiffies(delay_time_val));
++			schedule_msec_hrtimeout((delay_time_val));
+ 			continue;
+ 		}
+ 		set_current_state(TASK_RUNNING);
+@@ -227,7 +227,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 			delay_time_val = delay_time->u.n.value;
+ 			jiffy_delta_val = jiffy_delta->u.n.value;
+ 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+-			schedule_timeout(msecs_to_jiffies(delay_time_val));
++			schedule_msec_hrtimeout((delay_time_val));
+ 			jiff_max = jiffies + jiffy_delta_val;
+ 		}
+ 	}
+diff --git a/drivers/accessibility/speakup/speakup_keypc.c b/drivers/accessibility/speakup/speakup_keypc.c
+index 414827e888fc..cb31c9176daa 100644
+--- a/drivers/accessibility/speakup/speakup_keypc.c
++++ b/drivers/accessibility/speakup/speakup_keypc.c
+@@ -199,7 +199,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 		full_time_val = full_time->u.n.value;
+ 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+ 		if (synth_full()) {
+-			schedule_timeout(msecs_to_jiffies(full_time_val));
++			schedule_msec_hrtimeout((full_time_val));
+ 			continue;
+ 		}
+ 		set_current_state(TASK_RUNNING);
+@@ -232,7 +232,7 @@ static void do_catch_up(struct spk_synth *synth)
+ 			jiffy_delta_val = jiffy_delta->u.n.value;
+ 			delay_time_val = delay_time->u.n.value;
+ 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+-			schedule_timeout(msecs_to_jiffies(delay_time_val));
++			schedule_msec_hrtimeout(delay_time_val);
+ 			jiff_max = jiffies + jiffy_delta_val;
+ 		}
+ 	}
+diff --git a/drivers/accessibility/speakup/synth.c b/drivers/accessibility/speakup/synth.c
+index 82cfc5ec6bdf..1a28a228a1fb 100644
+--- a/drivers/accessibility/speakup/synth.c
++++ b/drivers/accessibility/speakup/synth.c
+@@ -93,12 +93,8 @@ static void _spk_do_catch_up(struct spk_synth *synth, int unicode)
+ 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+ 		if (ch == '\n')
+ 			ch = synth->procspeech;
+-		if (unicode)
+-			ret = synth->io_ops->synth_out_unicode(synth, ch);
+-		else
+-			ret = synth->io_ops->synth_out(synth, ch);
+-		if (!ret) {
+-			schedule_timeout(msecs_to_jiffies(full_time_val));
++		if (!synth->io_ops->synth_out(synth, ch)) {
++			schedule_msec_hrtimeout(full_time_val);
+ 			continue;
+ 		}
+ 		if (time_after_eq(jiffies, jiff_max) && (ch == SPACE)) {
+@@ -108,11 +104,9 @@ static void _spk_do_catch_up(struct spk_synth *synth, int unicode)
+ 			full_time_val = full_time->u.n.value;
+ 			spin_unlock_irqrestore(&speakup_info.spinlock, flags);
+ 			if (synth->io_ops->synth_out(synth, synth->procspeech))
+-				schedule_timeout(
+-					msecs_to_jiffies(delay_time_val));
++				schedule_msec_hrtimeout(delay_time_val);
+ 			else
+-				schedule_timeout(
+-					msecs_to_jiffies(full_time_val));
++				schedule_msec_hrtimeout(full_time_val);
+ 			jiff_max = jiffies + jiffy_delta_val;
+ 		}
+ 		set_current_state(TASK_RUNNING);
+diff --git a/drivers/block/swim.c b/drivers/block/swim.c
+index 52dd1efa00f9..c7131359232d 100644
+--- a/drivers/block/swim.c
++++ b/drivers/block/swim.c
+@@ -328,7 +328,7 @@ static inline void swim_motor(struct swim __iomem *base,
+ 			if (swim_readbit(base, MOTOR_ON))
+ 				break;
+ 			set_current_state(TASK_INTERRUPTIBLE);
+-			schedule_timeout(1);
++			schedule_min_hrtimeout();
+ 		}
+ 	} else if (action == OFF) {
+ 		swim_action(base, MOTOR_OFF);
+@@ -347,7 +347,7 @@ static inline void swim_eject(struct swim __iomem *base)
+ 		if (!swim_readbit(base, DISK_IN))
+ 			break;
+ 		set_current_state(TASK_INTERRUPTIBLE);
+-		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 	}
+ 	swim_select(base, RELAX);
+ }
+@@ -372,6 +372,7 @@ static inline int swim_step(struct swim __iomem *base)
+ 
+ 		set_current_state(TASK_INTERRUPTIBLE);
+ 		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 
+ 		swim_select(base, RELAX);
+ 		if (!swim_readbit(base, STEP))
+diff --git a/drivers/char/ipmi/ipmi_msghandler.c b/drivers/char/ipmi/ipmi_msghandler.c
+index b89f300751b1..e44207df6a6a 100644
+--- a/drivers/char/ipmi/ipmi_msghandler.c
++++ b/drivers/char/ipmi/ipmi_msghandler.c
+@@ -3570,7 +3570,7 @@ static void cleanup_smi_msgs(struct ipmi_smi *intf)
+ 	/* Current message first, to preserve order */
+ 	while (intf->curr_msg && !list_empty(&intf->waiting_rcv_msgs)) {
+ 		/* Wait for the message to clear out. */
+-		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 	}
+ 
+ 	/* No need for locks, the interface is down. */
+diff --git a/drivers/char/ipmi/ipmi_ssif.c b/drivers/char/ipmi/ipmi_ssif.c
+index 30f757249c5c..78bcae03f046 100644
+--- a/drivers/char/ipmi/ipmi_ssif.c
++++ b/drivers/char/ipmi/ipmi_ssif.c
+@@ -1274,7 +1274,7 @@ static void shutdown_ssif(void *send_info)
+ 
+ 	/* make sure the driver is not looking for flags any more. */
+ 	while (ssif_info->ssif_state != SSIF_IDLE)
+-		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 
+ 	ssif_info->stopping = true;
+ 	del_timer_sync(&ssif_info->watch_timer);
+diff --git a/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c b/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c
+index a95156fc5db7..8f07c8900184 100644
+--- a/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c
++++ b/drivers/gpu/drm/vmwgfx/vmwgfx_fifo.c
+@@ -235,7 +235,7 @@ static int vmw_fifo_wait_noirq(struct vmw_private *dev_priv,
+ 			DRM_ERROR("SVGA device lockup.\n");
+ 			break;
+ 		}
+-		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 		if (interruptible && signal_pending(current)) {
+ 			ret = -ERESTARTSYS;
+ 			break;
+diff --git a/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c b/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c
+index 75f3efee21a4..09b1932ce85b 100644
+--- a/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c
++++ b/drivers/gpu/drm/vmwgfx/vmwgfx_irq.c
+@@ -203,7 +203,7 @@ int vmw_fallback_wait(struct vmw_private *dev_priv,
+ 			break;
+ 		}
+ 		if (lazy)
+-			schedule_timeout(1);
++			schedule_min_hrtimeout();
+ 		else if ((++count & 0x0F) == 0) {
+ 			/**
+ 			 * FIXME: Use schedule_hr_timeout here for
+diff --git a/drivers/media/pci/ivtv/ivtv-ioctl.c b/drivers/media/pci/ivtv/ivtv-ioctl.c
+index a9d69b253516..6c815eaa5d17 100644
+--- a/drivers/media/pci/ivtv/ivtv-ioctl.c
++++ b/drivers/media/pci/ivtv/ivtv-ioctl.c
+@@ -1139,7 +1139,7 @@ void ivtv_s_std_dec(struct ivtv *itv, v4l2_std_id std)
+ 				TASK_UNINTERRUPTIBLE);
+ 		if ((read_reg(IVTV_REG_DEC_LINE_FIELD) >> 16) < 100)
+ 			break;
+-		schedule_timeout(msecs_to_jiffies(25));
++		schedule_msec_hrtimeout((25));
+ 	}
+ 	finish_wait(&itv->vsync_waitq, &wait);
+ 	mutex_lock(&itv->serialize_lock);
+diff --git a/drivers/media/pci/ivtv/ivtv-streams.c b/drivers/media/pci/ivtv/ivtv-streams.c
+index f9de5d1605fe..d6e5cfaeb4b0 100644
+--- a/drivers/media/pci/ivtv/ivtv-streams.c
++++ b/drivers/media/pci/ivtv/ivtv-streams.c
+@@ -846,7 +846,7 @@ int ivtv_stop_v4l2_encode_stream(struct ivtv_stream *s, int gop_end)
+ 			while (!test_bit(IVTV_F_I_EOS, &itv->i_flags) &&
+ 				time_before(jiffies,
+ 					    then + msecs_to_jiffies(2000))) {
+-				schedule_timeout(msecs_to_jiffies(10));
++				schedule_msec_hrtimeout((10));
+ 			}
+ 
+ 			/* To convert jiffies to ms, we must multiply by 1000
+diff --git a/drivers/mfd/ucb1x00-core.c b/drivers/mfd/ucb1x00-core.c
+index b690796d24d4..448b13da62b4 100644
+--- a/drivers/mfd/ucb1x00-core.c
++++ b/drivers/mfd/ucb1x00-core.c
+@@ -250,7 +250,7 @@ unsigned int ucb1x00_adc_read(struct ucb1x00 *ucb, int adc_channel, int sync)
+ 			break;
+ 		/* yield to other processes */
+ 		set_current_state(TASK_INTERRUPTIBLE);
+-		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 	}
+ 
+ 	return UCB_ADC_DAT(val);
+diff --git a/drivers/misc/sgi-xp/xpc_channel.c b/drivers/misc/sgi-xp/xpc_channel.c
+index 8e6607fc8a67..b9ab770bbdb5 100644
+--- a/drivers/misc/sgi-xp/xpc_channel.c
++++ b/drivers/misc/sgi-xp/xpc_channel.c
+@@ -834,7 +834,7 @@ xpc_allocate_msg_wait(struct xpc_channel *ch)
+ 
+ 	atomic_inc(&ch->n_on_msg_allocate_wq);
+ 	prepare_to_wait(&ch->msg_allocate_wq, &wait, TASK_INTERRUPTIBLE);
+-	ret = schedule_timeout(1);
++	ret = schedule_min_hrtimeout();
+ 	finish_wait(&ch->msg_allocate_wq, &wait);
+ 	atomic_dec(&ch->n_on_msg_allocate_wq);
+ 
+diff --git a/drivers/net/caif/caif_hsi.c b/drivers/net/caif/caif_hsi.c
+index 3d63b15bbaa1..164071e9d457 100644
+--- a/drivers/net/caif/caif_hsi.c
++++ b/drivers/net/caif/caif_hsi.c
+@@ -924,7 +924,7 @@ static void cfhsi_wake_down(struct work_struct *work)
+ 			break;
+ 
+ 		set_current_state(TASK_INTERRUPTIBLE);
+-		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 		retry--;
+ 	}
+ 
+diff --git a/drivers/net/can/usb/peak_usb/pcan_usb.c b/drivers/net/can/usb/peak_usb/pcan_usb.c
+index ce2d0761c4e5..fe46912df6a1 100644
+--- a/drivers/net/can/usb/peak_usb/pcan_usb.c
++++ b/drivers/net/can/usb/peak_usb/pcan_usb.c
+@@ -291,7 +291,7 @@ static int pcan_usb_write_mode(struct peak_usb_device *dev, u8 onoff)
+ 	} else {
+ 		/* the PCAN-USB needs time to init */
+ 		set_current_state(TASK_INTERRUPTIBLE);
+-		schedule_timeout(msecs_to_jiffies(PCAN_USB_STARTUP_TIMEOUT));
++		schedule_msec_hrtimeout((PCAN_USB_STARTUP_TIMEOUT));
+ 	}
+ 
+ 	return err;
+diff --git a/drivers/net/usb/lan78xx.c b/drivers/net/usb/lan78xx.c
+index cabe6cdd6903..4f0a2f98a383 100644
+--- a/drivers/net/usb/lan78xx.c
++++ b/drivers/net/usb/lan78xx.c
+@@ -2919,7 +2919,7 @@ static void lan78xx_terminate_urbs(struct lan78xx_net *dev)
+ 	/* maybe wait for deletions to finish. */
+ 	while (!skb_queue_empty(&dev->rxq) ||
+ 	       !skb_queue_empty(&dev->txq)) {
+-		schedule_timeout(msecs_to_jiffies(UNLINK_TIMEOUT_MS));
++		schedule_msec_hrtimeout((UNLINK_TIMEOUT_MS));
+ 		set_current_state(TASK_UNINTERRUPTIBLE);
+ 		netif_dbg(dev, ifdown, dev->net,
+ 			  "waited for %d urb completions", temp);
+diff --git a/drivers/net/usb/usbnet.c b/drivers/net/usb/usbnet.c
+index ad425e09c75f..be0ac59c0889 100644
+--- a/drivers/net/usb/usbnet.c
++++ b/drivers/net/usb/usbnet.c
+@@ -774,7 +774,7 @@ static void wait_skb_queue_empty(struct sk_buff_head *q)
+ 	spin_lock_irqsave(&q->lock, flags);
+ 	while (!skb_queue_empty(q)) {
+ 		spin_unlock_irqrestore(&q->lock, flags);
+-		schedule_timeout(msecs_to_jiffies(UNLINK_TIMEOUT_MS));
++		schedule_msec_hrtimeout((UNLINK_TIMEOUT_MS));
+ 		set_current_state(TASK_UNINTERRUPTIBLE);
+ 		spin_lock_irqsave(&q->lock, flags);
+ 	}
+diff --git a/drivers/scsi/fnic/fnic_scsi.c b/drivers/scsi/fnic/fnic_scsi.c
+index d1f7b84bbfe8..94da04ef6174 100644
+--- a/drivers/scsi/fnic/fnic_scsi.c
++++ b/drivers/scsi/fnic/fnic_scsi.c
+@@ -217,7 +217,7 @@ int fnic_fw_reset_handler(struct fnic *fnic)
+ 
+ 	/* wait for io cmpl */
+ 	while (atomic_read(&fnic->in_flight))
+-		schedule_timeout(msecs_to_jiffies(1));
++		schedule_msec_hrtimeout((1));
+ 
+ 	spin_lock_irqsave(&fnic->wq_copy_lock[0], flags);
+ 
+@@ -2277,7 +2277,7 @@ static int fnic_clean_pending_aborts(struct fnic *fnic,
+ 		}
+ 	}
+ 
+-	schedule_timeout(msecs_to_jiffies(2 * fnic->config.ed_tov));
++	schedule_msec_hrtimeout((2 * fnic->config.ed_tov));
+ 
+ 	/* walk again to check, if IOs are still pending in fw */
+ 	if (fnic_is_abts_pending(fnic, lr_sc))
+diff --git a/drivers/scsi/snic/snic_scsi.c b/drivers/scsi/snic/snic_scsi.c
+index 6dd0ff188bb4..aedf0b78f622 100644
+--- a/drivers/scsi/snic/snic_scsi.c
++++ b/drivers/scsi/snic/snic_scsi.c
+@@ -2349,7 +2349,7 @@ snic_reset(struct Scsi_Host *shost, struct scsi_cmnd *sc)
+ 
+ 	/* Wait for all the IOs that are entered in Qcmd */
+ 	while (atomic_read(&snic->ios_inflight))
+-		schedule_timeout(msecs_to_jiffies(1));
++		schedule_msec_hrtimeout((1));
+ 
+ 	ret = snic_issue_hba_reset(snic, sc);
+ 	if (ret) {
+diff --git a/drivers/staging/comedi/drivers/ni_mio_common.c b/drivers/staging/comedi/drivers/ni_mio_common.c
+index 9266e13f6271..df5c53216d78 100644
+--- a/drivers/staging/comedi/drivers/ni_mio_common.c
++++ b/drivers/staging/comedi/drivers/ni_mio_common.c
+@@ -4748,7 +4748,7 @@ static int cs5529_wait_for_idle(struct comedi_device *dev)
+ 		if ((status & NI67XX_CAL_STATUS_BUSY) == 0)
+ 			break;
+ 		set_current_state(TASK_INTERRUPTIBLE);
+-		if (schedule_timeout(1))
++		if (schedule_min_hrtimeout())
+ 			return -EIO;
+ 	}
+ 	if (i == timeout) {
+diff --git a/drivers/staging/rts5208/rtsx.c b/drivers/staging/rts5208/rtsx.c
+index 898add4d1fc8..0aa9dd467349 100644
+--- a/drivers/staging/rts5208/rtsx.c
++++ b/drivers/staging/rts5208/rtsx.c
+@@ -477,7 +477,7 @@ static int rtsx_polling_thread(void *__dev)
+ 
+ 	for (;;) {
+ 		set_current_state(TASK_INTERRUPTIBLE);
+-		schedule_timeout(msecs_to_jiffies(POLLING_INTERVAL));
++		schedule_msec_hrtimeout((POLLING_INTERVAL));
+ 
+ 		/* lock the device pointers */
+ 		mutex_lock(&dev->dev_mutex);
+diff --git a/drivers/staging/unisys/visornic/visornic_main.c b/drivers/staging/unisys/visornic/visornic_main.c
+index 0433536930a9..d8726f28843f 100644
+--- a/drivers/staging/unisys/visornic/visornic_main.c
++++ b/drivers/staging/unisys/visornic/visornic_main.c
+@@ -549,7 +549,7 @@ static int visornic_disable_with_timeout(struct net_device *netdev,
+ 		}
+ 		set_current_state(TASK_INTERRUPTIBLE);
+ 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
+-		wait += schedule_timeout(msecs_to_jiffies(10));
++		wait += schedule_msec_hrtimeout((10));
+ 		spin_lock_irqsave(&devdata->priv_lock, flags);
+ 	}
+ 
+@@ -560,7 +560,7 @@ static int visornic_disable_with_timeout(struct net_device *netdev,
+ 		while (1) {
+ 			set_current_state(TASK_INTERRUPTIBLE);
+ 			spin_unlock_irqrestore(&devdata->priv_lock, flags);
+-			schedule_timeout(msecs_to_jiffies(10));
++			schedule_msec_hrtimeout((10));
+ 			spin_lock_irqsave(&devdata->priv_lock, flags);
+ 			if (atomic_read(&devdata->usage))
+ 				break;
+@@ -714,7 +714,7 @@ static int visornic_enable_with_timeout(struct net_device *netdev,
+ 		}
+ 		set_current_state(TASK_INTERRUPTIBLE);
+ 		spin_unlock_irqrestore(&devdata->priv_lock, flags);
+-		wait += schedule_timeout(msecs_to_jiffies(10));
++		wait += schedule_msec_hrtimeout((10));
+ 		spin_lock_irqsave(&devdata->priv_lock, flags);
+ 	}
+ 
+diff --git a/drivers/video/fbdev/omap/hwa742.c b/drivers/video/fbdev/omap/hwa742.c
+index cfe63932f825..71c00ef772a3 100644
+--- a/drivers/video/fbdev/omap/hwa742.c
++++ b/drivers/video/fbdev/omap/hwa742.c
+@@ -913,7 +913,7 @@ static void hwa742_resume(void)
+ 		if (hwa742_read_reg(HWA742_PLL_DIV_REG) & (1 << 7))
+ 			break;
+ 		set_current_state(TASK_UNINTERRUPTIBLE);
+-		schedule_timeout(msecs_to_jiffies(5));
++		schedule_msec_hrtimeout((5));
+ 	}
+ 	hwa742_set_update_mode(hwa742.update_mode_before_suspend);
+ }
+diff --git a/drivers/video/fbdev/pxafb.c b/drivers/video/fbdev/pxafb.c
+index a0db2b3d0736..a93aba772dfc 100644
+--- a/drivers/video/fbdev/pxafb.c
++++ b/drivers/video/fbdev/pxafb.c
+@@ -1287,7 +1287,7 @@ static int pxafb_smart_thread(void *arg)
+ 		mutex_unlock(&fbi->ctrlr_lock);
+ 
+ 		set_current_state(TASK_INTERRUPTIBLE);
+-		schedule_timeout(msecs_to_jiffies(30));
++		schedule_msec_hrtimeout((30));
+ 	}
+ 
+ 	pr_debug("%s(): task ending\n", __func__);
+diff --git a/fs/btrfs/inode-map.c b/fs/btrfs/inode-map.c
+index c74340d22624..0ff0067f6c9f 100644
+--- a/fs/btrfs/inode-map.c
++++ b/fs/btrfs/inode-map.c
+@@ -91,7 +91,7 @@ static int caching_kthread(void *data)
+ 				btrfs_release_path(path);
+ 				root->ino_cache_progress = last;
+ 				up_read(&fs_info->commit_root_sem);
+-				schedule_timeout(1);
++				schedule_min_hrtimeout();
+ 				goto again;
+ 			} else
+ 				continue;
+diff --git a/sound/usb/line6/pcm.c b/sound/usb/line6/pcm.c
+index fdbdfb7bce92..fa8e8faf3eb3 100644
+--- a/sound/usb/line6/pcm.c
++++ b/sound/usb/line6/pcm.c
+@@ -127,7 +127,7 @@ static void line6_wait_clear_audio_urbs(struct snd_line6_pcm *line6pcm,
+ 		if (!alive)
+ 			break;
+ 		set_current_state(TASK_UNINTERRUPTIBLE);
+-		schedule_timeout(1);
++		schedule_min_hrtimeout();
+ 	} while (--timeout > 0);
+ 	if (alive)
+ 		dev_err(line6pcm->line6->ifcdev,
+-- 
+2.49.0
+
+
+From 28da46943103d195005cc8f70db34d916f364593 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Mon, 20 Feb 2017 13:30:07 +1100
+Subject: [PATCH 08/17] Replace all calls to schedule_timeout_interruptible of
+ potentially under 50ms to use schedule_msec_hrtimeout_interruptible.
+
+---
+ drivers/hwmon/fam15h_power.c        |  2 +-
+ drivers/iio/light/tsl2563.c         |  6 +-----
+ drivers/media/i2c/msp3400-driver.c  |  4 ++--
+ drivers/media/pci/ivtv/ivtv-gpio.c  |  6 +++---
+ drivers/media/radio/radio-mr800.c   |  2 +-
+ drivers/media/radio/radio-tea5777.c |  2 +-
+ drivers/media/radio/tea575x.c       |  2 +-
+ drivers/parport/ieee1284.c          |  2 +-
+ drivers/parport/ieee1284_ops.c      |  8 ++++----
+ drivers/platform/x86/intel_ips.c    |  8 ++++----
+ net/core/pktgen.c                   |  2 +-
+ sound/soc/codecs/wm8350.c           | 12 ++++++------
+ sound/soc/codecs/wm8900.c           |  2 +-
+ sound/soc/codecs/wm9713.c           |  4 ++--
+ 14 files changed, 29 insertions(+), 33 deletions(-)
+
+diff --git a/drivers/hwmon/fam15h_power.c b/drivers/hwmon/fam15h_power.c
+index 29f5fed28c2a..974cb08c7aa7 100644
+--- a/drivers/hwmon/fam15h_power.c
++++ b/drivers/hwmon/fam15h_power.c
+@@ -221,7 +221,7 @@ static ssize_t power1_average_show(struct device *dev,
+ 		prev_ptsc[cu] = data->cpu_sw_pwr_ptsc[cu];
+ 	}
+ 
+-	leftover = schedule_timeout_interruptible(msecs_to_jiffies(data->power_period));
++	leftover = schedule_msec_hrtimeout_interruptible((data->power_period));
+ 	if (leftover)
+ 		return 0;
+ 
+diff --git a/drivers/iio/light/tsl2563.c b/drivers/iio/light/tsl2563.c
+index abc8d7db8dc1..baa9d6338a52 100644
+--- a/drivers/iio/light/tsl2563.c
++++ b/drivers/iio/light/tsl2563.c
+@@ -269,11 +269,7 @@ static void tsl2563_wait_adc(struct tsl2563_chip *chip)
+ 	default:
+ 		delay = 402;
+ 	}
+-	/*
+-	 * TODO: Make sure that we wait at least required delay but why we
+-	 * have to extend it one tick more?
+-	 */
+-	schedule_timeout_interruptible(msecs_to_jiffies(delay) + 2);
++	schedule_msec_hrtimeout_interruptible(delay + 1);
+ }
+ 
+ static int tsl2563_adjust_gainlevel(struct tsl2563_chip *chip, u16 adc)
+diff --git a/drivers/media/i2c/msp3400-driver.c b/drivers/media/i2c/msp3400-driver.c
+index 39530d43590e..a7caf2eb5771 100644
+--- a/drivers/media/i2c/msp3400-driver.c
++++ b/drivers/media/i2c/msp3400-driver.c
+@@ -170,7 +170,7 @@ static int msp_read(struct i2c_client *client, int dev, int addr)
+ 			break;
+ 		dev_warn(&client->dev, "I/O error #%d (read 0x%02x/0x%02x)\n", err,
+ 		       dev, addr);
+-		schedule_timeout_interruptible(msecs_to_jiffies(10));
++		schedule_msec_hrtimeout_interruptible((10));
+ 	}
+ 	if (err == 3) {
+ 		dev_warn(&client->dev, "resetting chip, sound will go off.\n");
+@@ -211,7 +211,7 @@ static int msp_write(struct i2c_client *client, int dev, int addr, int val)
+ 			break;
+ 		dev_warn(&client->dev, "I/O error #%d (write 0x%02x/0x%02x)\n", err,
+ 		       dev, addr);
+-		schedule_timeout_interruptible(msecs_to_jiffies(10));
++		schedule_msec_hrtimeout_interruptible((10));
+ 	}
+ 	if (err == 3) {
+ 		dev_warn(&client->dev, "resetting chip, sound will go off.\n");
+diff --git a/drivers/media/pci/ivtv/ivtv-gpio.c b/drivers/media/pci/ivtv/ivtv-gpio.c
+index 856e7ab7f33e..766a26251337 100644
+--- a/drivers/media/pci/ivtv/ivtv-gpio.c
++++ b/drivers/media/pci/ivtv/ivtv-gpio.c
+@@ -105,7 +105,7 @@ void ivtv_reset_ir_gpio(struct ivtv *itv)
+ 	curout = (curout & ~0xF) | 1;
+ 	write_reg(curout, IVTV_REG_GPIO_OUT);
+ 	/* We could use something else for smaller time */
+-	schedule_timeout_interruptible(msecs_to_jiffies(1));
++	schedule_msec_hrtimeout_interruptible((1));
+ 	curout |= 2;
+ 	write_reg(curout, IVTV_REG_GPIO_OUT);
+ 	curdir &= ~0x80;
+@@ -125,11 +125,11 @@ int ivtv_reset_tuner_gpio(void *dev, int component, int cmd, int value)
+ 	curout = read_reg(IVTV_REG_GPIO_OUT);
+ 	curout &= ~(1 << itv->card->xceive_pin);
+ 	write_reg(curout, IVTV_REG_GPIO_OUT);
+-	schedule_timeout_interruptible(msecs_to_jiffies(1));
++	schedule_msec_hrtimeout_interruptible((1));
+ 
+ 	curout |= 1 << itv->card->xceive_pin;
+ 	write_reg(curout, IVTV_REG_GPIO_OUT);
+-	schedule_timeout_interruptible(msecs_to_jiffies(1));
++	schedule_msec_hrtimeout_interruptible((1));
+ 	return 0;
+ }
+ 
+diff --git a/drivers/media/radio/radio-mr800.c b/drivers/media/radio/radio-mr800.c
+index cb0437b4c331..163fffc0e1d4 100644
+--- a/drivers/media/radio/radio-mr800.c
++++ b/drivers/media/radio/radio-mr800.c
+@@ -366,7 +366,7 @@ static int vidioc_s_hw_freq_seek(struct file *file, void *priv,
+ 			retval = -ENODATA;
+ 			break;
+ 		}
+-		if (schedule_timeout_interruptible(msecs_to_jiffies(10))) {
++		if (schedule_msec_hrtimeout_interruptible((10))) {
+ 			retval = -ERESTARTSYS;
+ 			break;
+ 		}
+diff --git a/drivers/media/radio/radio-tea5777.c b/drivers/media/radio/radio-tea5777.c
+index fb9de7bbcd19..e53cf45e7f3f 100644
+--- a/drivers/media/radio/radio-tea5777.c
++++ b/drivers/media/radio/radio-tea5777.c
+@@ -235,7 +235,7 @@ static int radio_tea5777_update_read_reg(struct radio_tea5777 *tea, int wait)
+ 	}
+ 
+ 	if (wait) {
+-		if (schedule_timeout_interruptible(msecs_to_jiffies(wait)))
++		if (schedule_msec_hrtimeout_interruptible((wait)))
+ 			return -ERESTARTSYS;
+ 	}
+ 
+diff --git a/drivers/media/radio/tea575x.c b/drivers/media/radio/tea575x.c
+index c37315226c42..e73e6393403c 100644
+--- a/drivers/media/radio/tea575x.c
++++ b/drivers/media/radio/tea575x.c
+@@ -401,7 +401,7 @@ int snd_tea575x_s_hw_freq_seek(struct file *file, struct snd_tea575x *tea,
+ 	for (;;) {
+ 		if (time_after(jiffies, timeout))
+ 			break;
+-		if (schedule_timeout_interruptible(msecs_to_jiffies(10))) {
++		if (schedule_msec_hrtimeout_interruptible((10))) {
+ 			/* some signal arrived, stop search */
+ 			tea->val &= ~TEA575X_BIT_SEARCH;
+ 			snd_tea575x_set_freq(tea);
+diff --git a/drivers/parport/ieee1284.c b/drivers/parport/ieee1284.c
+index 4547ac44c8d4..8fa1a7fdf12c 100644
+--- a/drivers/parport/ieee1284.c
++++ b/drivers/parport/ieee1284.c
+@@ -202,7 +202,7 @@ int parport_wait_peripheral(struct parport *port,
+ 			/* parport_wait_event didn't time out, but the
+ 			 * peripheral wasn't actually ready either.
+ 			 * Wait for another 10ms. */
+-			schedule_timeout_interruptible(msecs_to_jiffies(10));
++			schedule_msec_hrtimeout_interruptible((10));
+ 		}
+ 	}
+ 
+diff --git a/drivers/parport/ieee1284_ops.c b/drivers/parport/ieee1284_ops.c
+index 17061f1df0f4..975bca623467 100644
+--- a/drivers/parport/ieee1284_ops.c
++++ b/drivers/parport/ieee1284_ops.c
+@@ -141,7 +141,7 @@ size_t parport_ieee1284_write_compat (struct parport *port,
+ }
+ 
+ /* Nibble mode. */
+-size_t parport_ieee1284_read_nibble (struct parport *port, 
++size_t parport_ieee1284_read_nibble (struct parport *port,
+ 				     void *buffer, size_t len,
+ 				     int flags)
  {
- 	/* Make this a -deadline thread */
- 	static const struct sched_attr attr = {
-+#ifdef CONFIG_SCHED_MUQSS
-+		/* No deadline on MuQSS, use RR */
-+		.sched_policy = SCHED_RR,
-+#else
- 		.sched_policy = SCHED_DEADLINE,
- 		.sched_runtime = 100000ULL,
- 		.sched_deadline = 10000000ULL,
- 		.sched_period = 10000000ULL
-+#endif
- 	};
- 	struct wakeup_test_data *x = data;
+@@ -203,7 +203,7 @@ size_t parport_ieee1284_read_nibble (struct parport *port,
+ 			/* Second nibble */
+ 			byte |= nibble << 4;
+ 			*buf++ = byte;
+-		} else 
++		} else
+ 			byte = nibble;
+ 	}
  
-diff --git a/mm/vmscan.c b/mm/vmscan.c
-index 7b4e31eac2cf..b35d95e83abd 100644
---- a/mm/vmscan.c
-+++ b/mm/vmscan.c
-@@ -169,7 +169,7 @@ struct scan_control {
- /*
-  * From 0 .. 200.  Higher means more swappy.
-  */
--int vm_swappiness = 60;
-+int vm_swappiness = 33;
+@@ -520,7 +520,7 @@ size_t parport_ieee1284_ecp_read_data (struct parport *port,
+ 			/* Yield the port for a while. */
+ 			if (dev->port->irq != PARPORT_IRQ_NONE) {
+ 				parport_release (dev);
+-				schedule_timeout_interruptible(msecs_to_jiffies(40));
++				schedule_msec_hrtimeout_interruptible((40));
+ 				parport_claim_or_block (dev);
+ 			}
+ 			else
+@@ -870,7 +870,7 @@ size_t parport_ieee1284_epp_read_addr (struct parport *port,
+ 				      0);
  
- static void set_task_reclaim_state(struct task_struct *task,
- 				   struct reclaim_state *rs)
+ 		/* Event 60: wait for Busy to go low */
+-		if (parport_poll_peripheral (port, PARPORT_STATUS_BUSY, 
++		if (parport_poll_peripheral (port, PARPORT_STATUS_BUSY,
+ 					     PARPORT_STATUS_BUSY, 5))
+ 			break;
+ 
+diff --git a/drivers/platform/x86/intel_ips.c b/drivers/platform/x86/intel_ips.c
+index bffe548187ee..c2918ee3e100 100644
+--- a/drivers/platform/x86/intel_ips.c
++++ b/drivers/platform/x86/intel_ips.c
+@@ -798,7 +798,7 @@ static int ips_adjust(void *data)
+ 			ips_gpu_lower(ips);
+ 
+ sleep:
+-		schedule_timeout_interruptible(msecs_to_jiffies(IPS_ADJUST_PERIOD));
++		schedule_msec_hrtimeout_interruptible((IPS_ADJUST_PERIOD));
+ 	} while (!kthread_should_stop());
+ 
+ 	dev_dbg(ips->dev, "ips-adjust thread stopped\n");
+@@ -974,7 +974,7 @@ static int ips_monitor(void *data)
+ 	seqno_timestamp = get_jiffies_64();
+ 
+ 	old_cpu_power = thm_readl(THM_CEC);
+-	schedule_timeout_interruptible(msecs_to_jiffies(IPS_SAMPLE_PERIOD));
++	schedule_msec_hrtimeout_interruptible((IPS_SAMPLE_PERIOD));
+ 
+ 	/* Collect an initial average */
+ 	for (i = 0; i < IPS_SAMPLE_COUNT; i++) {
+@@ -1001,7 +1001,7 @@ static int ips_monitor(void *data)
+ 			mchp_samples[i] = mchp;
+ 		}
+ 
+-		schedule_timeout_interruptible(msecs_to_jiffies(IPS_SAMPLE_PERIOD));
++		schedule_msec_hrtimeout_interruptible((IPS_SAMPLE_PERIOD));
+ 		if (kthread_should_stop())
+ 			break;
+ 	}
+@@ -1028,7 +1028,7 @@ static int ips_monitor(void *data)
+ 	 * us to reduce the sample frequency if the CPU and GPU are idle.
+ 	 */
+ 	old_cpu_power = thm_readl(THM_CEC);
+-	schedule_timeout_interruptible(msecs_to_jiffies(IPS_SAMPLE_PERIOD));
++	schedule_msec_hrtimeout_interruptible((IPS_SAMPLE_PERIOD));
+ 	last_sample_period = IPS_SAMPLE_PERIOD;
+ 
+ 	timer_setup(&ips->timer, monitor_timeout, TIMER_DEFERRABLE);
 diff --git a/net/core/pktgen.c b/net/core/pktgen.c
-index 105978604ffd..cf509f492abb 100644
+index c1e3d3bea128..024284a265b0 100644
 --- a/net/core/pktgen.c
 +++ b/net/core/pktgen.c
 @@ -1894,7 +1894,7 @@ static void pktgen_mark_device(const struct pktgen_net *pn, const char *ifname)
@@ -13220,52 +13219,8 @@ index 105978604ffd..cf509f492abb 100644
  		mutex_lock(&pktgen_thread_lock);
  
  		if (++i >= max_tries) {
-diff --git a/sound/pci/maestro3.c b/sound/pci/maestro3.c
-index 40232a278b1a..d87fae1113aa 100644
---- a/sound/pci/maestro3.c
-+++ b/sound/pci/maestro3.c
-@@ -1995,7 +1995,7 @@ static void snd_m3_ac97_reset(struct snd_m3 *chip)
- 		outw(0, io + GPIO_DATA);
- 		outw(dir | GPO_PRIMARY_AC97, io + GPIO_DIRECTION);
- 
--		schedule_timeout_uninterruptible(msecs_to_jiffies(delay1));
-+		schedule_msec_hrtimeout_uninterruptible((delay1));
- 
- 		outw(GPO_PRIMARY_AC97, io + GPIO_DATA);
- 		udelay(5);
-@@ -2003,7 +2003,7 @@ static void snd_m3_ac97_reset(struct snd_m3 *chip)
- 		outw(IO_SRAM_ENABLE | SERIAL_AC_LINK_ENABLE, io + RING_BUS_CTRL_A);
- 		outw(~0, io + GPIO_MASK);
- 
--		schedule_timeout_uninterruptible(msecs_to_jiffies(delay2));
-+		schedule_msec_hrtimeout_uninterruptible((delay2));
- 
- 		if (! snd_m3_try_read_vendor(chip))
- 			break;
-diff --git a/sound/soc/codecs/rt5631.c b/sound/soc/codecs/rt5631.c
-index 653da3eaf355..d77d12902594 100644
---- a/sound/soc/codecs/rt5631.c
-+++ b/sound/soc/codecs/rt5631.c
-@@ -417,7 +417,7 @@ static void onebit_depop_mute_stage(struct snd_soc_component *component, int ena
- 	hp_zc = snd_soc_component_read(component, RT5631_INT_ST_IRQ_CTRL_2);
- 	snd_soc_component_write(component, RT5631_INT_ST_IRQ_CTRL_2, hp_zc & 0xf7ff);
- 	if (enable) {
--		schedule_timeout_uninterruptible(msecs_to_jiffies(10));
-+		schedule_msec_hrtimeout_uninterruptible((10));
- 		/* config one-bit depop parameter */
- 		rt5631_write_index(component, RT5631_SPK_INTL_CTRL, 0x307f);
- 		snd_soc_component_update_bits(component, RT5631_HP_OUT_VOL,
-@@ -529,7 +529,7 @@ static void depop_seq_mute_stage(struct snd_soc_component *component, int enable
- 	hp_zc = snd_soc_component_read(component, RT5631_INT_ST_IRQ_CTRL_2);
- 	snd_soc_component_write(component, RT5631_INT_ST_IRQ_CTRL_2, hp_zc & 0xf7ff);
- 	if (enable) {
--		schedule_timeout_uninterruptible(msecs_to_jiffies(10));
-+		schedule_msec_hrtimeout_uninterruptible((10));
- 
- 		/* config depop sequence parameter */
- 		rt5631_write_index(component, RT5631_SPK_INTL_CTRL, 0x302f);
 diff --git a/sound/soc/codecs/wm8350.c b/sound/soc/codecs/wm8350.c
-index a6aa212fa0c8..8bfa549b38db 100644
+index ec5d997725b9..fa8883cf905f 100644
 --- a/sound/soc/codecs/wm8350.c
 +++ b/sound/soc/codecs/wm8350.c
 @@ -233,10 +233,10 @@ static void wm8350_pga_work(struct work_struct *work)
@@ -13352,11 +13307,159 @@ index f333e2ff4a16..3033cc2d4005 100644
  	return 0;
  }
  
+-- 
+2.49.0
+
+
+From 7e0e5f91abef0301fccd72bd24bc4c6808e5f1ec Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Mon, 20 Feb 2017 13:30:32 +1100
+Subject: [PATCH 09/17] Replace all calls to schedule_timeout_uninterruptible
+ of potentially under 50ms to use schedule_msec_hrtimeout_uninterruptible
+
+---
+ drivers/media/pci/cx18/cx18-gpio.c           | 4 ++--
+ drivers/net/wireless/intel/ipw2x00/ipw2100.c | 4 ++--
+ drivers/rtc/rtc-wm8350.c                     | 6 +++---
+ drivers/scsi/lpfc/lpfc_scsi.c                | 2 +-
+ sound/pci/maestro3.c                         | 4 ++--
+ sound/soc/codecs/rt5631.c                    | 4 ++--
+ sound/soc/soc-dapm.c                         | 2 +-
+ 7 files changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/media/pci/cx18/cx18-gpio.c b/drivers/media/pci/cx18/cx18-gpio.c
+index cf7cfda94107..f63e17489547 100644
+--- a/drivers/media/pci/cx18/cx18-gpio.c
++++ b/drivers/media/pci/cx18/cx18-gpio.c
+@@ -81,11 +81,11 @@ static void gpio_reset_seq(struct cx18 *cx, u32 active_lo, u32 active_hi,
+ 
+ 	/* Assert */
+ 	gpio_update(cx, mask, ~active_lo);
+-	schedule_timeout_uninterruptible(msecs_to_jiffies(assert_msecs));
++	schedule_msec_hrtimeout_uninterruptible((assert_msecs));
+ 
+ 	/* Deassert */
+ 	gpio_update(cx, mask, ~active_hi);
+-	schedule_timeout_uninterruptible(msecs_to_jiffies(recovery_msecs));
++	schedule_msec_hrtimeout_uninterruptible((recovery_msecs));
+ }
+ 
+ /*
+diff --git a/drivers/net/wireless/intel/ipw2x00/ipw2100.c b/drivers/net/wireless/intel/ipw2x00/ipw2100.c
+index 23fbddd0c1f8..534ab3b894e2 100644
+--- a/drivers/net/wireless/intel/ipw2x00/ipw2100.c
++++ b/drivers/net/wireless/intel/ipw2x00/ipw2100.c
+@@ -815,7 +815,7 @@ static int ipw2100_hw_send_command(struct ipw2100_priv *priv,
+ 	 * doesn't seem to have as many firmware restart cycles...
+ 	 *
+ 	 * As a test, we're sticking in a 1/100s delay here */
+-	schedule_timeout_uninterruptible(msecs_to_jiffies(10));
++	schedule_msec_hrtimeout_uninterruptible((10));
+ 
+ 	return 0;
+ 
+@@ -1266,7 +1266,7 @@ static int ipw2100_start_adapter(struct ipw2100_priv *priv)
+ 	IPW_DEBUG_FW("Waiting for f/w initialization to complete...\n");
+ 	i = 5000;
+ 	do {
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(40));
++		schedule_msec_hrtimeout_uninterruptible((40));
+ 		/* Todo... wait for sync command ... */
+ 
+ 		read_register(priv->net_dev, IPW_REG_INTA, &inta);
+diff --git a/drivers/rtc/rtc-wm8350.c b/drivers/rtc/rtc-wm8350.c
+index 6eaa9321c074..d52763dba896 100644
+--- a/drivers/rtc/rtc-wm8350.c
++++ b/drivers/rtc/rtc-wm8350.c
+@@ -114,7 +114,7 @@ static int wm8350_rtc_settime(struct device *dev, struct rtc_time *tm)
+ 	/* Wait until confirmation of stopping */
+ 	do {
+ 		rtc_ctrl = wm8350_reg_read(wm8350, WM8350_RTC_TIME_CONTROL);
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(1));
++		schedule_msec_hrtimeout_uninterruptible((1));
+ 	} while (--retries && !(rtc_ctrl & WM8350_RTC_STS));
+ 
+ 	if (!retries) {
+@@ -197,7 +197,7 @@ static int wm8350_rtc_stop_alarm(struct wm8350 *wm8350)
+ 	/* Wait until confirmation of stopping */
+ 	do {
+ 		rtc_ctrl = wm8350_reg_read(wm8350, WM8350_RTC_TIME_CONTROL);
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(1));
++		schedule_msec_hrtimeout_uninterruptible((1));
+ 	} while (retries-- && !(rtc_ctrl & WM8350_RTC_ALMSTS));
+ 
+ 	if (!(rtc_ctrl & WM8350_RTC_ALMSTS))
+@@ -220,7 +220,7 @@ static int wm8350_rtc_start_alarm(struct wm8350 *wm8350)
+ 	/* Wait until confirmation */
+ 	do {
+ 		rtc_ctrl = wm8350_reg_read(wm8350, WM8350_RTC_TIME_CONTROL);
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(1));
++		schedule_msec_hrtimeout_uninterruptible((1));
+ 	} while (retries-- && rtc_ctrl & WM8350_RTC_ALMSTS);
+ 
+ 	if (rtc_ctrl & WM8350_RTC_ALMSTS)
+diff --git a/drivers/scsi/lpfc/lpfc_scsi.c b/drivers/scsi/lpfc/lpfc_scsi.c
+index 212153483874..111f5b5cd15b 100644
+--- a/drivers/scsi/lpfc/lpfc_scsi.c
++++ b/drivers/scsi/lpfc/lpfc_scsi.c
+@@ -5189,7 +5189,7 @@ lpfc_reset_flush_io_context(struct lpfc_vport *vport, uint16_t tgt_id,
+ 					tgt_id, lun_id, context);
+ 	later = msecs_to_jiffies(2 * vport->cfg_devloss_tmo * 1000) + jiffies;
+ 	while (time_after(later, jiffies) && cnt) {
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(20));
++		schedule_msec_hrtimeout_uninterruptible((20));
+ 		cnt = lpfc_sli_sum_iocb(vport, tgt_id, lun_id, context);
+ 	}
+ 	if (cnt) {
+diff --git a/sound/pci/maestro3.c b/sound/pci/maestro3.c
+index 40232a278b1a..d87fae1113aa 100644
+--- a/sound/pci/maestro3.c
++++ b/sound/pci/maestro3.c
+@@ -1995,7 +1995,7 @@ static void snd_m3_ac97_reset(struct snd_m3 *chip)
+ 		outw(0, io + GPIO_DATA);
+ 		outw(dir | GPO_PRIMARY_AC97, io + GPIO_DIRECTION);
+ 
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(delay1));
++		schedule_msec_hrtimeout_uninterruptible((delay1));
+ 
+ 		outw(GPO_PRIMARY_AC97, io + GPIO_DATA);
+ 		udelay(5);
+@@ -2003,7 +2003,7 @@ static void snd_m3_ac97_reset(struct snd_m3 *chip)
+ 		outw(IO_SRAM_ENABLE | SERIAL_AC_LINK_ENABLE, io + RING_BUS_CTRL_A);
+ 		outw(~0, io + GPIO_MASK);
+ 
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(delay2));
++		schedule_msec_hrtimeout_uninterruptible((delay2));
+ 
+ 		if (! snd_m3_try_read_vendor(chip))
+ 			break;
+diff --git a/sound/soc/codecs/rt5631.c b/sound/soc/codecs/rt5631.c
+index 86d58d0df057..19fdf321dc9d 100644
+--- a/sound/soc/codecs/rt5631.c
++++ b/sound/soc/codecs/rt5631.c
+@@ -417,7 +417,7 @@ static void onebit_depop_mute_stage(struct snd_soc_component *component, int ena
+ 	hp_zc = snd_soc_component_read(component, RT5631_INT_ST_IRQ_CTRL_2);
+ 	snd_soc_component_write(component, RT5631_INT_ST_IRQ_CTRL_2, hp_zc & 0xf7ff);
+ 	if (enable) {
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(10));
++		schedule_msec_hrtimeout_uninterruptible((10));
+ 		/* config one-bit depop parameter */
+ 		rt5631_write_index(component, RT5631_SPK_INTL_CTRL, 0x307f);
+ 		snd_soc_component_update_bits(component, RT5631_HP_OUT_VOL,
+@@ -529,7 +529,7 @@ static void depop_seq_mute_stage(struct snd_soc_component *component, int enable
+ 	hp_zc = snd_soc_component_read(component, RT5631_INT_ST_IRQ_CTRL_2);
+ 	snd_soc_component_write(component, RT5631_INT_ST_IRQ_CTRL_2, hp_zc & 0xf7ff);
+ 	if (enable) {
+-		schedule_timeout_uninterruptible(msecs_to_jiffies(10));
++		schedule_msec_hrtimeout_uninterruptible((10));
+ 
+ 		/* config depop sequence parameter */
+ 		rt5631_write_index(component, RT5631_SPK_INTL_CTRL, 0x302f);
 diff --git a/sound/soc/soc-dapm.c b/sound/soc/soc-dapm.c
-index 7f87b449f950..71a8d59afb55 100644
+index acb46e1f9c0a..8f089e6f6985 100644
 --- a/sound/soc/soc-dapm.c
 +++ b/sound/soc/soc-dapm.c
-@@ -154,7 +154,7 @@ static void dapm_assert_locked(struct snd_soc_dapm_context *dapm)
+@@ -156,7 +156,7 @@ static void dapm_assert_locked(struct snd_soc_dapm_context *dapm)
  static void pop_wait(u32 pop_time)
  {
  	if (pop_time)
@@ -13365,16 +13468,525 @@ index 7f87b449f950..71a8d59afb55 100644
  }
  
  __printf(3, 4)
-diff --git a/sound/usb/line6/pcm.c b/sound/usb/line6/pcm.c
-index fdbdfb7bce92..fa8e8faf3eb3 100644
---- a/sound/usb/line6/pcm.c
-+++ b/sound/usb/line6/pcm.c
-@@ -127,7 +127,7 @@ static void line6_wait_clear_audio_urbs(struct snd_line6_pcm *line6pcm,
- 		if (!alive)
- 			break;
- 		set_current_state(TASK_UNINTERRUPTIBLE);
--		schedule_timeout(1);
-+		schedule_min_hrtimeout();
- 	} while (--timeout > 0);
- 	if (alive)
- 		dev_err(line6pcm->line6->ifcdev,
+-- 
+2.49.0
+
+
+From 54ee88bb6108d45d08ee1e2eb7b60d1978005193 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Mon, 20 Feb 2017 13:32:58 +1100
+Subject: [PATCH 10/17] Don't use hrtimer overlay when pm_freezing since some
+ drivers still don't correctly use freezable timeouts.
+
+---
+ kernel/time/hrtimer.c | 2 +-
+ kernel/time/timer.c   | 9 +++++----
+ 2 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/kernel/time/hrtimer.c b/kernel/time/hrtimer.c
+index 1d8fd235e6e2..a08ac3dbd5d5 100644
+--- a/kernel/time/hrtimer.c
++++ b/kernel/time/hrtimer.c
+@@ -2322,7 +2322,7 @@ long __sched schedule_msec_hrtimeout(long timeout)
+ 	 * (yet) better than Hz, as would occur during startup, use regular
+ 	 * timers.
+ 	 */
+-	if (jiffs > 4 || hrtimer_resolution >= NSEC_PER_SEC / HZ)
++	if (jiffs > 4 || hrtimer_resolution >= NSEC_PER_SEC / HZ || pm_freezing)
+ 		return schedule_timeout(jiffs);
+ 
+ 	secs = timeout / 1000;
+diff --git a/kernel/time/timer.c b/kernel/time/timer.c
+index 379e20515624..088723097dff 100644
+--- a/kernel/time/timer.c
++++ b/kernel/time/timer.c
+@@ -44,6 +44,7 @@
+ #include <linux/slab.h>
+ #include <linux/compat.h>
+ #include <linux/random.h>
++#include <linux/freezer.h>
+ 
+ #include <linux/uaccess.h>
+ #include <asm/unistd.h>
+@@ -2078,12 +2079,12 @@ void msleep(unsigned int msecs)
+ 	 * Use high resolution timers where the resolution of tick based
+ 	 * timers is inadequate.
+ 	 */
+-	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ) {
++	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ && !pm_freezing) {
+ 		while (msecs)
+ 			msecs = schedule_msec_hrtimeout_uninterruptible(msecs);
+ 		return;
+ 	}
+-	timeout = msecs_to_jiffies(msecs) + 1;
++	timeout = jiffs + 1;
+ 
+ 	while (timeout)
+ 		timeout = schedule_timeout_uninterruptible(timeout);
+@@ -2100,12 +2101,12 @@ unsigned long msleep_interruptible(unsigned int msecs)
+ 	int jiffs = msecs_to_jiffies(msecs);
+ 	unsigned long timeout;
+ 
+-	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ) {
++	if (jiffs < 5 && hrtimer_resolution < NSEC_PER_SEC / HZ && !pm_freezing) {
+ 		while (msecs && !signal_pending(current))
+ 			msecs = schedule_msec_hrtimeout_interruptible(msecs);
+ 		return msecs;
+ 	}
+-	timeout = msecs_to_jiffies(msecs) + 1;
++	timeout = jiffs + 1;
+ 
+ 	while (timeout && !signal_pending(current))
+ 		timeout = schedule_timeout_interruptible(timeout);
+-- 
+2.49.0
+
+
+From 2357f3bd6d5e152095b0542456058c2858206595 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Tue, 22 Nov 2016 10:15:51 +1100
+Subject: [PATCH 11/17] Make hrtimer granularity and minimum hrtimeout
+ configurable in sysctl. Set default granularity to 100us and min timeout to
+ 500us.
+
+---
+ kernel/sysctl.c           | 23 ++++++++++++++++--
+ kernel/time/clockevents.c |  8 ++-----
+ kernel/time/hrtimer.c     | 49 +++++++++++++++++++++++++++++++++++----
+ 3 files changed, 68 insertions(+), 12 deletions(-)
+
+diff --git a/kernel/sysctl.c b/kernel/sysctl.c
+index c9604d7afce5..37b34f45dc4c 100644
+--- a/kernel/sysctl.c
++++ b/kernel/sysctl.c
+@@ -123,7 +123,9 @@ static int sixty = 60;
+ static unsigned long zero_ul;
+ static unsigned long one_ul = 1;
+ static unsigned long long_max = LONG_MAX;
+-#ifdef CONFIG_PRINTK
++extern int hrtimer_granularity_us;
++extern int hrtimeout_min_us;
++#ifdef CONFIG_PRINTK || defined(CONFIG_SCHED_MUQSS)
+ static int ten_thousand = 10000;
+ #endif
+ #ifdef CONFIG_PERF_EVENTS
+@@ -2039,7 +2041,24 @@ static struct ctl_table kern_table[] = {
+ 	},
+ #endif /* CONFIG_SMP && CONFIG_SCHEDSTATS */
+ #endif /* CONFIG_SCHED_MUQSS */
+-
++	{
++		.procname	= "hrtimer_granularity_us",
++		.data		= &hrtimer_granularity_us,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= &proc_dointvec_minmax,
++		.extra1		= &one,
++		.extra2		= &ten_thousand,
++	},
++	{
++		.procname	= "hrtimeout_min_us",
++		.data		= &hrtimeout_min_us,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= &proc_dointvec_minmax,
++		.extra1		= &one,
++		.extra2		= &ten_thousand,
++	},
+ #if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
+ 	{
+ 		.procname	= "sched_energy_aware",
+diff --git a/kernel/time/clockevents.c b/kernel/time/clockevents.c
+index 7a61971cca74..544c58c29267 100644
+--- a/kernel/time/clockevents.c
++++ b/kernel/time/clockevents.c
+@@ -190,13 +190,9 @@ int clockevents_tick_resume(struct clock_event_device *dev)
+ 
+ #ifdef CONFIG_GENERIC_CLOCKEVENTS_MIN_ADJUST
+ 
+-#ifdef CONFIG_SCHED_MUQSS
++int __read_mostly hrtimer_granularity_us = 100;
+ /* Limit min_delta to 100us */
+-#define MIN_DELTA_LIMIT		(NSEC_PER_SEC / 10000)
+-#else
+-/* Limit min_delta to a jiffie */
+-#define MIN_DELTA_LIMIT		(NSEC_PER_SEC / HZ)
+-#endif
++#define MIN_DELTA_LIMIT		(hrtimer_granularity_us * NSEC_PER_USEC)
+ 
+ /**
+  * clockevents_increase_min_delta - raise minimum delta of a clock event device
+diff --git a/kernel/time/hrtimer.c b/kernel/time/hrtimer.c
+index a08ac3dbd5d5..f20e4b3359db 100644
+--- a/kernel/time/hrtimer.c
++++ b/kernel/time/hrtimer.c
+@@ -2308,7 +2308,7 @@ EXPORT_SYMBOL_GPL(schedule_hrtimeout);
+ long __sched schedule_msec_hrtimeout(long timeout)
+ {
+ 	struct hrtimer_sleeper t;
+-	int delta, secs, jiffs;
++	int delta, jiffs;
+ 	ktime_t expires;
+ 
+ 	if (!timeout) {
+@@ -2325,9 +2325,8 @@ long __sched schedule_msec_hrtimeout(long timeout)
+ 	if (jiffs > 4 || hrtimer_resolution >= NSEC_PER_SEC / HZ || pm_freezing)
+ 		return schedule_timeout(jiffs);
+ 
+-	secs = timeout / 1000;
+ 	delta = (timeout % 1000) * NSEC_PER_MSEC;
+-	expires = ktime_set(secs, delta);
++	expires = ktime_set(0, delta);
+ 
+ 	hrtimer_init_sleeper_on_stack(&t, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+ 	hrtimer_set_expires_range_ns(&t.timer, expires, delta);
+@@ -2349,9 +2348,51 @@ long __sched schedule_msec_hrtimeout(long timeout)
+ 
+ EXPORT_SYMBOL(schedule_msec_hrtimeout);
+ 
++#define USECS_PER_SEC 1000000
++extern int hrtimer_granularity_us;
++
++static inline long schedule_usec_hrtimeout(long timeout)
++{
++	struct hrtimer_sleeper t;
++	ktime_t expires;
++	int delta;
++
++	if (!timeout) {
++		__set_current_state(TASK_RUNNING);
++		return 0;
++	}
++
++	if (hrtimer_resolution >= NSEC_PER_SEC / HZ)
++		return schedule_timeout(usecs_to_jiffies(timeout));
++
++	if (timeout < hrtimer_granularity_us)
++		timeout = hrtimer_granularity_us;
++	delta = (timeout % USECS_PER_SEC) * NSEC_PER_USEC;
++	expires = ktime_set(0, delta);
++
++	hrtimer_init_sleeper_on_stack(&t, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	hrtimer_set_expires_range_ns(&t.timer, expires, delta);
++
++	hrtimer_sleeper_start_expires(&t, HRTIMER_MODE_REL);
++
++	if (likely(t.task))
++		schedule();
++
++	hrtimer_cancel(&t.timer);
++	destroy_hrtimer_on_stack(&t.timer);
++
++	__set_current_state(TASK_RUNNING);
++
++	expires = hrtimer_expires_remaining(&t.timer);
++	timeout = ktime_to_us(expires);
++	return timeout < 0 ? 0 : timeout;
++}
++
++int __read_mostly hrtimeout_min_us = 500;
++
+ long __sched schedule_min_hrtimeout(void)
+ {
+-	return schedule_msec_hrtimeout(1);
++	return usecs_to_jiffies(schedule_usec_hrtimeout(hrtimeout_min_us));
+ }
+ 
+ EXPORT_SYMBOL(schedule_min_hrtimeout);
+-- 
+2.49.0
+
+
+From 8f3f319527b6bedb26ba4523cb3ae0895bf49380 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Wed, 7 Dec 2016 21:13:16 +1100
+Subject: [PATCH 12/17] Make threaded IRQs optionally the default which can be
+ disabled.
+
+---
+ kernel/irq/Kconfig  | 17 +++++++++++++++++
+ kernel/irq/manage.c | 11 +++++++++++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/kernel/irq/Kconfig b/kernel/irq/Kconfig
+index 0f2a44fc0971..ddeff381937a 100644
+--- a/kernel/irq/Kconfig
++++ b/kernel/irq/Kconfig
+@@ -114,6 +114,23 @@ config GENERIC_IRQ_RESERVATION_MODE
+ config IRQ_FORCED_THREADING
+        bool
+ 
++config FORCE_IRQ_THREADING
++	bool "Make IRQ threading compulsory"
++	depends on IRQ_FORCED_THREADING
++	default n
++	help
++
++	  Make IRQ threading mandatory for any IRQ handlers that support it
++	  instead of being optional and requiring the threadirqs kernel
++	  parameter. Instead they can be optionally disabled with the
++	  nothreadirqs kernel parameter.
++
++	  Enabling this may make some architectures not boot with runqueue
++	  sharing and MuQSS.
++
++	  Enable if you are building for a desktop or low latency system,
++	  otherwise say N.
++
+ config SPARSE_IRQ
+ 	bool "Support sparse irq numbering" if MAY_HAVE_SPARSE_IRQ
+ 	help
+diff --git a/kernel/irq/manage.c b/kernel/irq/manage.c
+index c7f4f948f17e..1f5847e12a20 100644
+--- a/kernel/irq/manage.c
++++ b/kernel/irq/manage.c
+@@ -25,9 +25,20 @@
+ #include "internals.h"
+ 
+ #if defined(CONFIG_IRQ_FORCED_THREADING) && !defined(CONFIG_PREEMPT_RT)
++#ifdef CONFIG_FORCE_IRQ_THREADING
++__read_mostly bool force_irqthreads = true;
++#else
+ __read_mostly bool force_irqthreads;
++#endif
+ EXPORT_SYMBOL_GPL(force_irqthreads);
+ 
++static int __init setup_noforced_irqthreads(char *arg)
++{
++	force_irqthreads = false;
++	return 0;
++}
++early_param("nothreadirqs", setup_noforced_irqthreads);
++
+ static int __init setup_forced_irqthreads(char *arg)
+ {
+ 	force_irqthreads = true;
+-- 
+2.49.0
+
+
+From 415bad3428e3dc2a9e94ad561b5a57c39d8fe024 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Wed, 7 Dec 2016 21:23:01 +1100
+Subject: [PATCH 13/17] Reinstate default Hz of 100 in combination with MuQSS
+ and -ck patches.
+
+---
+ kernel/Kconfig.hz | 25 ++++++++++++++++++-------
+ 1 file changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/kernel/Kconfig.hz b/kernel/Kconfig.hz
+index 38ef6d06888e..89ed751ac4e4 100644
+--- a/kernel/Kconfig.hz
++++ b/kernel/Kconfig.hz
+@@ -5,7 +5,8 @@
+ 
+ choice
+ 	prompt "Timer frequency"
+-	default HZ_250
++	default HZ_100 if SCHED_MUQSS
++	default HZ_250_NODEF if !SCHED_MUQSS
+ 	help
+ 	 Allows the configuration of the timer frequency. It is customary
+ 	 to have the timer interrupt run at 1000 Hz but 100 Hz may be more
+@@ -20,11 +21,18 @@ choice
+ 	config HZ_100
+ 		bool "100 HZ"
+ 	help
++	  100 Hz is a suitable choice in combination with MuQSS which does
++	  not rely on ticks for rescheduling interrupts, and is not Hz limited
++	  for timeouts and sleeps from both the kernel and userspace.
++	  This allows us to benefit from the lower overhead and higher
++	  throughput of fewer timer ticks.
++
++	  Non-MuQSS kernels:
+ 	  100 Hz is a typical choice for servers, SMP and NUMA systems
+ 	  with lots of processors that may show reduced performance if
+ 	  too many timer interrupts are occurring.
+ 
+-	config HZ_250
++	config HZ_250_NODEF
+ 		bool "250 HZ"
+ 	help
+ 	 250 Hz is a good compromise choice allowing server performance
+@@ -32,7 +40,10 @@ choice
+ 	 on SMP and NUMA systems. If you are going to be using NTSC video
+ 	 or multimedia, selected 300Hz instead.
+ 
+-	config HZ_300
++	 250 Hz is the default choice for the mainline scheduler but not
++	 advantageous in combination with MuQSS.
++
++	config HZ_300_NODEF
+ 		bool "300 HZ"
+ 	help
+ 	 300 Hz is a good compromise choice allowing server performance
+@@ -40,7 +51,7 @@ choice
+ 	 on SMP and NUMA systems and exactly dividing by both PAL and
+ 	 NTSC frame rates for video and multimedia work.
+ 
+-	config HZ_1000
++	config HZ_1000_NODEF
+ 		bool "1000 HZ"
+ 	help
+ 	 1000 Hz is the preferred choice for desktop systems and other
+@@ -51,9 +62,9 @@ endchoice
+ config HZ
+ 	int
+ 	default 100 if HZ_100
+-	default 250 if HZ_250
+-	default 300 if HZ_300
+-	default 1000 if HZ_1000
++	default 250 if HZ_250_NODEF
++	default 300 if HZ_300_NODEF
++	default 1000 if HZ_1000_NODEF
+ 
+ config SCHED_HRTICK
+ 	def_bool HIGH_RES_TIMERS
+-- 
+2.49.0
+
+
+From 3344335cf439d03af55b94269e8223656b4da1ba Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Sat, 12 Aug 2017 12:02:04 +1000
+Subject: [PATCH 14/17] Swap sucks.
+
+---
+ mm/vmscan.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index bfc384c84139..b8c25d8d8c9c 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -172,7 +172,7 @@ struct scan_control {
+ /*
+  * From 0 .. 200.  Higher means more swappy.
+  */
+-int vm_swappiness = 60;
++int vm_swappiness = 33;
+ 
+ static void set_task_reclaim_state(struct task_struct *task,
+ 				   struct reclaim_state *rs)
+-- 
+2.49.0
+
+
+From e99207cf51179dfa61ad9b6b74f292a53443c3c2 Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Fri, 19 Jul 2019 17:26:51 +1000
+Subject: [PATCH 15/17] Make nohz_full not be picked up as a default config
+ option and add recommendation to help.
+
+---
+ kernel/time/Kconfig | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/time/Kconfig b/kernel/time/Kconfig
+index 3c6267b7a630..e7662101fcc3 100644
+--- a/kernel/time/Kconfig
++++ b/kernel/time/Kconfig
+@@ -75,6 +75,9 @@ config NO_HZ_COMMON
+ 	depends on !ARCH_USES_GETTIMEOFFSET && GENERIC_CLOCKEVENTS
+ 	select TICK_ONESHOT
+ 
++config NO_HZ_FULL
++	bool
++
+ choice
+ 	prompt "Timer tick handling"
+ 	default NO_HZ_IDLE if NO_HZ
+@@ -96,8 +99,9 @@ config NO_HZ_IDLE
+ 
+ 	  Most of the time you want to say Y here.
+ 
+-config NO_HZ_FULL
++config NO_HZ_FULL_NODEF
+ 	bool "Full dynticks system (tickless)"
++	select NO_HZ_FULL
+ 	# NO_HZ_COMMON dependency
+ 	depends on !ARCH_USES_GETTIMEOFFSET && GENERIC_CLOCKEVENTS
+ 	# We need at least one periodic CPU for timekeeping
+@@ -123,6 +127,8 @@ config NO_HZ_FULL
+ 	 transitions: syscalls, exceptions and interrupts. Even when it's
+ 	 dynamically off.
+ 
++	 Not recommended for desktops,laptops, or mobile devices.
++
+ 	 Say N.
+ 
+ endchoice
+-- 
+2.49.0
+
+
+From 2263a109f6a45404e59689c74a5fd611415e328b Mon Sep 17 00:00:00 2001
+From: Con Kolivas <kernel@kolivas.org>
+Date: Sun, 11 Dec 2016 17:08:47 +1100
+Subject: [PATCH 16/17] Add -ck1 version.
+
+---
+ Makefile | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/Makefile b/Makefile
+index b0e2f455eb87..5f43230ca99c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -18,6 +18,10 @@ $(if $(filter __%, $(MAKECMDGOALS)), \
+ PHONY := __all
+ __all:
+ 
++CKVERSION = -ck1
++CKNAME = MuQSS Powered
++EXTRAVERSION := $(EXTRAVERSION)$(CKVERSION)
++
+ # We are using a recursive build, so we need to do a little thinking
+ # to get the ordering right.
+ #
+-- 
+2.49.0
+
+
+From 77013f54904a0483290b345697c5ca4b717aa072 Mon Sep 17 00:00:00 2001
+From: torvic9 <torvic9@users.noreply.github.com>
+Date: Mon, 18 Jan 2021 08:22:41 +0000
+Subject: [PATCH 17/17] Update Kconfig
+
+---
+ drivers/cpufreq/Kconfig | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/cpufreq/Kconfig b/drivers/cpufreq/Kconfig
+index 85de313ddec2..7a50bbab1562 100644
+--- a/drivers/cpufreq/Kconfig
++++ b/drivers/cpufreq/Kconfig
+@@ -40,6 +40,7 @@ choice
+ 	default CPU_FREQ_DEFAULT_GOV_SCHEDUTIL if ARM64 || ARM
+ 	default CPU_FREQ_DEFAULT_GOV_SCHEDUTIL if X86_INTEL_PSTATE && SMP
+ 	default CPU_FREQ_DEFAULT_GOV_PERFORMANCE
++	default CPU_FREQ_DEFAULT_GOV_ONDEMAND if SCHED_MUQSS && !(X86_INTEL_PSTATE)
+ 	help
+ 	  This option sets which CPUFreq governor shall be loaded at
+ 	  startup. If in doubt, use the default setting.
+@@ -71,7 +72,7 @@ config CPU_FREQ_DEFAULT_GOV_USERSPACE
+ 
+ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
+ 	bool "ondemand"
+-	depends on !(X86_INTEL_PSTATE && SMP)
++	depends on SCHED_MUQSS && !(X86_INTEL_PSTATE && SMP)
+ 	select CPU_FREQ_GOV_ONDEMAND
+ 	select CPU_FREQ_GOV_PERFORMANCE
+ 	help
+@@ -146,6 +147,7 @@ config CPU_FREQ_GOV_USERSPACE
+ 
+ config CPU_FREQ_GOV_ONDEMAND
+ 	tristate "'ondemand' cpufreq policy governor"
++	default y if SCHED_MUQSS
+ 	select CPU_FREQ_GOV_COMMON
+ 	help
+ 	  'ondemand' - This driver adds a dynamic cpufreq policy governor.
+-- 
+2.49.0
+
