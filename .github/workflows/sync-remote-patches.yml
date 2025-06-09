@@ -13,9 +13,10 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          - description: BORE patch from CachyOS repo
-            type: direct-link
-            src_file_link: https://github.com/CachyOS/kernel-patches/raw/refs/heads/master/$kver/sched/0001-bore.patch
+          - description: BORE patch from upstream
+            type: patches-in-git-repo
+            repo_link: https://github.com/firelzrd/bore-scheduler.git
+            patch_file_regex: .*/patches/(stable|legacy)/linux-$kver-bore/0001-linux.*.patch
             copy_as: 0001-bore.patch
           - description: Gentoo Kconfig patch
             type: direct-link
@@ -95,6 +96,39 @@ jobs:
               rm $kver/"${{ matrix.copy_as }}".new
             fi
           done
+
+      - name: Sync git-repo patches
+        if: matrix.type == 'patches-in-git-repo'
+        id: patches-in-git-repo-sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+
+          _workspace=$(realpath .)
+
+          git clone ${{ matrix.repo_link }} --depth=1 remote-patch-repo
+
+          cd linux-tkg-patches
+
+          for kver in *
+          do
+            [[ ! -d "$kver" ]] && continue
+
+            echo "Looking for patches for $kver"
+
+            patches=($(find "$_workspace"/remote-patch-repo -regextype posix-extended -regex "${{ matrix.patch_file_regex }}" | sort))
+
+            if [[ "${#patches[@]}" != 0 ]]
+            then
+              echo "Found ${patches[-1]}"
+              cp "${patches[-1]}" $kver/${{ matrix.copy_as }}
+            else
+              echo "Found none"
+            fi
+          done
+
+          rm -rf remote-patch-repo
 
       - name: Check for changes
         id: change-check
