@@ -1,0 +1,159 @@
+From: Michal Suchanek <msuchanek@suse.de>
+Date: Wed, 7 Feb 2018 15:16:04 +0100
+Subject: Add ksym-provides tool.
+Patch-mainline: Never, not needed in upstream
+References: bsc#1077692
+
+Signed-off-by: Michal Suchanek <msuchanek@suse.de>
+---
+ scripts/mod/Makefile        |   6 +-
+ scripts/mod/ksym-provides.c | 124 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 129 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/mod/ksym-provides.c
+
+--- a/scripts/mod/Makefile
++++ b/scripts/mod/Makefile
+@@ -1,11 +1,15 @@
+ # SPDX-License-Identifier: GPL-2.0
+ CFLAGS_REMOVE_empty.o += $(CC_FLAGS_LTO)
+
+-hostprogs-always-y	+= modpost mk_elfconfig
++hostprogs-always-y	+= modpost mk_elfconfig ksym-provides
+ always-y		+= empty.o
+
+ modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
+
++ksym-provides-objs	:= ksym-provides.o
++
++HOSTLDLIBS_ksym-provides := -lelf
++
+ devicetable-offsets-file := devicetable-offsets.h
+
+ $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+--- /dev/null
++++ b/scripts/mod/ksym-provides.c
+@@ -0,0 +1,124 @@
++#include <stdio.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <gelf.h>
++#include <string.h>
++
++int main(int argc, char *argv[])
++{
++	int fd;
++	Elf *elf;
++	Elf_Scn *scn;
++	GElf_Shdr shdr;
++	size_t strndx;
++	int ndx;
++	Elf_Data *symdata, *data;
++	GElf_Sym sym;
++	char *name;
++	const char * flavor = argv[1];
++	const char * prefix = "__crc_";
++	size_t prefixlen = strlen(prefix);
++	const char * symformat = "ksym(%s:%s) = %lx\n";
++
++	if (argc != 3) {
++		fprintf(stderr, "Usage: %s <flavor> <filename>\n", argv[0]);
++		return 1;
++	}
++
++	if (elf_version(EV_CURRENT) == EV_NONE) {
++		fprintf(stderr, "libelf initialization failed: %s\n",
++			elf_errmsg(-1));
++		return 1;
++	}
++
++	fd = open(argv[2], O_RDONLY);
++	if (fd < 0) {
++		perror("open failed");
++		return 1;
++	}
++
++	elf = elf_begin(fd, ELF_C_READ, NULL);
++	if (!elf) {
++		fprintf(stderr, "elf_begin failed: %s\n", elf_errmsg(-1));
++		goto err_close;
++	}
++
++	scn = NULL;
++	while ((scn = elf_nextscn(elf, scn)) != NULL) {
++		if (!gelf_getshdr(scn, &shdr)) {
++			fprintf(stderr, "gelf_getshdr failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++
++		if (shdr.sh_type == SHT_SYMTAB)
++			break;
++	}
++	if (!scn) {
++		fputs("symbol table not found\n", stderr);
++		goto err_end;
++	}
++	strndx = shdr.sh_link;
++
++	symdata = elf_getdata(scn, NULL);
++	if (!symdata) {
++		fprintf(stderr, "elf_getdata failed: %s\n", elf_errmsg(-1));
++		goto err_end;
++	}
++
++	for (ndx = 0; gelf_getsym(symdata, ndx, &sym) != NULL; ++ndx) {
++
++		name = elf_strptr(elf, strndx, sym.st_name);
++		if (!name) {
++			fprintf(stderr, "elf_strptr failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++		if (strncmp(prefix, name, prefixlen))
++			continue;
++
++		if (sym.st_shndx >= SHN_LORESERVE) {
++			printf(symformat, flavor, name + prefixlen,
++				sym.st_value);
++			continue;
++		}
++
++		scn = elf_getscn(elf, sym.st_shndx);
++		if (!scn) {
++			fprintf(stderr, "elf_getscn failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++		if (!gelf_getshdr(scn, &shdr)) {
++			fprintf(stderr, "gelf_getshdr failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++
++		if (shdr.sh_type != SHT_PROGBITS)
++			continue;
++
++		data = elf_getdata_rawchunk(
++			elf, shdr.sh_offset + sym.st_value - shdr.sh_addr,
++			sizeof(GElf_Word), ELF_T_WORD);
++		if (!data) {
++			fprintf(stderr, "elf_getdata_rawchunk failed: %s\n",
++				elf_errmsg(-1));
++			goto err_end;
++		}
++		printf(symformat, flavor, name + prefixlen,
++		       (unsigned long) *(GElf_Word*)data->d_buf);
++	}
++
++	elf_end(elf);
++	close(fd);
++	return 0;
++
++ err_end:
++	elf_end(elf);
++ err_close:
++	close(fd);
++	return 1;
++}
