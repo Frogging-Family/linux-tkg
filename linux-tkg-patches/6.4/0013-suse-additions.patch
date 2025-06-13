@@ -1,6 +1,7 @@
+From 1fb6c67afe9ca7e16d3431e2df69400cd6282546 Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
 Date: Wed, 7 Feb 2018 15:16:04 +0100
-Subject: Add ksym-provides tool.
+Subject: [PATCH 1/6] Add ksym-provides tool.
 
 References: bsc#1077692
 Patch-mainline: no, not needed
@@ -12,6 +13,8 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
  2 files changed, 129 insertions(+), 1 deletion(-)
  create mode 100644 scripts/mod/ksym-provides.c
 
+diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
+index c9e38ad937fd..3df9464a858f 100644
 --- a/scripts/mod/Makefile
 +++ b/scripts/mod/Makefile
 @@ -2,11 +2,15 @@
@@ -31,6 +34,9 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
  devicetable-offsets-file := devicetable-offsets.h
  
  $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+diff --git a/scripts/mod/ksym-provides.c b/scripts/mod/ksym-provides.c
+new file mode 100644
+index 000000000000..c71fb79d4640
 --- /dev/null
 +++ b/scripts/mod/ksym-provides.c
 @@ -0,0 +1,124 @@
@@ -158,11 +164,14 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 +	close(fd);
 +	return 1;
 +}
+-- 
+2.49.0
 
-From bb1a83cf109eee56c8dee26f7910c772f8c246fc Mon Sep 17 00:00:00 2001
+
+From c6bfa97e3d7cbbc207067f3e93e5e218c93600fb Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
-Date: Thu, 29 Jun 2023 17:47:16 +0200
-Subject: [PATCH] depmod: Handle installing modules under a prefix
+Date: Sat, 14 Jun 2025 00:41:10 +0200
+Subject: [PATCH 2/6] depmod: Handle installing modules under a prefix
 
 References: bsc#1212835
 Patch-mainline: Never, upstream rejected
@@ -201,27 +210,29 @@ v5: switch to pkgconfig
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/Makefile b/Makefile
-index 658ec2b8aa74..5a1889fc43c7 100644
+index 80e2b991dd0f..c48e03f3e28b 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -1165,7 +1165,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
+@@ -1177,7 +1177,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
  # makefile but the argument can be passed to make if needed.
  #
-
+ 
 -MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
 +export KERNEL_MODULE_DIRECTORY := $(shell pkg-config --print-variables kmod 2>/dev/null | grep '^module_directory$$' >/dev/null && pkg-config --variable=module_directory kmod || echo /lib/modules)
 +
 +MODLIB	= $(INSTALL_MOD_PATH)$(KERNEL_MODULE_DIRECTORY)/$(KERNELRELEASE)
  export MODLIB
-
+ 
  PHONY += prepare0
---
-2.41.0
+-- 
+2.49.0
 
-From 4d15c9fa058e6dee09324cfc93f48858d4296019 Mon Sep 17 00:00:00 2001
+
+From 64d07027212ffd356156e21304640f231f3ffcfa Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
-Date: Tue, 18 Jul 2023 18:58:43 +0200
-Subject: [PATCH] Revert "kbuild: Hack for depmod not handling X.Y versions"
+Date: Sat, 14 Jun 2025 00:41:56 +0200
+Subject: [PATCH 3/6] Revert "kbuild: Hack for depmod not handling X.Y
+ versions"
 
 References: bsc#1212835
 Patch-mainline: v6.6-rc1
@@ -253,7 +264,7 @@ index 3643b4f896ed..fca689ba4f21 100755
 @@ -23,33 +23,8 @@ if [ -z $(command -v $DEPMOD) ]; then
  	exit 0
  fi
-
+ 
 -# older versions of depmod require the version string to start with three
 -# numbers, so we cheat with a symlink here
 -depmod_hack_needed=true
@@ -285,20 +296,25 @@ index 3643b4f896ed..fca689ba4f21 100755
 -
 -exit $ret
 +exec "$DEPMOD" "$@" "$KERNELRELEASE"
---
-2.41.0
+-- 
+2.49.0
 
-From 0ec8a11bd6287ada08e6c13023ce47be5cdc4270 Mon Sep 17 00:00:00 2001
-From: tkg <tkg@froggi.es>
-Date: Sat, 9 Sep 2023 00:48:37 +0200
-Subject: mkspec: Suse is using /usr/lib instead of the standard /lib symlink. Adapt.
 
+From 3e0544cc79c78299faf5fcc2d6e13e7cce4155fc Mon Sep 17 00:00:00 2001
+From: Etienne JUVIGNY <ti3nou@gmail.com>
+Date: Sat, 14 Jun 2025 00:42:50 +0200
+Subject: [PATCH 4/6] mkspec: Suse is using /usr/lib instead of the standard
+ /lib symlink. Adapt.
+
+---
+ scripts/package/mkspec | 20 ++++++++++++--------
+ 1 file changed, 12 insertions(+), 8 deletions(-)
 
 diff --git a/scripts/package/mkspec b/scripts/package/mkspec
-index de170760d..2b5ee7b35 100755
+index c9299f9c1f3e..09d4246d1dc4 100755
 --- a/scripts/package/mkspec
 +++ b/scripts/package/mkspec
-@@ -121,11 +121,11 @@ $S
+@@ -105,11 +105,11 @@ $M	$MAKE %{?_smp_mflags} INSTALL_MOD_PATH=%{buildroot} modules_install
  	$MAKE %{?_smp_mflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
  	cp System.map %{buildroot}/boot/System.map-$KERNELRELEASE
  	cp .config %{buildroot}/boot/config-$KERNELRELEASE
@@ -312,9 +328,9 @@ index de170760d..2b5ee7b35 100755
 +$S$M	cd %{buildroot}/usr/lib/modules/$KERNELRELEASE
  $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE build
  $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE source
-
-@@ -159,9 +159,9 @@ $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE source
-
+ 
+@@ -139,9 +139,9 @@ $S$M	ln -sf /usr/src/kernels/$KERNELRELEASE source
+ 
  	%files
  	%defattr (-, root, root)
 -$M	/lib/modules/$KERNELRELEASE
@@ -324,9 +340,9 @@ index de170760d..2b5ee7b35 100755
 +$M	%exclude /usr/lib/modules/$KERNELRELEASE/build
 +$M	%exclude /usr/lib/modules/$KERNELRELEASE/source
  	/boot/*
-
+ 
  	%files headers
-@@ -171,6 +171,6 @@ $S$M
+@@ -151,6 +151,10 @@ $S$M
  $S$M	%files devel
  $S$M	%defattr (-, root, root)
  $S$M	/usr/src/kernels/$KERNELRELEASE
@@ -334,21 +350,28 @@ index de170760d..2b5ee7b35 100755
 -$S$M	/lib/modules/$KERNELRELEASE/source
 +$S$M	/usr/lib/modules/$KERNELRELEASE/build
 +$S$M	/usr/lib/modules/$KERNELRELEASE/source
++$S$M
++$S$M	%files syms
++$S$M	%defattr (-, root, root)
++$S$M	/usr/src/kernels/$KERNELRELEASE/doc
  EOF
- 
-From 23133fe6745d567db5b93dc9e6aecc32d31354bd Mon Sep 17 00:00:00 2001
+-- 
+2.49.0
+
+
+From 19efc13d2e9eea113e02047687c742a6153417c2 Mon Sep 17 00:00:00 2001
 From: Jeff Mahoney <jeffm@suse.de>
-Date: Tue, 31 Mar 2009 09:46:30 -0400
-Subject: [PATCH] - doc/README.KSYMS: Add to repo.
+Date: Sat, 14 Jun 2025 00:43:28 +0200
+Subject: [PATCH 5/6] doc/README.KSYMS: Add to repo.
 
 ---
- doc/README.KSYMS      | 6 ++++++
+ doc/README.KSYMS | 6 ++++++
  1 file changed, 6 insertions(+)
  create mode 100644 doc/README.KSYMS
 
 diff --git a/doc/README.KSYMS b/doc/README.KSYMS
 new file mode 100644
-index 00000000000..39fe7878174
+index 000000000000..39fe7878174d
 --- /dev/null
 +++ b/doc/README.KSYMS
 @@ -0,0 +1,6 @@
@@ -358,27 +381,33 @@ index 00000000000..39fe7878174
 +The KMP build process will build KMPs against all installed kernel flavors
 +automatically. If you don't need to build against other flavors than the
 +ones you've already installed - it is safe to uninstall this package.
+-- 
+2.49.0
 
-From 5cd5e149a95d37746a89850f4beddef4f0ad2224 Mon Sep 17 00:00:00 2001
-From: tkg <tkg@froggi.es>
-Date: Sat, 9 Sep 2023 14:06:44 +0200
-Subject: Suse: Add kernel-syms package
 
+From beea3f9f0d3c84df45d43ead38d973d18a18252e Mon Sep 17 00:00:00 2001
+From: Etienne JUVIGNY <ti3nou@gmail.com>
+Date: Sat, 14 Jun 2025 00:43:44 +0200
+Subject: [PATCH 6/6] Suse: Add kernel-syms package
+
+---
+ scripts/package/mkspec | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
 
 diff --git a/scripts/package/mkspec b/scripts/package/mkspec
-index ff8c33ead..51c94131e 100755
+index 09d4246d1dc4..a72845bfca4e 100755
 --- a/scripts/package/mkspec
 +++ b/scripts/package/mkspec
-@@ -52,7 +52,7 @@ $S	Source1: config
+@@ -51,7 +51,7 @@ $S	Source0: linux.tar.gz
+ $S	Source1: config
  $S	Source2: diff.patch
  	Provides: kernel-$KERNELRELEASE
- 	Provides: kernel-uname-r = %{version}
 -$S	BuildRequires: bc binutils bison dwarves
 +$S	BuildRequires: bc binutils bison dwarves coreutils
  $S	BuildRequires: (elfutils-libelf-devel or libelf-devel) flex
  $S	BuildRequires: gcc make openssl openssl-devel perl python3 rsync
  
-@@ -88,6 +88,19 @@ $S$M	%description -n kernel-devel
+@@ -84,6 +84,19 @@ $S$M	%description -n kernel-devel
  $S$M	This package provides kernel headers and makefiles sufficient to build modules
  $S$M	against the $__KERNELRELEASE kernel package.
  $S$M
@@ -394,16 +423,10 @@ index ff8c33ead..51c94131e 100755
 +$S$M	for the standard kernels.
 +$S$M	This package is needed for compiling kernel module packages with proper
 +$S$M	package dependencies.
-+
- $S	# Opt out of a lot of Fedora hardening flags etc...
- $S	# See https://src.fedoraproject.org/rpms/redhat-rpm-config//blob/rawhide/f/buildflags.md
- $S	%undefine _package_note_file
-@@ -173,4 +189,8 @@ $S$M	%defattr (-, root, root)
- $S$M	/usr/src/kernels/$KERNELRELEASE
- $S$M	/usr/lib/modules/$KERNELRELEASE/build
- $S$M	/usr/lib/modules/$KERNELRELEASE/source
 +$S$M
-+$S$M	%files syms
-+$S$M	%defattr (-, root, root)
-+$S$M	/usr/src/kernels/$KERNELRELEASE/doc
- EOF
+ $S	%prep
+ $S	%setup -q -n linux
+ $S	cp %{SOURCE1} .config
+-- 
+2.49.0
+
