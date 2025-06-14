@@ -1,6 +1,7 @@
+From c31733a87460bc9b75482358940f786e138faa9a Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
 Date: Wed, 7 Feb 2018 15:16:04 +0100
-Subject: Add ksym-provides tool.
+Subject: [PATCH 1/4] Add ksym-provides tool.
 
 References: bsc#1077692
 Patch-mainline: no, not needed
@@ -12,6 +13,8 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
  2 files changed, 129 insertions(+), 1 deletion(-)
  create mode 100644 scripts/mod/ksym-provides.c
 
+diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
+index 3c54125eb373..11952aa346aa 100644
 --- a/scripts/mod/Makefile
 +++ b/scripts/mod/Makefile
 @@ -2,11 +2,15 @@
@@ -22,7 +25,7 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 +hostprogs-always-y	+= modpost mk_elfconfig ksym-provides
  always-y		+= empty.o
  
- modpost-objs	:= modpost.o file2alias.o sumversion.o
+ modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
  
 +ksym-provides-objs	:= ksym-provides.o
 +
@@ -31,6 +34,9 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
  devicetable-offsets-file := devicetable-offsets.h
  
  $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+diff --git a/scripts/mod/ksym-provides.c b/scripts/mod/ksym-provides.c
+new file mode 100644
+index 000000000000..c71fb79d4640
 --- /dev/null
 +++ b/scripts/mod/ksym-provides.c
 @@ -0,0 +1,124 @@
@@ -158,11 +164,14 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 +	close(fd);
 +	return 1;
 +}
+-- 
+2.49.0
 
-From bb1a83cf109eee56c8dee26f7910c772f8c246fc Mon Sep 17 00:00:00 2001
+
+From 8adb21e3ccb0c7d6a0defcb233911ab1a28694b5 Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
-Date: Thu, 29 Jun 2023 17:47:16 +0200
-Subject: [PATCH] depmod: Handle installing modules under a prefix
+Date: Sat, 14 Jun 2025 00:07:29 +0200
+Subject: [PATCH 2/4] depmod: Handle installing modules under a prefix
 
 References: bsc#1212835
 Patch-mainline: Never, upstream rejected
@@ -188,49 +197,41 @@ Not great for KMPs, though
 Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 Nacked-by: Masahiro Yamada <masahiroy@kernel.org>
 ---
-v2: Avoid error on systems with kmod that does not support config
-command
-v3: More verbose commit message
-v4:
-  - Document jq requirement
-  - fix bashism
-  - Update to getting full module path, not just additional prefix
-v5: switch to pkgconfig
----
  Makefile | 4 +++-
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/Makefile b/Makefile
-index 658ec2b8aa74..5a1889fc43c7 100644
+index c9a1e2286b3a..83e7f344e803 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -1165,7 +1165,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
+@@ -1099,7 +1099,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
  # makefile but the argument can be passed to make if needed.
  #
-
+ 
 -MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
 +export KERNEL_MODULE_DIRECTORY := $(shell pkg-config --print-variables kmod 2>/dev/null | grep '^module_directory$$' >/dev/null && pkg-config --variable=module_directory kmod || echo /lib/modules)
 +
 +MODLIB	= $(INSTALL_MOD_PATH)$(KERNEL_MODULE_DIRECTORY)/$(KERNELRELEASE)
  export MODLIB
-
+ 
  PHONY += prepare0
---
-2.41.0
+-- 
+2.49.0
 
-From 23133fe6745d567db5b93dc9e6aecc32d31354bd Mon Sep 17 00:00:00 2001
+
+From fce1e836cfd2ab42d35a69a2ca9ade1ecf700db5 Mon Sep 17 00:00:00 2001
 From: Jeff Mahoney <jeffm@suse.de>
-Date: Tue, 31 Mar 2009 09:46:30 -0400
-Subject: [PATCH] - doc/README.KSYMS: Add to repo.
+Date: Sat, 14 Jun 2025 00:07:49 +0200
+Subject: [PATCH 3/4] doc/README.KSYMS: Add to repo.
 
 ---
- doc/README.KSYMS      | 6 ++++++
+ doc/README.KSYMS | 6 ++++++
  1 file changed, 6 insertions(+)
  create mode 100644 doc/README.KSYMS
 
 diff --git a/doc/README.KSYMS b/doc/README.KSYMS
 new file mode 100644
-index 00000000000..39fe7878174
+index 000000000000..39fe7878174d
 --- /dev/null
 +++ b/doc/README.KSYMS
 @@ -0,0 +1,6 @@
@@ -240,15 +241,22 @@ index 00000000000..39fe7878174
 +The KMP build process will build KMPs against all installed kernel flavors
 +automatically. If you don't need to build against other flavors than the
 +ones you've already installed - it is safe to uninstall this package.
+-- 
+2.49.0
 
-From 917d74574856a402e5679d8162407af122c9b8db Mon Sep 17 00:00:00 2001
+
+From 539a4a9db46536fdf257a0ceb56b9dd84dabb693 Mon Sep 17 00:00:00 2001
 From: Etienne JUVIGNY <ti3nou@gmail.com>
-Date: Tue, 12 Sep 2023 03:42:23 +0200
-Subject: Suse: Add kernel-syms package and adapt for /usr/lib usage in Suse instead of the standard /lib symlink.
+Date: Sat, 14 Jun 2025 00:08:09 +0200
+Subject: [PATCH 4/4] Suse: Add kernel-syms package and adapt for /usr/lib
+ usage in Suse instead of the standard /lib symlink.
 
+---
+ scripts/package/kernel.spec | 26 +++++++++++++++++++++-----
+ 1 file changed, 21 insertions(+), 5 deletions(-)
 
 diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
-index ac3f2ee6d..e96ffc9a7 100644
+index 3eee0143e0c5..d95338fde356 100644
 --- a/scripts/package/kernel.spec
 +++ b/scripts/package/kernel.spec
 @@ -17,7 +17,7 @@ Source0: linux.tar.gz
@@ -259,11 +267,11 @@ index ac3f2ee6d..e96ffc9a7 100644
 +BuildRequires: bc binutils bison dwarves coreutils
  BuildRequires: (elfutils-libelf-devel or libelf-devel) flex
  BuildRequires: gcc make openssl openssl-devel perl python3 rsync
-
+ 
 @@ -36,6 +36,19 @@ header files define structures and constants that are needed for
  building most standard programs and are also needed for rebuilding the
  glibc package.
-
+ 
 +%package syms
 +Summary:        Kernel Symbol Versions (modversions) for the $__KERNELRELEASE kernel
 +Group:          Development/Sources
@@ -289,8 +297,8 @@ index ac3f2ee6d..e96ffc9a7 100644
  %if %{with_devel}
  %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='${srctree}/scripts/package/install-extmod-build %{buildroot}/usr/src/kernels/%{KERNELRELEASE}'
  %endif
-@@ -99,8 +112,8 @@ fi
-
+@@ -98,8 +111,8 @@ fi
+ 
  %files
  %defattr (-, root, root)
 -/lib/modules/%{KERNELRELEASE}
@@ -298,9 +306,9 @@ index ac3f2ee6d..e96ffc9a7 100644
 +/usr/lib/modules/%{KERNELRELEASE}
 +%exclude /usr/lib/modules/%{KERNELRELEASE}/build
  /boot/*
-
+ 
  %files headers
-@@ -112,5 +125,8 @@ fi
+@@ -110,5 +123,8 @@ fi
  %files devel
  %defattr (-, root, root)
  /usr/src/kernels/%{KERNELRELEASE}
@@ -310,3 +318,6 @@ index ac3f2ee6d..e96ffc9a7 100644
 +
 +%files syms
 +%defattr (-, root, root)
+-- 
+2.49.0
+

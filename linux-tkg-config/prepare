@@ -15,7 +15,6 @@ _all_scheds=(
   ["muqss"]="Multiple Queue Skiplist Scheduler (MuQSS)"
   ["upds"]="TkG's Undead PDS"
   ["bore"]="Burst-Oriented Response Enhancer Scheduler (BORE)"
-  ["bore-eevdf"]="Burst-Oriented Response Enhancer Scheduler (BORE, EEVDF variant)"
 )
 
 typeset -Ag _cpu_marchs
@@ -367,8 +366,6 @@ _set_cpu_scheduler() {
     _avail_cpu_scheds+=("muqss")
   elif [ "$_kver" = "513" ]; then
     _avail_cpu_scheds+=("muqss")
-  elif [ "$_kver" = "605" ]; then
-    _avail_cpu_scheds+=("bore-eevdf")
   fi
 
   if [ "${_preempt_rt}" = "1" ]; then
@@ -494,26 +491,28 @@ _setup_kernel_work_folder() {
 
   cd "$_kernel_source_folder_abs"
 
-  msg2 "Fetching tag: $_kernel_git_tag from remote $_git_mirror"
-  git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag"
+  msg2 "Fetching tag: $_kernel_git_tag from remote $_git_mirror" | tee "$_where/git_work.log.txt"
+  git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag" &>> "$_where/git_work.log.txt"
 
-  msg2 "Checking out tag: $_kernel_git_tag"
-  msg2 "   in the work folder: $_kernel_work_folder_abs"
+  msg2 "Checking out tag: $_kernel_git_tag" | tee -a "$_where/git_work.log"
+  msg2 "   in the work folder: $_kernel_work_folder_abs" | tee -a "$_where/git_work.log.txt"
 
   # The space ' ' in grep -w "$_kernel_work_folder_abs " is important
   # to not match an existing folder with a longer name with the same prefix name
   if [ -d "$_kernel_work_folder_abs" ] && \
-     ( git worktree list | grep -w "$_kernel_work_folder_abs " ) && \
-     ( cd "$_kernel_work_folder_abs" && git status > /dev/null 2>&1 ); then
+     ( git worktree list | grep -w "$_kernel_work_folder_abs " &> /dev/null ) && \
+     ( cd "$_kernel_work_folder_abs" && git status &> /dev/null ); then
     # Worktree folder exists and is a valid worktree
     cd "$_kernel_work_folder_abs"
-    git reset --hard
-    git clean -ffdx
-    git checkout "$_kernel_git_tag"
+    git reset --hard &>> "$_where/git_work.log.txt"
+    git clean -ffdx &>> "$_where/git_work.log.txt"
+    git am --abort &>> "$_where/git_work.log.txt" || true
+    git rebase --abort &>> "$_where/git_work.log.txt" || true
+    git checkout "$_kernel_git_tag" &>> "$_where/git_work.log.txt"
   else
     # In all other cases, just force create the work tree
-    rm -rf "$_kernel_work_folder_abs"
-    git worktree add -f "$_kernel_work_folder_abs" "$_kernel_git_tag"
+    rm -rf "$_kernel_work_folder_abs" &>> "$_where/git_work.log.txt"
+    git worktree add -f "$_kernel_work_folder_abs" "$_kernel_git_tag" &>> "$_where/git_work.log.txt"
   fi
 
   _set_kver_internal_vars
@@ -543,6 +542,8 @@ _tkg_initscript() {
     "_tt_high_hz"
     "_x86_64_isalvl"
     "_dracut_options"
+    "_bcachefs"
+    "_eevdf_sched_ext_support"
   )
 
   for _deprecated_var in "${_deprecated_config_vars[@]}"; do
@@ -838,22 +839,12 @@ _tkg_srcprep() {
       _msg="Applying Earliest Eligible Virtual Deadline First (EEVDF) scheduler patch"
       tkgpatch="$srcdir/0003-eevdf.patch" && _tkg_patcher
 
-      if [[ "${_cpusched}" != "bore-eevdf" ]]; then
-        _msg="Applying eevdf-Disable-DELAY_DEQUEUE patch"
-        tkgpatch="$srcdir/0004-eevdf-Disable-DELAY_DEQUEUE.patch" && _tkg_patcher
-      fi
+      _msg="Applying eevdf-Disable-DELAY_DEQUEUE patch"
+      tkgpatch="$srcdir/0004-eevdf-Disable-DELAY_DEQUEUE.patch" && _tkg_patcher
+
     elif [[ $_kver -ge 606 ]]; then
       _msg="Applying Glitched EEVDF additions patch"
       tkgpatch="$srcdir/0003-glitched-eevdf-additions.patch" && _tkg_patcher
-      if [ "$_eevdf_sched_ext_support" = "true" ] && [[ $_kver -ge 608 ]] && [[ $_kver -le 611 ]]; then
-        _msg="Applying Sched_ext support patch"
-        tkgpatch="$srcdir/0001-sched-ext.patch" && _tkg_patcher
-      fi
-    fi
-
-    if [ "${_cpusched}" = "bore-eevdf" ]; then
-      _msg="Applying BORE-EEVDF patch"
-      tkgpatch="$srcdir/0001-bore-eevdf.patch" && _tkg_patcher
     fi
   fi
 
@@ -939,7 +930,7 @@ _tkg_srcprep() {
     _disable "MLX5_CORE"
   fi
 
-  if ( [ "$_eevdf_sched_ext_support" = "true" ] && [[ $_kver -ge 608 ]] ) || [[ $_kver -ge 612 ]]; then
+  if [[ $_kver -ge 612 ]]; then
     _enable "SCHED_CLASS_EXT"
   fi
 
@@ -1328,7 +1319,6 @@ _tkg_srcprep() {
     ["eevdf"]="5"
     ["bmq"]="5"
     ["bore"]="5"
-    ["bore-eevdf"]="3"
   )
 
   if [[ -n "$_timer_freq" && ! "${_avail_timer_frequencies[*]}" =~ "$_timer_freq" ]]; then
@@ -1431,28 +1421,9 @@ _tkg_srcprep() {
     fi
   fi
 
-  # bcachefs
-  tkgpatch="$srcdir/0008-${_basekernel}-bcachefs.patch"
-  if [ -e "$tkgpatch" ]; then
-    if [ -z "$_bcachefs" ] && [ "$_kver" != "504" ]; then
-       plain ""
-       plain "Add Bcache filesystem support? You'll have to install bcachefs-tools-git from AUR for utilities."
-       plain "https://bcachefs.org/"
-       warning "This can be buggy and isn't recommended on a production machine, also enabling this option will not allow you to enable MGLRU."
-       read -rp "`echo $'    > N/y : '`" CONDITION8;
-    fi
-    if [[ "$CONDITION8" =~ [yY] ]] || [ "$_bcachefs" = "true" ]; then
-       _msg="Patching Bcache filesystem support override"
-       _tkg_patcher
-
-       _enable "BCACHEFS_FS" "BCACHEFS_QUOTA" "BCACHEFS_POSIX_ACL"
-       _disable "BCACHEFS_DEBUG" "BCACHEFS_TESTS" "DEBUG_CLOSURES" "BCACHEFS_LOCK_TIME_STATS"
-    fi
-  fi
-
   # MGLRU
   tkgpatch="$srcdir/0010-lru_${_basekernel}.patch"
-  if [ -e "$tkgpatch" ] && [ "$_bcachefs" != "true" ] && [[ ! "$CONDITION8" =~ [yY] ]]; then
+  if [ -e "$tkgpatch" ] && [[ ! "$CONDITION8" =~ [yY] ]]; then
     if [ -z "$_mglru" ]; then
        plain ""
        plain "Add multi-generational LRU framework support (improving memory pressure handling)? "
@@ -1507,25 +1478,26 @@ _tkg_srcprep() {
     if [[ "$CONDITION10" =~ [yY] ]] || [ "$_fsync_legacy" = "true" ]; then
       _msg="Patching fsync legacy support"
       _tkg_patcher
-    fi
-  fi
 
-  # futex2 support
-  tkgpatch="$srcdir/0007-v${_basekernel}-futex2_interface.patch"
-  if [ -e "$tkgpatch" ]; then
-    if [ -z "$_fsync_futex2" ]; then
-      plain ""
-      plain "Enable support for futex2, a DEPRECATED replacement for esync and fsync in Valve Proton 5.13 experimental"
-      plain "Can be enabled alongside fsync legacy patchset to have a fallback option"
-      plain "https://gitlab.collabora.com/tonyk/linux/-/tree/futex2-dev"
-      plain "https://github.com/ValveSoftware/Proton/issues/4568"
-      read -rp "`echo $'    > N/y : '`" CONDITION11;
-    fi
-    if [[ "$CONDITION11" =~ [yY] ]] || [ "$_fsync_futex2" = "true" ]; then
-      _msg="Patching futex2 support"
-      _tkg_patcher
-      _enable "FUTEX2"
-      _enable "EXPERT" && _expert="true"
+      # futex2 support
+      tkgpatch="$srcdir/0007-v${_basekernel}-futex2_interface.patch"
+      if [ -e "$tkgpatch" ]; then
+        if [ -z "$_fsync_futex2" ]; then
+          plain ""
+          plain "Enable support for futex2, a DEPRECATED replacement for esync and fsync in Valve Proton 5.13 experimental"
+          plain "Can be enabled alongside fsync legacy patchset to have a fallback option"
+          plain "https://gitlab.collabora.com/tonyk/linux/-/tree/futex2-dev"
+          plain "https://github.com/ValveSoftware/Proton/issues/4568"
+          read -rp "`echo $'    > N/y : '`" CONDITION11;
+        fi
+        if [[ "$CONDITION11" =~ [yY] ]] || [ "$_fsync_futex2" = "true" ]; then
+          _msg="Patching futex2 support"
+          _tkg_patcher
+          _enable "FUTEX2"
+          _enable "EXPERT" && _expert="true"
+        fi
+      fi
+
     fi
   fi
 
@@ -1994,6 +1966,9 @@ exit_cleanup() {
 
   # Copy over the customization.cfg file to the logs folder
   cp -f "$_where"/customization.cfg "$_where"/logs/customization.cfg.txt
+
+  [[ -f "$_where"/git_work.log.txt ]] && \
+    mv -f "$_where"/git_work.log.txt "$_where"/logs/git_work.log.txt
 
   # Create logs/system-info.txt
   cat /etc/os-release > "$_where"/logs/system-info.txt

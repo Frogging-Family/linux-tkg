@@ -1,6 +1,7 @@
+From 9291f67cf9a76f2367aecf2f2c71be005e95950f Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
-Date: Wed, 7 Feb 2018 15:16:04 +0100
-Subject: Add ksym-provides tool.
+Date: Fri, 13 Jun 2025 23:38:48 +0200
+Subject: [PATCH 1/4] Add ksym-provides tool.
 
 References: bsc#1077692
 Patch-mainline: no, not needed
@@ -12,25 +13,30 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
  2 files changed, 129 insertions(+), 1 deletion(-)
  create mode 100644 scripts/mod/ksym-provides.c
 
+diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
+index 3c54125eb373..11952aa346aa 100644
 --- a/scripts/mod/Makefile
 +++ b/scripts/mod/Makefile
 @@ -2,11 +2,15 @@
  OBJECT_FILES_NON_STANDARD := y
  CFLAGS_REMOVE_empty.o += $(CC_FLAGS_LTO)
-
+ 
 -hostprogs-always-y	+= modpost mk_elfconfig
 +hostprogs-always-y	+= modpost mk_elfconfig ksym-provides
  always-y		+= empty.o
-
+ 
  modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
-
+ 
 +ksym-provides-objs	:= ksym-provides.o
 +
 +HOSTLDLIBS_ksym-provides := -lelf
 +
  devicetable-offsets-file := devicetable-offsets.h
-
+ 
  $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+diff --git a/scripts/mod/ksym-provides.c b/scripts/mod/ksym-provides.c
+new file mode 100644
+index 000000000000..c71fb79d4640
 --- /dev/null
 +++ b/scripts/mod/ksym-provides.c
 @@ -0,0 +1,124 @@
@@ -158,11 +164,14 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 +	close(fd);
 +	return 1;
 +}
+-- 
+2.49.0
 
-From bb1a83cf109eee56c8dee26f7910c772f8c246fc Mon Sep 17 00:00:00 2001
+
+From dc99c90b3f857b9728cbb7bd7e5ff79b70be586d Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
-Date: Thu, 29 Jun 2023 17:47:16 +0200
-Subject: [PATCH] depmod: Handle installing modules under a prefix
+Date: Fri, 13 Jun 2025 23:36:48 +0200
+Subject: [PATCH 2/4] depmod: Handle installing modules under a prefix
 
 References: bsc#1212835
 Patch-mainline: Never, upstream rejected
@@ -201,36 +210,37 @@ v5: switch to pkgconfig
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/Makefile b/Makefile
-index 658ec2b8aa74..5a1889fc43c7 100644
+index d9243ad053f9..bb25a037d224 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -1165,7 +1165,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
+@@ -1086,7 +1086,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
  # makefile but the argument can be passed to make if needed.
  #
-
+ 
 -MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
 +export KERNEL_MODULE_DIRECTORY := $(shell pkg-config --print-variables kmod 2>/dev/null | grep '^module_directory$$' >/dev/null && pkg-config --variable=module_directory kmod || echo /lib/modules)
 +
 +MODLIB	= $(INSTALL_MOD_PATH)$(KERNEL_MODULE_DIRECTORY)/$(KERNELRELEASE)
  export MODLIB
-
+ 
  PHONY += prepare0
---
-2.41.0
+-- 
+2.49.0
 
-From 23133fe6745d567db5b93dc9e6aecc32d31354bd Mon Sep 17 00:00:00 2001
+
+From faf5323d928e7693cc6c6c807f218245504145ab Mon Sep 17 00:00:00 2001
 From: Jeff Mahoney <jeffm@suse.de>
-Date: Tue, 31 Mar 2009 09:46:30 -0400
-Subject: [PATCH] - doc/README.KSYMS: Add to repo.
+Date: Fri, 13 Jun 2025 23:40:09 +0200
+Subject: [PATCH 3/4] doc/README.KSYMS: Add to repo.
 
 ---
- doc/README.KSYMS      | 6 ++++++
+ doc/README.KSYMS | 6 ++++++
  1 file changed, 6 insertions(+)
  create mode 100644 doc/README.KSYMS
 
 diff --git a/doc/README.KSYMS b/doc/README.KSYMS
 new file mode 100644
-index 00000000000..39fe7878174
+index 000000000000..39fe7878174d
 --- /dev/null
 +++ b/doc/README.KSYMS
 @@ -0,0 +1,6 @@
@@ -240,15 +250,22 @@ index 00000000000..39fe7878174
 +The KMP build process will build KMPs against all installed kernel flavors
 +automatically. If you don't need to build against other flavors than the
 +ones you've already installed - it is safe to uninstall this package.
+-- 
+2.49.0
 
-From 917d74574856a402e5679d8162407af122c9b8db Mon Sep 17 00:00:00 2001
+
+From 1aa37aac6b47237c38c93a283bb88d5b20235cf9 Mon Sep 17 00:00:00 2001
 From: Etienne JUVIGNY <ti3nou@gmail.com>
-Date: Tue, 12 Sep 2023 03:42:23 +0200
-Subject: Suse: Add kernel-syms package and adapt for /usr/lib usage in Suse instead of the standard /lib symlink.
+Date: Fri, 13 Jun 2025 23:33:10 +0200
+Subject: [PATCH 4/4] Suse: Add kernel-syms package and adapt for /usr/lib
+ usage in Suse instead of the standard /lib symlink.
 
+---
+ scripts/package/kernel.spec | 56 ++++++++++++++++++++++++-------------
+ 1 file changed, 36 insertions(+), 20 deletions(-)
 
 diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
-index fffc8af..c529f3e 100644
+index c52d517b9364..722c86311417 100644
 --- a/scripts/package/kernel.spec
 +++ b/scripts/package/kernel.spec
 @@ -17,7 +17,7 @@ Source0: linux.tar.gz
@@ -259,7 +276,7 @@ index fffc8af..c529f3e 100644
 +BuildRequires: bc binutils bison dwarves coreutils
  BuildRequires: (elfutils-libelf-devel or libelf-devel) flex
  BuildRequires: gcc make openssl openssl-devel perl python3 rsync
-
+ 
 @@ -35,6 +35,19 @@ between the Linux kernel and userspace libraries and programs.  The
  header files define structures and constants that are needed for
  building most standard programs and are also needed for rebuilding the
@@ -277,12 +294,12 @@ index fffc8af..c529f3e 100644
 +This package is needed for compiling kernel module packages with proper
 +package dependencies.
 +
-
+ 
  %if %{with_devel}
  %package devel
-@@ -55,39 +68,39 @@ patch -p1 < %{SOURCE2}
+@@ -55,38 +68,38 @@ patch -p1 < %{SOURCE2}
  %{make} %{makeflags} KERNELRELEASE=%{KERNELRELEASE} KBUILD_BUILD_VERSION=%{release}
-
+ 
  %install
 -mkdir -p %{buildroot}/lib/modules/%{KERNELRELEASE}
 -cp $(%{make} %{makeflags} -s image_name) %{buildroot}/lib/modules/%{KERNELRELEASE}/vmlinuz
@@ -304,68 +321,69 @@ index fffc8af..c529f3e 100644
  %if %{with_devel}
  %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='${srctree}/scripts/package/install-extmod-build %{buildroot}/usr/src/kernels/%{KERNELRELEASE}'
  %endif
-
+ 
  {
 -	echo "/lib/modules/%{KERNELRELEASE}"
 +	echo "/usr/lib/modules/%{KERNELRELEASE}"
-
+ 
  	for x in alias alias.bin builtin.alias.bin builtin.bin dep dep.bin \
  					devname softdep symbols symbols.bin; do
 -		echo "%ghost /lib/modules/%{KERNELRELEASE}/modules.${x}"
 +		echo "%ghost /usr/lib/modules/%{KERNELRELEASE}/modules.${x}"
  	done
-
+ 
  	for x in System.map config vmlinuz; do
  		echo "%ghost /boot/${x}-%{KERNELRELEASE}"
  	done
-
+ 
 -	if [ -d "%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb" ];then
--		echo "/lib/modules/%{KERNELRELEASE}/dtb"
 -		find "%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb" -printf "%%%ghost /boot/dtb-%{KERNELRELEASE}/%%P\n"
 +	if [ -d "%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb" ];then
-+		echo "/usr/lib/modules/%{KERNELRELEASE}/dtb"
 +		find "%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb" -printf "%%%ghost /boot/dtb-%{KERNELRELEASE}/%%P\n"
  	fi
-
+ 
 -	echo "%exclude /lib/modules/%{KERNELRELEASE}/build"
 +	echo "%exclude /usr/lib/modules/%{KERNELRELEASE}/build"
  } > %{buildroot}/kernel.list
-
+ 
  %clean
-@@ -95,19 +108,19 @@ rm -rf %{buildroot}
-
+@@ -94,19 +107,19 @@ rm -rf %{buildroot}
+ 
  %post
  if [ -x /usr/bin/kernel-install ]; then
 -	/usr/bin/kernel-install add %{KERNELRELEASE} /lib/modules/%{KERNELRELEASE}/vmlinuz
-+	/usr/bin/kernel-install add %{KERNELRELEASE} /usr/lib/modules/%{KERNELRELEASE}/vmlinuz
++	/usr/bin/kernel-install add %{KERNELRELEASE} /usr/usr/lib/modules/%{KERNELRELEASE}/vmlinuz
  fi
  for file in vmlinuz System.map config; do
 -	if ! cmp --silent "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
 -		cp "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
-+	if ! cmp --silent "/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
-+		cp "/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
++	if ! cmp --silent "/usr/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
++		cp "/usr/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
  	fi
  done
 -if [ -d "/lib/modules/%{KERNELRELEASE}/dtb" ] && \
 -   ! diff -rq "/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}" >/dev/null 2>&1; then
-+if [ -d "/usr/lib/modules/%{KERNELRELEASE}/dtb" ] && \
-+   ! diff -rq "/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}" >/dev/null 2>&1; then
++if [ -d "/usr/usr/lib/modules/%{KERNELRELEASE}/dtb" ] && \
++   ! diff -rq "/usr/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}" >/dev/null 2>&1; then
  	rm -rf "/boot/dtb-%{KERNELRELEASE}"
 -	cp -r "/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}"
-+	cp -r "/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}"
++	cp -r "/usr/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}"
  fi
 -if [ ! -e "/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
-+if [ ! -e "/usr/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
++if [ ! -e "/usr/usr/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
  	/usr/sbin/depmod %{KERNELRELEASE}
  fi
-
-@@ -128,5 +141,8 @@ fi
+ 
+@@ -127,5 +140,8 @@ fi
  %files devel
  %defattr (-, root, root)
  /usr/src/kernels/%{KERNELRELEASE}
 -/lib/modules/%{KERNELRELEASE}/build
-+/usr/lib/modules/%{KERNELRELEASE}/build
++/usr/usr/lib/modules/%{KERNELRELEASE}/build
  %endif
 +
 +%files syms
 +%defattr (-, root, root)
+-- 
+2.49.0
+
