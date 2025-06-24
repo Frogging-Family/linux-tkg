@@ -1,0 +1,57 @@
+name: check if patches apply
+on:
+  schedule:
+    - cron: '47 0 * * 6' # "At 12:47 AM, only on Saturday"
+  workflow_dispatch:
+
+jobs:
+
+  check-patches:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout linux-tkg
+        uses: actions/checkout@v4
+
+      - name: List unclean patches
+        id: unclean-print
+        run: |
+          cd linux-tkg-patches
+          ./patchwork print unclean | tee /tmp/linux-tkg-unclean-patches.txt
+
+          if [[ $(cat /tmp/linux-tkg-unclean-patches.txt | wc -l) == 0 ]]; then
+            echo "All patches good!" >> $GITHUB_STEP_SUMMARY
+            echo "patches-unclean=0" >> $GITHUB_OUTPUT
+          else
+            echo "These patches don't apply:" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/linux-tkg-unclean-patches.txt | xargs -I'{}' echo '- `{}`' >> $GITHUB_STEP_SUMMARY
+            echo "patches-unclean=1" >> $GITHUB_OUTPUT
+          fi
+
+          git add .
+
+      - name: Check for cache changes
+        id: change-check
+        run: |
+          if git diff --cached --exit-code > /dev/null
+          then
+            echo "patches-updated=0" >> $GITHUB_OUTPUT
+          else
+            echo "patches-updated=1" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update patch cache
+        if: steps.change-check.outputs.patches-updated == '1'
+        run: |
+          git config --global user.name 'Frogminer'
+          git config --global user.email 'frogminer@miner.frog'
+
+          cd linux-tkg-patches
+          git add */patchwork/last*
+          git commit -m "Update patch last-successful-check cache"
+          git pull --rebase
+          git push
+
+      - name: Fail if unclean patches exist
+        if: steps.unclean-print.outputs.patches-unclean == '1'
+        run: 'false'
