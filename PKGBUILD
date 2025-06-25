@@ -72,7 +72,7 @@ fi
 optdepends=('schedtool')
 options=('!strip' 'docs')
 
-for f in "$_where"/linux-tkg-config/"$_basekernel"/* "$_where"/linux-tkg-patches/"$_basekernel"/*; do
+for f in "$_where"/linux-tkg-config/"$_basekernel"/* "$_where"/linux-tkg-patches/"$_basekernel"/*.patch; do
   source+=( "$f" )
   sha256sums+=( "SKIP" )
 done
