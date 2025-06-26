@@ -88,8 +88,30 @@ prepare() {
   rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
   ln -s "${_kernel_work_folder_abs}" "${srcdir}"
+  
+  if [ "$_quality_assurance" = "true" ]; then
+        export LANG=C
+        myRED='\033[31m'
+        myGREEN='\033[32m'
+        myNC='\033[0m' # No Color
 
-  _tkg_srcprep
+        _tkg_srcprep
+
+        echo
+        echo "####"
+        echo "# Quality Assurance stops here"
+        echo "# Please also manually check "$_where"/logs/prepare.log.txt"
+        echo "#"
+        if grep -iE -B 1 "error|fail|file to patch at input line" "$_where"/logs/prepare.log.txt; then
+                echo -e "# QA: ${myRED}FAILED${myNC}"
+        else
+                echo -e "# QA: ${myGREEN}PASSED${myNC}"
+        fi
+        echo "####"
+        exit
+  else
+        _tkg_srcprep
+  fi
 }
 
 build() {
