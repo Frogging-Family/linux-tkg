@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+# Goes through every kernel version and selects defaults
+# then prints which CONFIG options were not honored even though the 'prepare' script tried to set them
+
+set -e
+
+_conf_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+cd "$_conf_dir"
+
+typeset -Ag _failed_configs
+
+_md_output=""
+
+_kernel_versions=$(echo 5.? 5.?? 6.? 6.??)
+
+_install_script=$(realpath "$_conf_dir"/../install.sh)
+for _kver in $_kernel_versions ; do
+  echo "Checking kernel $_kver" >&2
+  yes "" | _logging_use_script="no" _version="${_kver}-latest" _distro=Generic "$_install_script" config 1>&2
+  if [[ -f "$_conf_dir"/../logs/tkg-failed-config-diffs.md.txt ]]; then
+    while read -r _config; do
+      _no_prefix_config="${_config#'CONFIG_'}"
+      _failed_configs[$_no_prefix_config]+=" $_kver"
+    done < "$_conf_dir"/../logs/tkg-failed-configs.txt
+    _md_output+="\n\n## Kernel $_kver\n\n"
+    _md_output+="$(cat "$_conf_dir"/../logs/tkg-failed-config-diffs.md.txt)"
+  fi
+done
+
+_summary_table="| |"
+_under_header="| --- |"
+for _kver in $_kernel_versions ; do
+  _summary_table+=" $_kver |"
+  _under_header+=" --- |"
+done
+
+_summary_table+="\n$_under_header\n"
+
+for _config in "${!_failed_configs[@]}"; do
+  _summary_table+="| $_config |"
+  for _kver in $_kernel_versions ; do
+    if [[ ${_failed_configs[$_config]} =~ "$_kver" ]]; then
+      _summary_table+="❌ |"
+    else
+      _summary_table+="✅ |"
+    fi
+  done
+  _summary_table+="\n"
+done
+
+echo "## Summary"
+echo
+echo -e "$_summary_table"
+echo
+echo -e "$_md_output"
