@@ -5,7 +5,7 @@ set -e
 
 ###################### Definition of helper variables and functions
 
-_where=`pwd`
+_where=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 srcdir="$_where"
 
 # Command used for superuser privileges (`sudo`, `doas`, `su`)
@@ -41,17 +41,17 @@ plain() {
 # we don't export the environment in the script sub-command so sourcing current_env will
 # get us the actual environment
 if [[ -z "$SCRIPT" ]]; then
-  declare -p -x > current_env
+  declare -p -x > "$_where"/current_env
 fi
 
-source customization.cfg
+source "$_where"/customization.cfg
 
 if [ -e "$_EXT_CONFIG_PATH" ]; then
   msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
   source "$_EXT_CONFIG_PATH"
 fi
 
-. current_env
+. "$_where"/current_env
 
 if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   # using script is enabled, but we are not within the script sub-command
@@ -61,7 +61,7 @@ if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   exit
 fi
 
-source linux-tkg-config/prepare
+source "$_where"/linux-tkg-config/prepare
 
 ####################################################################
 
