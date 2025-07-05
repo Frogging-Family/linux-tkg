@@ -53,7 +53,7 @@ _hash() {
 
 _rebase_start(){
 
-  typeset -r _shasum_var_name="_patch_sha256_sum"
+  typeset -r _patch_tree_hash_var_name="_patch_branch_hash"
   typeset -r _kernel_tag_var_name="_patch_kernel_tag"
 
   local _patch="$1"
@@ -66,14 +66,44 @@ _rebase_start(){
   local _patch_name=$(basename "$_patch")
   local _kernel_ver=$(dirname "$_patch")
   _version="$_kernel_ver-latest"
+  _set_kernel_version
+
+  local _interdeps_folder="$_where/linux-tkg-patches/$_kernel_ver/patchwork/interdeps/"
+  local _patch_dep_file="$_interdeps_folder/$(basename "$_patch")"
+
+  local _parent_patches=()
+  local _child_patch="$_patch"
+  local _patch_branch_curr_hash=$(_hash "$_where/linux-tkg-patches/$_patch")
+  while [[ -f "$_patch_dep_file" ]]; do
+
+    if [[ "$(cat "$_patch_dep_file" | wc -l)" != "1" ]]; then
+      error "$_patch_dep_file has more than one line in it"
+      exit 1
+    fi
+
+    local _parent_patch_name=$(cat "$_patch_dep_file")
+    msg2 "Patch $_child_patch depends on $_parent_patch_name"
+
+    if [[ ! -f "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" ]]; then
+      error "$_kernel_ver: parent patch $_parent_patch_name of $_child_patch doesn't exist"
+      exit 1
+    fi
+
+    local _patch_hash=$(_hash "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name")
+    local _patch_branch_curr_hash=$(_hash <(echo "${_patch_branch_curr_hash}${_patch_hash}"))
+
+    _parent_patches=("$_parent_patch_name" "${_parent_patches[@]}")
+
+    local _child_patch="$_parent_patch_name"
+    local _patch_dep_file="$_interdeps_folder/$(basename "$_parent_patch_name")"
+  done
 
   local _last_check_file="$_where/linux-tkg-patches/$_kernel_ver/patchwork/last-successful-check/$_patch_name"
   if [[ "$2" == "is-clean" && -f "$_last_check_file" ]]; then
-    _set_kernel_version
 
     source "$_last_check_file"
 
-    if [[ "$(_hash "$_patch_file")" == "${!_shasum_var_name}" && "$_kernel_git_tag" == "${!_kernel_tag_var_name}" ]]
+    if [[ "$_patch_branch_curr_hash" == "${!_patch_tree_hash_var_name}" && "$_kernel_git_tag" == "${!_kernel_tag_var_name}" ]]
     then
       return 0
     fi
@@ -90,27 +120,7 @@ _rebase_start(){
   echo "$_patch" > tkg-patch-fixes/patch_name
   echo "$_kernel_git_tag" > tkg-patch-fixes/original_commit
 
-  local _interdeps_folder="$_where/linux-tkg-patches/$_kernel_ver/patchwork/interdeps/"
-  local _patch_dep_file="$_interdeps_folder/$(basename "$_patch")"
-
-  local _parent_patches=()
-  local _child_patch="$_patch"
-  while [[ -f "$_patch_dep_file" ]]; do
-    local _parent_patch_name=$(shuf -n 1 "$_patch_dep_file")
-    msg2 "Patch $_child_patch depends on $_parent_patch_name"
-
-    if [[ ! -f "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" ]]; then
-      error "Parent patch $_kernel_ver/$_parent_patch_name of $_patch doesn't exist"
-      exit 1
-    fi
-
-
-    _parent_patches=("$_parent_patch_name" "${_parent_patches[@]}")
-
-    local _child_patch="$_parent_patch_name"
-    local _patch_dep_file="$_interdeps_folder/$(basename "$_parent_patch_name")"
-  done
-
+  local _parents_hash=""
   for _parent_patch_name in "${_parent_patches[@]}"; do
     if patch -Np1 -i "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" &> /dev/null; then
       git add .
@@ -126,7 +136,7 @@ _rebase_start(){
   if [[ "$2" == "is-clean" ]]; then
     if patch -Np1 -i "$_where/linux-tkg-patches/$_patch"; then
       mkdir -p "$(dirname "$_last_check_file")"
-      echo "$_shasum_var_name=$(_hash "$_patch_file")" > "$_last_check_file"
+      echo "$_patch_tree_hash_var_name=$(_hash "$_patch_file")" > "$_last_check_file"
       echo "$_kernel_tag_var_name=$_kernel_git_tag" >> "$_last_check_file"
       return 0
     else
