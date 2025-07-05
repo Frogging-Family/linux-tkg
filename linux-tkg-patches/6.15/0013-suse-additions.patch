@@ -1,35 +1,71 @@
+From 9a5aaac865a1179ecb389d2eb41aa2ed9387d809 Mon Sep 17 00:00:00 2001
 From: Michal Suchanek <msuchanek@suse.de>
 Date: Wed, 7 Feb 2018 15:16:04 +0100
-Subject: Add ksym-provides tool.
-Patch-mainline: Never, not needed in upstream
-References: bsc#1077692
+Subject: [PATCH 1/2] Add ksym-provides tool.
 
 Signed-off-by: Michal Suchanek <msuchanek@suse.de>
+Signed-off-by: Adel KARA SLIMANE <adel.ks@zegrapher.com>
 ---
+ Makefile                    |   4 +-
+ doc/README.KSYMS            |   6 ++
  scripts/mod/Makefile        |   6 +-
  scripts/mod/ksym-provides.c | 124 ++++++++++++++++++++++++++++++++++++
- 2 files changed, 129 insertions(+), 1 deletion(-)
+ scripts/package/kernel.spec |  19 ++++++
+ 5 files changed, 157 insertions(+), 2 deletions(-)
+ create mode 100644 doc/README.KSYMS
  create mode 100644 scripts/mod/ksym-provides.c
 
+diff --git a/Makefile b/Makefile
+index c1bde4eef2bf..889df95313c7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1167,7 +1167,9 @@ export INSTALL_DTBS_PATH ?= $(INSTALL_PATH)/dtbs/$(KERNELRELEASE)
+ # makefile but the argument can be passed to make if needed.
+ #
+ 
+-MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
++export KERNEL_MODULE_DIRECTORY := $(shell pkg-config --print-variables kmod 2>/dev/null | grep '^module_directory$$' >/dev/null && pkg-config --variable=module_directory kmod || echo /lib/modules)
++
++MODLIB	= $(INSTALL_MOD_PATH)$(KERNEL_MODULE_DIRECTORY)/$(KERNELRELEASE)
+ export MODLIB
+ 
+ PHONY += prepare0
+diff --git a/doc/README.KSYMS b/doc/README.KSYMS
+new file mode 100644
+index 000000000000..39fe7878174d
+--- /dev/null
++++ b/doc/README.KSYMS
+@@ -0,0 +1,6 @@
++This file is a place holder for the kernel-syms{,-rt} package. It is used
++to group build dependencies for all kernel flavors.
++
++The KMP build process will build KMPs against all installed kernel flavors
++automatically. If you don't need to build against other flavors than the
++ones you've already installed - it is safe to uninstall this package.
+diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
+index c729bc936bae..10852bc9a3a9 100644
 --- a/scripts/mod/Makefile
 +++ b/scripts/mod/Makefile
 @@ -1,11 +1,15 @@
  # SPDX-License-Identifier: GPL-2.0
  CFLAGS_REMOVE_empty.o += $(CC_FLAGS_LTO)
-
+ 
 -hostprogs-always-y	+= modpost mk_elfconfig
 +hostprogs-always-y	+= modpost mk_elfconfig ksym-provides
  always-y		+= empty.o
-
+ 
  modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
-
+ 
 +ksym-provides-objs	:= ksym-provides.o
 +
 +HOSTLDLIBS_ksym-provides := -lelf
 +
  devicetable-offsets-file := devicetable-offsets.h
-
+ 
  $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+diff --git a/scripts/mod/ksym-provides.c b/scripts/mod/ksym-provides.c
+new file mode 100644
+index 000000000000..c71fb79d4640
 --- /dev/null
 +++ b/scripts/mod/ksym-provides.c
 @@ -0,0 +1,124 @@
@@ -157,3 +193,178 @@ Signed-off-by: Michal Suchanek <msuchanek@suse.de>
 +	close(fd);
 +	return 1;
 +}
+diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
+index 419697fdf289..da6c327afa43 100644
+--- a/scripts/package/kernel.spec
++++ b/scripts/package/kernel.spec
+@@ -46,6 +46,19 @@ This package provides kernel headers and makefiles sufficient to build modules
+ against the %{version} kernel package.
+ %endif
+ 
++%package syms
++Summary:        Kernel Symbol Versions (modversions) for the $__KERNELRELEASE kernel
++Group:          Development/Sources
++AutoReqProv:    no
++Provides:       kernel-syms = %{version}
++Requires:       kernel-devel = %{version}
++%description -n kernel-syms
++Kernel symbols, such as functions and variables, have version
++information attached to them. This package contains the symbol versions
++for the standard kernels.
++This package is needed for compiling kernel module packages with proper
++package dependencies.
++
+ %if %{with_debuginfo}
+ # list of debuginfo-related options taken from distribution kernel.spec
+ # files
+@@ -116,6 +129,8 @@ ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/lib/modules/%{KERNELRELEA
+ %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='${srctree}/scripts/package/install-extmod-build %{buildroot}/usr/src/kernels/%{KERNELRELEASE}'
+ %endif
+ 
++cp -r doc %{buildroot}/usr/src/kernels/%{KERNELRELEASE}/
++
+ {
+ 	echo "/lib/modules/%{KERNELRELEASE}"
+ 
+@@ -189,3 +204,7 @@ fi
+ /usr/src/kernels/%{KERNELRELEASE}
+ /lib/modules/%{KERNELRELEASE}/build
+ %endif
++
++%files syms
++%defattr (-, root, root)
++/usr/src/kernels/%{KERNELRELEASE}/doc
+-- 
+2.50.0
+
+
+From 459e0264ac49c88f2c9a7aa5e600a9e1b437d2fc Mon Sep 17 00:00:00 2001
+From: Adel KARA SLIMANE <adel.ks@zegrapher.com>
+Date: Sat, 5 Jul 2025 18:46:55 +0200
+Subject: [PATCH 2/2] suse: scripts/package/kernel.spec: use /usr/lib/modules
+ instead of /lib/modules
+
+---
+ scripts/package/kernel.spec | 48 ++++++++++++++++++-------------------
+ 1 file changed, 24 insertions(+), 24 deletions(-)
+
+diff --git a/scripts/package/kernel.spec b/scripts/package/kernel.spec
+index da6c327afa43..ad5d19cd5080 100644
+--- a/scripts/package/kernel.spec
++++ b/scripts/package/kernel.spec
+@@ -102,7 +102,7 @@ package dependencies.
+ 	%{?__debug_package:%{__debug_install_post}} \
+ 	%{__arch_install_post} \
+ 	%{__os_install_post} \
+-	find %{buildroot}/lib/modules/%{KERNELRELEASE} -name "*.ko" -type f \\\
++	find %{buildroot}/usr/lib/modules/%{KERNELRELEASE} -name "*.ko" -type f \\\
+ 		| xargs --no-run-if-empty chmod u-x
+ 
+ %prep
+@@ -114,17 +114,17 @@ patch -p1 < %{SOURCE2}
+ %{make} %{makeflags} KERNELRELEASE=%{KERNELRELEASE} KBUILD_BUILD_VERSION=%{release}
+ 
+ %install
+-mkdir -p %{buildroot}/lib/modules/%{KERNELRELEASE}
+-cp $(%{make} %{makeflags} -s image_name) %{buildroot}/lib/modules/%{KERNELRELEASE}/vmlinuz
++mkdir -p %{buildroot}/usr/lib/modules/%{KERNELRELEASE}
++cp $(%{make} %{makeflags} -s image_name) %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/vmlinuz
+ # DEPMOD=true makes depmod no-op. We do not package depmod-generated files.
+-%{make} %{makeflags} INSTALL_MOD_PATH=%{buildroot} DEPMOD=true INSTALL_MOD_STRIP=1 modules_install
++%{make} %{makeflags} INSTALL_MOD_PATH=%{buildroot}/usr DEPMOD=true INSTALL_MOD_STRIP=1 modules_install
+ %{make} %{makeflags} INSTALL_HDR_PATH=%{buildroot}/usr headers_install
+-cp System.map %{buildroot}/lib/modules/%{KERNELRELEASE}
+-cp .config %{buildroot}/lib/modules/%{KERNELRELEASE}/config
++cp System.map %{buildroot}/usr/lib/modules/%{KERNELRELEASE}
++cp .config %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/config
+ if %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='test -d ${srctree}/arch/${SRCARCH}/boot/dts' 2>/dev/null; then
+-	%{make} %{makeflags} INSTALL_DTBS_PATH=%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb dtbs_install
++	%{make} %{makeflags} INSTALL_DTBS_PATH=%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb dtbs_install
+ fi
+-ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/lib/modules/%{KERNELRELEASE}/build
++ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/usr/lib/modules/%{KERNELRELEASE}/build
+ %if %{with_devel}
+ %{make} %{makeflags} run-command KBUILD_RUN_COMMAND='${srctree}/scripts/package/install-extmod-build %{buildroot}/usr/src/kernels/%{KERNELRELEASE}'
+ %endif
+@@ -132,34 +132,34 @@ ln -fns /usr/src/kernels/%{KERNELRELEASE} %{buildroot}/lib/modules/%{KERNELRELEA
+ cp -r doc %{buildroot}/usr/src/kernels/%{KERNELRELEASE}/
+ 
+ {
+-	echo "/lib/modules/%{KERNELRELEASE}"
++	echo "/usr/lib/modules/%{KERNELRELEASE}"
+ 
+ 	for x in alias alias.bin builtin.alias.bin builtin.bin dep dep.bin \
+ 				devname softdep symbols symbols.bin weakdep; do
+-		echo "%ghost /lib/modules/%{KERNELRELEASE}/modules.${x}"
++		echo "%ghost /usr/lib/modules/%{KERNELRELEASE}/modules.${x}"
+ 	done
+ 
+ 	for x in System.map config vmlinuz; do
+ 		echo "%ghost /boot/${x}-%{KERNELRELEASE}"
+ 	done
+ 
+-	if [ -d "%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb" ];then
+-		find "%{buildroot}/lib/modules/%{KERNELRELEASE}/dtb" -printf "%%%ghost /boot/dtb-%{KERNELRELEASE}/%%P\n"
++	if [ -d "%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb" ];then
++		find "%{buildroot}/usr/lib/modules/%{KERNELRELEASE}/dtb" -printf "%%%ghost /boot/dtb-%{KERNELRELEASE}/%%P\n"
+ 	fi
+ 
+-	echo "%exclude /lib/modules/%{KERNELRELEASE}/build"
++	echo "%exclude /usr/lib/modules/%{KERNELRELEASE}/build"
+ } > %{buildroot}/kernel.list
+ 
+ # make modules executable so that find-debuginfo.sh strips them. this
+ # will be undone later in %%__spec_install_post
+-find %{buildroot}/lib/modules/%{KERNELRELEASE} -name "*.ko" -type f \
++find %{buildroot}/usr/lib/modules/%{KERNELRELEASE} -name "*.ko" -type f \
+ 	| xargs --no-run-if-empty chmod u+x
+ 
+ %if %{with_debuginfo}
+ # copying vmlinux directly to the debug directory means it will not get
+ # stripped (but its source paths will still be collected + fixed up)
+-mkdir -p %{buildroot}/usr/lib/debug/lib/modules/%{KERNELRELEASE}
+-cp vmlinux %{buildroot}/usr/lib/debug/lib/modules/%{KERNELRELEASE}
++mkdir -p %{buildroot}/usr/lib/debug/usr/lib/modules/%{KERNELRELEASE}
++cp vmlinux %{buildroot}/usr/lib/debug/usr/lib/modules/%{KERNELRELEASE}
+ %endif
+ 
+ %clean
+@@ -169,19 +169,19 @@ rm -f debugfiles.list debuglinks.list debugsourcefiles.list debugsources.list \
+ 
+ %post
+ if [ -x /usr/bin/kernel-install ]; then
+-	/usr/bin/kernel-install add %{KERNELRELEASE} /lib/modules/%{KERNELRELEASE}/vmlinuz
++	/usr/bin/kernel-install add %{KERNELRELEASE} /usr/lib/modules/%{KERNELRELEASE}/vmlinuz
+ fi
+ for file in vmlinuz System.map config; do
+-	if ! cmp --silent "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
+-		cp "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
++	if ! cmp --silent "/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
++		cp "/usr/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
+ 	fi
+ done
+-if [ -d "/lib/modules/%{KERNELRELEASE}/dtb" ] && \
+-   ! diff -rq "/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}" >/dev/null 2>&1; then
++if [ -d "/usr/lib/modules/%{KERNELRELEASE}/dtb" ] && \
++   ! diff -rq "/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}" >/dev/null 2>&1; then
+ 	rm -rf "/boot/dtb-%{KERNELRELEASE}"
+-	cp -r "/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}"
++	cp -r "/usr/lib/modules/%{KERNELRELEASE}/dtb" "/boot/dtb-%{KERNELRELEASE}"
+ fi
+-if [ ! -e "/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
++if [ ! -e "/usr/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
+ 	/usr/sbin/depmod %{KERNELRELEASE}
+ fi
+ 
+@@ -202,7 +202,7 @@ fi
+ %files devel
+ %defattr (-, root, root)
+ /usr/src/kernels/%{KERNELRELEASE}
+-/lib/modules/%{KERNELRELEASE}/build
++/usr/lib/modules/%{KERNELRELEASE}/build
+ %endif
+ 
+ %files syms
+-- 
+2.50.0
+
