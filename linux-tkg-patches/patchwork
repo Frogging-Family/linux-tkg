@@ -92,30 +92,36 @@ _rebase_start(){
 
   local _interdeps_folder="$_where/linux-tkg-patches/$_kernel_ver/patchwork/interdeps/"
   local _patch_dep_file="$_interdeps_folder/$(basename "$_patch")"
-  if [[ -f "$_patch_dep_file" ]]; then
-    local _parent_patch_name=$(shuf -n 1 "$_patch_dep_file")
-    msg2 "Patch $_patch depends on $_parent_patch_name, applying it first..."
 
-    local _parent_patch_dep_file="$_interdeps_folder/$(basename "$_parent_patch_name")"
-    if [[ -f "$_parent_patch_dep_file" ]]; then
-      error "cannot handle patches with a deep dependency tree"
-      exit 1
-    elif [[ ! -f "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" ]]; then
+  local _parent_patches=()
+  local _child_patch="$_patch"
+  while [[ -f "$_patch_dep_file" ]]; do
+    local _parent_patch_name=$(shuf -n 1 "$_patch_dep_file")
+    msg2 "Patch $_child_patch depends on $_parent_patch_name"
+
+    if [[ ! -f "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" ]]; then
       error "Parent patch $_kernel_ver/$_parent_patch_name of $_patch doesn't exist"
       exit 1
     fi
 
+
+    _parent_patches=("$_parent_patch_name" "${_parent_patches[@]}")
+
+    local _child_patch="$_parent_patch_name"
+    local _patch_dep_file="$_interdeps_folder/$(basename "$_parent_patch_name")"
+  done
+
+  for _parent_patch_name in "${_parent_patches[@]}"; do
     if patch -Np1 -i "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" &> /dev/null; then
       git add .
-      git commit -m "$_kernel_ver: Applied parent patch $_parent_patch_name of $(basename "$_parent_patch_name")"
+      git commit -m "$_kernel_ver: Applied parent patch $_parent_patch_name"
       # use this new commit as "base" commit so we format the patch against it
       git rev-parse HEAD > tkg-patch-fixes/original_commit
     else
       error "Parent patch $_kernel_ver/$_parent_patch_name of $_patch doesn't apply cleanly"
       exit 1
     fi
-
-  fi
+  done
 
   if [[ "$2" == "is-clean" ]]; then
     if patch -Np1 -i "$_where/linux-tkg-patches/$_patch"; then
