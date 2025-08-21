@@ -1,28 +1,28 @@
-From 54003a3217a0b3fa199d76ca8708407022aa89b0 Mon Sep 17 00:00:00 2001
+From cc218df516272c312164d918f88cf605ee08b5a6 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Wed, 13 Aug 2025 00:12:10 +0900
-Subject: [PATCH] linux6.17-rc1-bore-6.3.2
+Date: Thu, 21 Aug 2025 11:14:17 +0900
+Subject: [PATCH] linux6.17-rc1-bore-6.4.0
 
 ---
  include/linux/sched.h      |  20 ++
- include/linux/sched/bore.h |  43 ++++
+ include/linux/sched/bore.h |  44 ++++
  init/Kconfig               |  17 ++
  kernel/Kconfig.hz          |  17 ++
  kernel/fork.c              |   8 +
  kernel/futex/waitwake.c    |  11 +
  kernel/sched/Makefile      |   1 +
- kernel/sched/bore.c        | 427 +++++++++++++++++++++++++++++++++++++
- kernel/sched/core.c        |  12 ++
- kernel/sched/debug.c       |  61 ++++++
- kernel/sched/fair.c        | 121 +++++++++--
+ kernel/sched/bore.c        | 440 +++++++++++++++++++++++++++++++++++++
+ kernel/sched/core.c        |  12 +
+ kernel/sched/debug.c       |  61 +++++
+ kernel/sched/fair.c        | 121 +++++++++-
  kernel/sched/features.h    |   3 +
  kernel/sched/sched.h       |   9 +
- 13 files changed, 738 insertions(+), 12 deletions(-)
+ 13 files changed, 752 insertions(+), 12 deletions(-)
  create mode 100644 include/linux/sched/bore.h
  create mode 100644 kernel/sched/bore.c
 
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 2b27238267..cab0a24e19 100644
+index 2b27238267..b0b24e791c 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
 @@ -564,6 +564,14 @@ struct sched_statistics {
@@ -50,7 +50,7 @@ index 2b27238267..cab0a24e19 100644
 +	u32				curr_burst_penalty;
 +	u32				burst_penalty;
 +	u8				burst_score;
-+	u8				burst_count;
++	u8				damper;
 +	bool			stop_burst_update;
 +	bool			waiting_for_futex;
 +	struct sched_burst_cache child_burst;
@@ -61,10 +61,10 @@ index 2b27238267..cab0a24e19 100644
  		 * When !@on_rq this field is vlag.
 diff --git a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 new file mode 100644
-index 0000000000..29ca4abb66
+index 0000000000..c2819edb1c
 --- /dev/null
 +++ b/include/linux/sched/bore.h
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,44 @@
 +
 +#include <linux/sched.h>
 +#include <linux/sched/cputime.h>
@@ -74,12 +74,13 @@ index 0000000000..29ca4abb66
 +#define SCHED_BORE_AUTHOR   "Masahito Suzuki"
 +#define SCHED_BORE_PROGNAME "BORE CPU Scheduler modification"
 +
-+#define SCHED_BORE_VERSION  "6.3.2"
++#define SCHED_BORE_VERSION  "6.4.0"
 +
 +#ifdef CONFIG_SCHED_BORE
 +extern u8   __read_mostly sched_bore;
 +extern u8   __read_mostly sched_burst_exclude_kthreads;
-+extern u8   __read_mostly sched_burst_smoothness;
++extern u8   __read_mostly sched_burst_min_smooth;
++extern u8   __read_mostly sched_burst_max_damper;
 +extern u8   __read_mostly sched_burst_fork_atavistic;
 +extern u8   __read_mostly sched_burst_penalty_offset;
 +extern u8   __read_mostly sched_burst_futex_boost;
@@ -228,10 +229,10 @@ index 8ae86371dd..b688084bce 100644
 +obj-$(CONFIG_SCHED_BORE) += bore.o
 diff --git a/kernel/sched/bore.c b/kernel/sched/bore.c
 new file mode 100644
-index 0000000000..925b978f78
+index 0000000000..de6f1526e4
 --- /dev/null
 +++ b/kernel/sched/bore.c
-@@ -0,0 +1,427 @@
+@@ -0,0 +1,440 @@
 +/*
 + *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
 + *  Copyright (C) 2021-2025 Masahito Suzuki <firelzrd@gmail.com>
@@ -244,7 +245,8 @@ index 0000000000..925b978f78
 +#ifdef CONFIG_SCHED_BORE
 +u8   __read_mostly sched_bore                   = 1;
 +u8   __read_mostly sched_burst_exclude_kthreads = 1;
-+u8   __read_mostly sched_burst_smoothness       = 40;
++u8   __read_mostly sched_burst_min_smooth       = 6;
++u8   __read_mostly sched_burst_max_damper       = 40;
 +u8   __read_mostly sched_burst_fork_atavistic   = 1;
 +u8   __read_mostly sched_burst_penalty_offset   = 24;
 +u8   __read_mostly sched_burst_futex_boost      = 1;
@@ -320,31 +322,34 @@ index 0000000000..925b978f78
 +void update_curr_bore(u64 delta_exec, struct sched_entity *se) {
 +	if (!entity_is_task(se) || se->stop_burst_update) return;
 +
++	u32 prev_penalty = se->prev_burst_penalty;
++	u32 curr_penalty = calc_burst_penalty(se->burst_time);
++
 +	se->burst_time += delta_exec;
-+	se->curr_burst_penalty = calc_burst_penalty(se->burst_time);
-+	if (se->curr_burst_penalty > se->prev_burst_penalty)
-+		se->burst_penalty = se->prev_burst_penalty +
-+		(se->curr_burst_penalty - se->prev_burst_penalty) / se->burst_count;
++	se->curr_burst_penalty = curr_penalty;
++	if (curr_penalty > prev_penalty) {
++		u8 damper = se->damper;
++		u32 excess = curr_penalty - prev_penalty;
++		u32 soft_excess = excess / damper + !!(excess % damper);
++		se->burst_penalty = prev_penalty + soft_excess;
++	}
 +	update_burst_score(se);
 +}
 +
-+static inline u32 binary_smooth(u32 new, u32 old, u8 damper) {
-+	u32 abs_diff = (new > old)? (new - old): (old - new);
-+	u32 adj_diff = (abs_diff / damper) + ((abs_diff % damper) != 0);
-+	return (new > old)? (old + adj_diff): (old - adj_diff);
++static inline u32 binary_smooth(s32 new, s32 old, u8 damper) {
++	return old + ((new - old) / damper) + !!((new - old) % damper);
 +}
 +
 +static void __restart_burst(struct sched_entity *se) {
-+	se->prev_burst_penalty = binary_smooth(
-+		se->curr_burst_penalty, se->prev_burst_penalty, se->burst_count);
-+	se->burst_time = 0;
-+	se->curr_burst_penalty = 0;
++	se->prev_burst_penalty = binary_smooth(se->curr_burst_penalty,
++		se->prev_burst_penalty, max(se->damper, sched_burst_min_smooth));
++	se->burst_time = se->curr_burst_penalty = 0;
 +
-+	u8 smoothness = sched_burst_smoothness;
-+	if (se->burst_count < smoothness)
-+		se->burst_count++;
-+	else if (unlikely(se->burst_count > smoothness))
-+		se->burst_count = smoothness;
++	u8 max_damper = sched_burst_max_damper;
++	if (se->damper < max_damper)
++		se->damper++;
++	else if (unlikely(se->damper > max_damper))
++		se->damper = max_damper;
 +}
 +
 +inline void restart_burst(struct sched_entity *se) {
@@ -542,7 +547,7 @@ index 0000000000..925b978f78
 +	__restart_burst(se);
 +	se->burst_penalty = se->prev_burst_penalty =
 +		max(se->prev_burst_penalty, penalty);
-+	se->burst_count = 1;
++	se->damper = 1;
 +	se->child_burst.timestamp = 0;
 +	se->group_burst.timestamp = 0;
 +}
@@ -553,7 +558,7 @@ index 0000000000..925b978f78
 +	p->se.curr_burst_penalty = 0;
 +	p->se.burst_penalty = 0;
 +	p->se.burst_score = 0;
-+	p->se.burst_count = 1;
++	p->se.damper = 1;
 +	memset(&p->se.child_burst, 0, sizeof(struct sched_burst_cache));
 +	memset(&p->se.group_burst, 0, sizeof(struct sched_burst_cache));
 +}
@@ -585,8 +590,17 @@ index 0000000000..925b978f78
 +		.extra2		= SYSCTL_ONE,
 +	},
 +	{
-+		.procname	= "sched_burst_smoothness",
-+		.data		= &sched_burst_smoothness,
++		.procname	= "sched_burst_min_smooth",
++		.data		= &sched_burst_min_smooth,
++		.maxlen		= sizeof(u8),
++		.mode		= 0644,
++		.proc_handler = proc_dou8vec_minmax,
++		.extra1		= SYSCTL_ONE,
++		.extra2		= &maxval_8_bits,
++	},
++	{
++		.procname	= "sched_burst_max_damper",
++		.data		= &sched_burst_max_damper,
 +		.maxlen		= sizeof(u8),
 +		.mode		= 0644,
 +		.proc_handler = proc_dou8vec_minmax,
