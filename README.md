@@ -1,4 +1,4 @@
-# Linux-tkg builds for Fedora/ Fedora Atomic
+# Linux-tkg builds for Fedora & OpenSUSE
 
 ## linux-tkg
 
