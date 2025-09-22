@@ -49,36 +49,6 @@ _kernel_git_remotes=(
   ["torvalds"]="https://github.com/torvalds/linux.git"
 )
 
-_git_remote_names=( "${!_kernel_git_remotes[@]}" )
-
-# fill with kernel.org link if empty
-if [[ -z "$_git_mirror" ]]; then
-  msg2 "using default kernel.org git remote"
-  _git_mirror="${_kernel_git_remotes['kernel.org']}"
-fi
-
-# if alias, get actual link from map _kernel_git_remotes
-if [[ "${_git_remote_names[@]}" =~ "$_git_mirror" ]]; then
-  msg2 "using git mirror alias $_git_mirror"
-  _git_mirror="${_kernel_git_remotes[$_git_mirror]}"
-fi
-
-if $( ! timeout 10 git ls-remote $_git_mirror >/dev/null ) || \
-  [[ "$( git ls-remote $_git_mirror | head -n 1 )" = *502* ]]; then
-  error "Remote unreachable or took too long to respond"
-  exit 1
-fi
-
-# Fill out the latest tags map/dictionary
-_kernel_tags=$(git -c 'versionsort.suffix=-' \
-  ls-remote --exit-code --refs --sort='version:refname' --tags $_git_mirror '*.*' \
-  | cut --delimiter='/' --fields=3)
-
-typeset -Ag _kver_latest_tags_map
-for _key in "${_current_kernels[@]}" "${_eol_kernels[@]}"; do
-  _kver_latest_tags_map[$_key]=$(echo "$_kernel_tags" | grep -F "v$_key"| grep -v "v$_key"[0-9] | tail -1 | cut -c1-)
-done
-
 # PREEMPT_RT's supported kernel subversion
 typeset -Ag _rt_subver_map
 _rt_subver_map=(
@@ -274,6 +244,8 @@ _set_kernel_version() {
   # if $_version is a valid x.y.z version, define $_kernel_git_tag directly
   # Otherwise, empty it so it gets prompted
 
+  _define_kernel_tags
+
   if [[ "$_version" == *-latest ]]; then
     local kernel_ver="${_version::-7}"
     if [[ -v _kver_latest_tags_map["$kernel_ver"] ]]; then
@@ -297,10 +269,22 @@ _set_kernel_version() {
 
     _kernel_fullver_list=()
     for _key in "${_current_kernels[@]}"; do
-      _kernel_fullver_list+=("${_kver_latest_tags_map[$_key]}")
+      if [[ -v _kver_latest_tags_map["$_key"] ]]; then
+        _kernel_fullver_list+=("${_kver_latest_tags_map[$_key]}")
+      fi
     done
+
+    _eol_kernel_fullver_list=()
+    for _key in "${_eol_kernels[@]}"; do
+      if [[ -v _kver_latest_tags_map["$_key"] ]]; then
+        _eol_kernel_fullver_list+=("${_kver_latest_tags_map[$_key]}")
+      fi
+    done
+
     # Add the "Another" entry to enable building unmaintained kernel versions
-    _kernel_fullver_list+=("Another (no longer maintained upstream)")
+    if [[ "${#_eol_kernel_fullver_list[@]}" != 0 ]]; then
+      _kernel_fullver_list+=("Another (no longer maintained upstream)")
+    fi
 
     # Default index corresponds to latest stable kernel
     # put default index to "1" when the most recent kernel is an rc one
@@ -314,14 +298,9 @@ _set_kernel_version() {
     if [[ "${_selected_value}" == Another* ]]; then
       msg2 "Which EOL kernel version do you want to install?"
 
-      _kernel_fullver_list=()
-      for _key in "${_eol_kernels[@]}"; do
-        _kernel_fullver_list+=("${_kver_latest_tags_map[$_key]}")
-      done
-
       # Default index corresponds to latest unmaintained kernel
       _default_index="0"
-      _prompt_from_array "${_kernel_fullver_list[@]}"
+      _prompt_from_array "${_eol_kernel_fullver_list[@]}"
     fi
 
     _kernel_git_tag="$_selected_value"
@@ -471,6 +450,55 @@ _define_kernel_abs_paths() {
 }
 
 
+_define_kernel_tags() {
+
+  _define_kernel_abs_paths
+
+  _git_remote_names=( "${!_kernel_git_remotes[@]}" )
+
+  _kernel_tags=()
+  if [[ ! "$_offline" =~ ^(y|Y|yes|true|True)$ ]]; then
+    # fill with kernel.org link if empty
+    if [[ -z "$_git_mirror" ]]; then
+      msg2 "using default kernel.org git remote"
+      _git_mirror="${_kernel_git_remotes['kernel.org']}"
+    fi
+
+    # if alias, get actual link from map _kernel_git_remotes
+    if [[ "${_git_remote_names[@]}" =~ "$_git_mirror" ]]; then
+      msg2 "using git mirror alias $_git_mirror"
+      _git_mirror="${_kernel_git_remotes[$_git_mirror]}"
+    fi
+
+    if $( ! timeout 10 git ls-remote $_git_mirror >/dev/null ) || \
+      [[ "$( git ls-remote $_git_mirror | head -n 1 )" = *502* ]]; then
+      error "Remote unreachable or took too long to respond"
+      exit 1
+    fi
+
+  else
+
+    _git_mirror="$_kernel_source_folder_abs"
+
+  fi
+
+  msg2 "Current git mirror: $_git_mirror"
+
+  # Fill out the latest tags map/dictionary
+  _kernel_tags=$(git -c 'versionsort.suffix=-' \
+                ls-remote --exit-code --refs --sort='version:refname' --tags $_git_mirror '*.*' \
+                | cut --delimiter='/' --fields=3)
+
+  typeset -Ag _kver_latest_tags_map
+  for _key in "${_current_kernels[@]}" "${_eol_kernels[@]}"; do
+    local _tag=$(echo "$_kernel_tags" | grep -F "v$_key"| grep -v "v$_key"[0-9] | tail -1 | cut -c1-)
+    if [[ -n "$_tag" ]]; then
+      _kver_latest_tags_map[$_key]="$_tag"
+    fi
+  done
+}
+
+
 _setup_kernel_work_folder() {
 
   _define_kernel_abs_paths
@@ -491,8 +519,10 @@ _setup_kernel_work_folder() {
 
   cd "$_kernel_source_folder_abs"
 
-  msg2 "Fetching tag: $_kernel_git_tag from remote $_git_mirror" | tee "$_where/git_work.log.txt"
-  git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag" &>> "$_where/git_work.log.txt"
+  if [[ ! "$_offline" =~ ^(y|Y|yes|true|True)$ ]]; then
+    msg2 "Fetching tag: $_kernel_git_tag from remote $_git_mirror" | tee "$_where/git_work.log.txt"
+    git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag" &>> "$_where/git_work.log.txt"
+  fi
 
   msg2 "Checking out tag: $_kernel_git_tag" | tee -a "$_where/git_work.log"
   msg2 "   in the work folder: $_kernel_work_folder_abs" | tee -a "$_where/git_work.log.txt"
