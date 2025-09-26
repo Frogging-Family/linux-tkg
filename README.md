@@ -1,4 +1,4 @@
-# Linux-tkg builds for Fedora & OpenSUSE
+# Linux-tkg builds for Fedora/OpenSUSE & Arch 
 
 ## linux-tkg
 
