@@ -456,7 +456,6 @@ _define_kernel_tags() {
 
   _git_remote_names=( "${!_kernel_git_remotes[@]}" )
 
-  _kernel_tags=()
   if [[ ! "$_offline" =~ ^(y|Y|yes|true|True)$ ]]; then
     # fill with kernel.org link if empty
     if [[ -z "$_git_mirror" ]]; then
@@ -485,17 +484,22 @@ _define_kernel_tags() {
   msg2 "Current git mirror: $_git_mirror"
 
   # Fill out the latest tags map/dictionary
-  _kernel_tags=$(git -c 'versionsort.suffix=-' \
-                ls-remote --exit-code --refs --sort='version:refname' --tags $_git_mirror '*.*' \
-                | cut --delimiter='/' --fields=3)
+  if [[ ! -v _kernel_tags ]]; then
+    msg2 "Fetching latest kernel tags"
+    typeset -g _kernel_tags=$(git -c 'versionsort.suffix=-' \
+      ls-remote --exit-code --refs --sort='version:refname' --tags $_git_mirror '*.*' \
+      | cut --delimiter='/' --fields=3)
+  fi
 
-  typeset -Ag _kver_latest_tags_map
-  for _key in "${_current_kernels[@]}" "${_eol_kernels[@]}"; do
-    local _tag=$(echo "$_kernel_tags" | grep -F "v$_key"| grep -v "v$_key"[0-9] | tail -1 | cut -c1-)
-    if [[ -n "$_tag" ]]; then
-      _kver_latest_tags_map[$_key]="$_tag"
-    fi
-  done
+  if [[ ! -v _kver_latest_tags_map ]]; then
+    typeset -Ag _kver_latest_tags_map
+    for _key in "${_current_kernels[@]}" "${_eol_kernels[@]}"; do
+      local _tag=$(echo "$_kernel_tags" | grep -F "v$_key"| grep -v "v$_key"[0-9] | tail -1 | cut -c1-)
+      if [[ -n "$_tag" ]]; then
+        _kver_latest_tags_map[$_key]="$_tag"
+      fi
+    done
+  fi
 }
 
 
