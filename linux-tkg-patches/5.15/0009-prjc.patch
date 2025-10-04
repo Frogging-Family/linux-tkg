@@ -1,7 +1,7 @@
-From 6e8cadac895b32a4e5ea55a0c2287c92e66a84ce Mon Sep 17 00:00:00 2001
+From 2d06977cb2a45dcda796c155b9f1dd7efaebc54f Mon Sep 17 00:00:00 2001
 From: Alfred Chen <cchalpha@gmail.com>
 Date: Tue, 24 Jun 2025 22:30:00 +0200
-Subject: [PATCH] Update PrjC patch against upstream v5.15.185
+Subject: [PATCH] Rebase PrjC against v5.15.194
 
 Signed-off-by: Adel KARA SLIMANE <adel.ks@zegrapher.com>
 ---
@@ -51,10 +51,10 @@ Signed-off-by: Adel KARA SLIMANE <adel.ks@zegrapher.com>
  create mode 100644 kernel/sched/pds.h
 
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index e0670357d23f..fad4a275ae2b 100644
+index 25e07ac5c1ca..d93213f98ae5 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -5167,6 +5167,12 @@
+@@ -5173,6 +5173,12 @@
  	sa1100ir	[NET]
  			See drivers/net/irda/sa1100_ir.c.
  
@@ -228,7 +228,7 @@ index 8874f681b056..59eb72bf7d5f 100644
  	[RLIMIT_RTTIME]		= {  RLIM_INFINITY,  RLIM_INFINITY },	\
  }
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 5d0a44e4db4b..77212db97528 100644
+index cbf69d0d6952..568c53c38f7f 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
 @@ -742,12 +742,18 @@ struct task_struct {
@@ -543,10 +543,10 @@ index 5876e30c5740..7594d0a31869 100644
  	  This option permits Core Scheduling, a means of coordinated task
  	  selection across SMT siblings. When enabled -- see
 diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
-index d6e70aa7e151..f33c7501d441 100644
+index 78c499021768..cf59cddd669a 100644
 --- a/kernel/cgroup/cpuset.c
 +++ b/kernel/cgroup/cpuset.c
-@@ -689,7 +689,7 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
+@@ -707,7 +707,7 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
  	return ret;
  }
  
@@ -555,7 +555,7 @@ index d6e70aa7e151..f33c7501d441 100644
  /*
   * Helper routine for generate_sched_domains().
   * Do cpusets a, b have overlapping effective cpus_allowed masks?
-@@ -1088,7 +1088,7 @@ static void rebuild_sched_domains_locked(void)
+@@ -1106,7 +1106,7 @@ static void rebuild_sched_domains_locked(void)
  	/* Have scheduler rebuild the domains */
  	partition_and_rebuild_sched_domains(ndoms, doms, attr);
  }
@@ -578,7 +578,7 @@ index 51530d5b15a8..e542d71bb94b 100644
  	d->cpu_count += t1;
  
 diff --git a/kernel/exit.c b/kernel/exit.c
-index 890e5cb6799b..7fd3be1778e3 100644
+index 888a63f076d5..c34ff5de0ca6 100644
 --- a/kernel/exit.c
 +++ b/kernel/exit.c
 @@ -169,7 +169,7 @@ static void __exit_signal(struct task_struct *tsk)
@@ -9176,10 +9176,10 @@ index 000000000000..be3ee4a553ca
 +
 +static inline void update_rq_time_edge(struct rq *rq) {}
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
-index 519f742d44f4..5ec000f05da1 100644
+index 954a85b8c275..93cb8dd3539f 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
-@@ -179,9 +179,14 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu)
+@@ -190,9 +190,14 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu)
  	unsigned long max = arch_scale_cpu_capacity(sg_cpu->cpu);
  
  	sg_cpu->max = max;
@@ -9194,18 +9194,17 @@ index 519f742d44f4..5ec000f05da1 100644
  }
  
  /**
-@@ -325,8 +330,10 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
+@@ -336,7 +341,9 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
   */
  static inline void ignore_dl_rate_limit(struct sugov_cpu *sg_cpu)
  {
 +#ifndef CONFIG_SCHED_ALT
  	if (cpu_bw_dl(cpu_rq(sg_cpu->cpu)) > sg_cpu->bw_dl)
- 		sg_cpu->sg_policy->limits_changed = true;
 +#endif
+ 		WRITE_ONCE(sg_cpu->sg_policy->limits_changed, true);
  }
  
- static inline bool sugov_update_single_common(struct sugov_cpu *sg_cpu,
-@@ -620,6 +627,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
+@@ -631,6 +638,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
  	}
  
  	ret = sched_setattr_nocheck(thread, &attr);
@@ -9213,7 +9212,7 @@ index 519f742d44f4..5ec000f05da1 100644
  	if (ret) {
  		kthread_stop(thread);
  		pr_warn("%s: failed to set SCHED_DEADLINE\n", __func__);
-@@ -852,7 +860,9 @@ cpufreq_governor_init(schedutil_gov);
+@@ -872,7 +880,9 @@ cpufreq_governor_init(schedutil_gov);
  #ifdef CONFIG_ENERGY_MODEL
  static void rebuild_sd_workfn(struct work_struct *work)
  {
@@ -9575,7 +9574,7 @@ index 4ff2ed4f8fa1..de3e5516fbc4 100644
 -
 -
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index 6fc16bc13abf..804d6f4f4bb8 100644
+index 8eba31190d30..f498b62b9219 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
 @@ -2,6 +2,10 @@
@@ -9798,10 +9797,10 @@ index eaf9dd6a2f12..a68d34ebf757 100644
  	{
  		.procname	= "spin_retry",
 diff --git a/kernel/time/hrtimer.c b/kernel/time/hrtimer.c
-index 2e4b63f3c6dd..dd25740f26e1 100644
+index 7e2ed34e9803..6f23e4afa0d7 100644
 --- a/kernel/time/hrtimer.c
 +++ b/kernel/time/hrtimer.c
-@@ -2093,8 +2093,10 @@ long hrtimer_nanosleep(ktime_t rqtp, const enum hrtimer_mode mode,
+@@ -2070,8 +2070,10 @@ long hrtimer_nanosleep(ktime_t rqtp, const enum hrtimer_mode mode,
  	int ret = 0;
  	u64 slack;
  
@@ -9813,7 +9812,7 @@ index 2e4b63f3c6dd..dd25740f26e1 100644
  
  	hrtimer_init_sleeper_on_stack(&t, clockid, mode);
 diff --git a/kernel/time/posix-cpu-timers.c b/kernel/time/posix-cpu-timers.c
-index 6b6271387de8..e3e25a053ca6 100644
+index 995e6321ffda..c898f6621867 100644
 --- a/kernel/time/posix-cpu-timers.c
 +++ b/kernel/time/posix-cpu-timers.c
 @@ -216,7 +216,7 @@ static void task_sample_cputime(struct task_struct *p, u64 *samples)
@@ -9893,5 +9892,5 @@ index adf7ef194005..11c8f36e281b 100644
  	struct wakeup_test_data *x = data;
  
 -- 
-2.50.0
+2.51.0
 
