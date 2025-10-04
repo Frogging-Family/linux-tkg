@@ -1,7 +1,7 @@
-From e3c6a1aeb5f0a94f8eb49ad1b2f5e72852629a4b Mon Sep 17 00:00:00 2001
+From 02cf66e9c30b5f866c4cf72ae42d1b3cf4d12890 Mon Sep 17 00:00:00 2001
 From: Alfred Chen <cchalpha@gmail.com>
 Date: Tue, 24 Jun 2025 22:36:58 +0200
-Subject: [PATCH] Update PrjC patch against upstream v5.10.238
+Subject: [PATCH] Rebase PrjC against v5.10.245
 
 Signed-off-by: Adel KARA SLIMANE <adel.ks@zegrapher.com>
 ---
@@ -54,10 +54,10 @@ Signed-off-by: Adel KARA SLIMANE <adel.ks@zegrapher.com>
  create mode 100644 kernel/sched/pds_imp.h
 
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 12af5b0ecc8e..0d190306fff9 100644
+index bac4b1493222..4400185c22e9 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -4852,6 +4852,12 @@
+@@ -4873,6 +4873,12 @@
  
  	sbni=		[NET] Granch SBNI12 leased line adapter
  
@@ -580,7 +580,7 @@ index 000000000000..637c83ecbd6b
 +}
 +#endif /* _LINUX_SKIP_LIST_H */
 diff --git a/init/Kconfig b/init/Kconfig
-index 233166e54df3..62807345f873 100644
+index a6a4eaec73c8..a89a93aaaf17 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
 @@ -791,9 +791,39 @@ config GENERIC_SCHED_CLOCK
@@ -702,10 +702,10 @@ index 5fa18ed59d33..f38e4efa4c43 100644
  #ifdef CONFIG_SMP
  	.pushable_tasks	= PLIST_NODE_INIT(init_task.pushable_tasks, MAX_PRIO),
 diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
-index 731547a0d057..b422fa63b498 100644
+index efe9785c6c13..25b3a5cf0c2d 100644
 --- a/kernel/cgroup/cpuset.c
 +++ b/kernel/cgroup/cpuset.c
-@@ -660,7 +660,7 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
+@@ -678,7 +678,7 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
  	return ret;
  }
  
@@ -714,7 +714,7 @@ index 731547a0d057..b422fa63b498 100644
  /*
   * Helper routine for generate_sched_domains().
   * Do cpusets a, b have overlapping effective cpus_allowed masks?
-@@ -1059,7 +1059,7 @@ static void rebuild_sched_domains_locked(void)
+@@ -1077,7 +1077,7 @@ static void rebuild_sched_domains_locked(void)
  	/* Have scheduler rebuild the domains */
  	partition_and_rebuild_sched_domains(ndoms, doms, attr);
  }
@@ -737,7 +737,7 @@ index 27725754ac99..769d773c7182 100644
  	d->cpu_count += t1;
  
 diff --git a/kernel/exit.c b/kernel/exit.c
-index af9c8e794e4d..dd5396276da0 100644
+index cfdf2d275bba..a2edbcc92864 100644
 --- a/kernel/exit.c
 +++ b/kernel/exit.c
 @@ -169,7 +169,7 @@ static void __exit_signal(struct task_struct *tsk)
@@ -8156,10 +8156,10 @@ index 000000000000..13eda4b26b6a
 +		boost_task(p);
 +}
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
-index c1307bbdc291..d021366cb633 100644
+index af29114f7d36..b07fa1c8007c 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
-@@ -182,6 +182,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
+@@ -193,6 +193,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
  	return cpufreq_driver_resolve_freq(policy, freq);
  }
  
@@ -8167,7 +8167,7 @@ index c1307bbdc291..d021366cb633 100644
  /*
   * This function computes an effective utilization for the given CPU, to be
   * used for frequency selection given the linear relation: f = u * f_max.
-@@ -299,6 +300,13 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
+@@ -310,6 +311,13 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
  
  	return schedutil_cpu_util(sg_cpu->cpu, util, max, FREQUENCY_UTIL, NULL);
  }
@@ -8181,17 +8181,17 @@ index c1307bbdc291..d021366cb633 100644
  
  /**
   * sugov_iowait_reset() - Reset the IO boost status of a CPU.
-@@ -442,7 +450,9 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
+@@ -453,7 +461,9 @@ static inline bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu) { return false; }
   */
  static inline void ignore_dl_rate_limit(struct sugov_cpu *sg_cpu, struct sugov_policy *sg_policy)
  {
 +#ifndef CONFIG_SCHED_ALT
  	if (cpu_bw_dl(cpu_rq(sg_cpu->cpu)) > sg_cpu->bw_dl)
 +#endif
- 		sg_policy->limits_changed = true;
+ 		WRITE_ONCE(sg_policy->limits_changed, true);
  }
  
-@@ -690,6 +700,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
+@@ -701,6 +711,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
  	}
  
  	ret = sched_setattr_nocheck(thread, &attr);
@@ -8199,7 +8199,7 @@ index c1307bbdc291..d021366cb633 100644
  	if (ret) {
  		kthread_stop(thread);
  		pr_warn("%s: failed to set SCHED_DEADLINE\n", __func__);
-@@ -915,6 +926,7 @@ struct cpufreq_governor *cpufreq_default_governor(void)
+@@ -935,6 +946,7 @@ struct cpufreq_governor *cpufreq_default_governor(void)
  cpufreq_governor_init(schedutil_gov);
  
  #ifdef CONFIG_ENERGY_MODEL
@@ -8207,7 +8207,7 @@ index c1307bbdc291..d021366cb633 100644
  extern bool sched_energy_update;
  extern struct mutex sched_energy_mutex;
  
-@@ -945,4 +957,10 @@ void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
+@@ -965,4 +977,10 @@ void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
  	}
  
  }
@@ -8890,7 +8890,7 @@ index c202488695c4..be64834e099e 100644
  
  	hrtimer_init_sleeper_on_stack(&t, clockid, mode);
 diff --git a/kernel/time/posix-cpu-timers.c b/kernel/time/posix-cpu-timers.c
-index bede1e608d95..634ecded9dd9 100644
+index c8bc6722ee95..20fbd0412bab 100644
 --- a/kernel/time/posix-cpu-timers.c
 +++ b/kernel/time/posix-cpu-timers.c
 @@ -216,7 +216,7 @@ static void task_sample_cputime(struct task_struct *p, u64 *samples)
@@ -8970,5 +8970,5 @@ index 6f28b8b11ead..ff8d546ab885 100644
  	struct wakeup_test_data *x = data;
  
 -- 
-2.50.0
+2.51.0
 
