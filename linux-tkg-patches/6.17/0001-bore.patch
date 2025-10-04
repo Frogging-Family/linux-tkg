@@ -1,7 +1,7 @@
-From 58365290cc794ca0c29b873a6611bfbe14b08f50 Mon Sep 17 00:00:00 2001
+From 2d89fac8c1620dd0e81191adb33b42f4bb81c203 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Sun, 14 Sep 2025 21:51:56 +0900
-Subject: [PATCH] linux6.17-rc4-bore-6.5.5
+Date: Wed, 27 Aug 2025 08:07:40 +0900
+Subject: [PATCH] linux6.17-bore-6.5.2
 
 ---
  include/linux/sched.h      |  29 +++
@@ -14,18 +14,18 @@ Subject: [PATCH] linux6.17-rc4-bore-6.5.5
  kernel/sched/bore.c        | 393 +++++++++++++++++++++++++++++++++++++
  kernel/sched/core.c        |  12 ++
  kernel/sched/debug.c       |  61 ++++++
- kernel/sched/fair.c        | 178 ++++++++++++-----
+ kernel/sched/fair.c        | 124 ++++++++++--
  kernel/sched/features.h    |   3 +
  kernel/sched/sched.h       |   9 +
- 13 files changed, 724 insertions(+), 54 deletions(-)
+ 13 files changed, 712 insertions(+), 12 deletions(-)
  create mode 100644 include/linux/sched/bore.h
  create mode 100644 kernel/sched/bore.c
 
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index f8188b8333..86b5c8c2ba 100644
+index e4ce0a7683..fa9c484128 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -815,6 +815,32 @@ struct kmap_ctrl {
+@@ -813,6 +813,32 @@ struct kmap_ctrl {
  #endif
  };
  
@@ -58,7 +58,7 @@ index f8188b8333..86b5c8c2ba 100644
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -873,6 +899,9 @@ struct task_struct {
+@@ -871,6 +897,9 @@ struct task_struct {
  #ifdef CONFIG_SCHED_CLASS_EXT
  	struct sched_ext_entity		scx;
  #endif
@@ -70,7 +70,7 @@ index f8188b8333..86b5c8c2ba 100644
  #ifdef CONFIG_SCHED_CORE
 diff --git a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 new file mode 100644
-index 0000000000..646291bb47
+index 0000000000..5afb5fed4e
 --- /dev/null
 +++ b/include/linux/sched/bore.h
 @@ -0,0 +1,39 @@
@@ -86,7 +86,7 @@ index 0000000000..646291bb47
 +#define SCHED_BORE_AUTHOR   "Masahito Suzuki"
 +#define SCHED_BORE_PROGNAME "BORE CPU Scheduler modification"
 +
-+#define SCHED_BORE_VERSION  "6.5.5"
++#define SCHED_BORE_VERSION  "6.5.2"
 +
 +extern u8   __read_mostly sched_bore;
 +extern u8   __read_mostly sched_burst_inherit_type;
@@ -114,10 +114,10 @@ index 0000000000..646291bb47
 +
 +#endif /* _KERNEL_SCHED_BORE_H */
 diff --git a/init/Kconfig b/init/Kconfig
-index d811cad02a..545e74b990 100644
+index ecddb94db8..c34b454ba6 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1407,6 +1407,23 @@ config CHECKPOINT_RESTORE
+@@ -1413,6 +1413,23 @@ config CHECKPOINT_RESTORE
  
  	  If unsure, say N here.
  
@@ -167,7 +167,7 @@ index ce1435cb08..9eee2005e2 100644
 +	 an unnecessarily large base slice, resulting in high scheduling
 +	 latency and poor system responsiveness.
 diff --git a/kernel/fork.c b/kernel/fork.c
-index af67385649..fd9ed7f46d 100644
+index 6ca8689a83..dbcb91b689 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -116,6 +116,10 @@
@@ -193,7 +193,7 @@ index af67385649..fd9ed7f46d 100644
  	/* CLONE_PARENT re-uses the old parent */
  	if (clone_flags & (CLONE_PARENT|CLONE_THREAD)) {
 diff --git a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
-index e2bbe5509e..6484ad583f 100644
+index e2bbe5509e..84812b7876 100644
 --- a/kernel/futex/waitwake.c
 +++ b/kernel/futex/waitwake.c
 @@ -4,6 +4,9 @@
@@ -202,7 +202,7 @@ index e2bbe5509e..6484ad583f 100644
  #include <linux/freezer.h>
 +#ifdef CONFIG_SCHED_BORE
 +#include <linux/sched/bore.h>
-+#endif /* CONFIG_SCHED_BORE */
++#endif // CONFIG_SCHED_BORE
  
  #include "futex.h"
  
@@ -213,12 +213,12 @@ index e2bbe5509e..6484ad583f 100644
 +#ifdef CONFIG_SCHED_BORE
 +		{
 +			current->bore.futex_waiting = true;
-+#endif /* CONFIG_SCHED_BORE */
++#endif // CONFIG_SCHED_BORE
  			schedule();
 +#ifdef CONFIG_SCHED_BORE
 +			current->bore.futex_waiting = false;
 +		}
-+#endif /* CONFIG_SCHED_BORE */
++#endif // CONFIG_SCHED_BORE
  	}
  	__set_current_state(TASK_RUNNING);
  }
@@ -631,7 +631,7 @@ index 0000000000..c9e76eda35
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index be00629f0b..27901e63cf 100644
+index ccba6fc3c3..5bd3d55af4 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -98,6 +98,10 @@
@@ -775,7 +775,7 @@ index 02e16b70a7..751df396d9 100644
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index b173a05931..0295537da1 100644
+index 8ce56a8d50..86565bf058 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
 @@ -58,6 +58,10 @@
@@ -862,10 +862,10 @@ index b173a05931..0295537da1 100644
 +	u64 slice = sysctl_sched_base_slice;
 +	bool run_to_parity = likely(sched_bore) ?
 +		sched_feat(RUN_TO_PARITY_BORE) : sched_feat(RUN_TO_PARITY);
-+#else /* CONFIG_SCHED_BORE */
++#else // CONFIG_SCHED_BORE
  	u64 slice = normalized_sysctl_sched_base_slice;
 +	bool run_to_parity = sched_feat(RUN_TO_PARITY);
-+#endif /* CONFIG_SCHED_BORE */
++#endif CONFIG_SCHED_BORE
  	u64 vprot = se->deadline;
  
 -	if (sched_feat(RUN_TO_PARITY))
@@ -1053,121 +1053,7 @@ index b173a05931..0295537da1 100644
  	if (dequeue_entities(rq, &p->se, flags) < 0)
  		return false;
  
-@@ -7444,9 +7526,14 @@ static inline int sched_balance_find_dst_cpu(struct sched_domain *sd, struct tas
- 	return new_cpu;
- }
- 
-+static inline bool is_cpu_idle(int cpu)
-+{
-+	return available_idle_cpu(cpu) || sched_idle_cpu(cpu);
-+}
-+
- static inline int __select_idle_cpu(int cpu, struct task_struct *p)
- {
--	if ((available_idle_cpu(cpu) || sched_idle_cpu(cpu)) &&
-+	if (is_cpu_idle(cpu) &&
- 	    sched_cpu_cookie_match(cpu_rq(cpu), p))
- 		return cpu;
- 
-@@ -7539,30 +7626,7 @@ static int select_idle_core(struct task_struct *p, int core, struct cpumask *cpu
- 	return -1;
- }
- 
--/*
-- * Scan the local SMT mask for idle CPUs.
-- */
--static int select_idle_smt(struct task_struct *p, struct sched_domain *sd, int target)
--{
--	int cpu;
--
--	for_each_cpu_and(cpu, cpu_smt_mask(target), p->cpus_ptr) {
--		if (cpu == target)
--			continue;
--		/*
--		 * Check if the CPU is in the LLC scheduling domain of @target.
--		 * Due to isolcpus, there is no guarantee that all the siblings are in the domain.
--		 */
--		if (!cpumask_test_cpu(cpu, sched_domain_span(sd)))
--			continue;
--		if (available_idle_cpu(cpu) || sched_idle_cpu(cpu))
--			return cpu;
--	}
--
--	return -1;
--}
--
--#else /* !CONFIG_SCHED_SMT: */
-+#else /* CONFIG_SCHED_SMT */
- 
- static inline void set_idle_cores(int cpu, int val)
- {
-@@ -7578,11 +7642,6 @@ static inline int select_idle_core(struct task_struct *p, int core, struct cpuma
- 	return __select_idle_cpu(core, p);
- }
- 
--static inline int select_idle_smt(struct task_struct *p, struct sched_domain *sd, int target)
--{
--	return -1;
--}
--
- #endif /* !CONFIG_SCHED_SMT */
- 
- /*
-@@ -7677,7 +7736,7 @@ select_idle_capacity(struct task_struct *p, struct sched_domain *sd, int target)
- 	for_each_cpu_wrap(cpu, cpus, target) {
- 		unsigned long cpu_cap = capacity_of(cpu);
- 
--		if (!available_idle_cpu(cpu) && !sched_idle_cpu(cpu))
-+		if (!is_cpu_idle(cpu))
- 			continue;
- 
- 		fits = util_fits_cpu(task_util, util_min, util_max, cpu);
-@@ -7748,7 +7807,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
- 	 */
- 	lockdep_assert_irqs_disabled();
- 
--	if ((available_idle_cpu(target) || sched_idle_cpu(target)) &&
-+	if (is_core_idle(target) &&
- 	    asym_fits_cpu(task_util, util_min, util_max, target))
- 		return target;
- 
-@@ -7756,7 +7815,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
- 	 * If the previous CPU is cache affine and idle, don't be stupid:
- 	 */
- 	if (prev != target && cpus_share_cache(prev, target) &&
--	    (available_idle_cpu(prev) || sched_idle_cpu(prev)) &&
-+	    is_core_idle(prev) &&
- 	    asym_fits_cpu(task_util, util_min, util_max, prev)) {
- 
- 		if (!static_branch_unlikely(&sched_cluster_active) ||
-@@ -7788,7 +7847,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
- 	if (recent_used_cpu != prev &&
- 	    recent_used_cpu != target &&
- 	    cpus_share_cache(recent_used_cpu, target) &&
--	    (available_idle_cpu(recent_used_cpu) || sched_idle_cpu(recent_used_cpu)) &&
-+	    is_core_idle(recent_used_cpu) &&
- 	    cpumask_test_cpu(recent_used_cpu, p->cpus_ptr) &&
- 	    asym_fits_cpu(task_util, util_min, util_max, recent_used_cpu)) {
- 
-@@ -7824,16 +7883,9 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
- 	if (!sd)
- 		return target;
- 
--	if (sched_smt_active()) {
-+	if (sched_smt_active())
- 		has_idle_core = test_idle_cores(target);
- 
--		if (!has_idle_core && cpus_share_cache(prev, target)) {
--			i = select_idle_smt(p, sd, prev);
--			if ((unsigned int)i < nr_cpumask_bits)
--				return i;
--		}
--	}
--
- 	i = select_idle_cpu(p, sd, has_idle_core, target);
- 	if ((unsigned)i < nr_cpumask_bits)
- 		return i;
-@@ -8725,7 +8777,13 @@ static void check_preempt_wakeup_fair(struct rq *rq, struct task_struct *p, int
+@@ -8725,7 +8807,13 @@ static void check_preempt_wakeup_fair(struct rq *rq, struct task_struct *p, int
  	if (__pick_eevdf(cfs_rq, !do_preempt_short) == pse)
  		goto preempt;
  
@@ -1175,13 +1061,13 @@ index b173a05931..0295537da1 100644
 +	bool run_to_parity = likely(sched_bore) ?
 +		sched_feat(RUN_TO_PARITY_BORE) : sched_feat(RUN_TO_PARITY);
 +	if (run_to_parity && do_preempt_short)
-+#else /* CONFIG_SCHED_BORE */
++#else // CONFIG_SCHED_BORE
  	if (sched_feat(RUN_TO_PARITY) && do_preempt_short)
-+#endif /* CONFIG_SCHED_BORE */
++#endif CONFIG_SCHED_BORE
  		update_protect_slice(cfs_rq, se);
  
  	return;
-@@ -8904,16 +8962,25 @@ static void yield_task_fair(struct rq *rq)
+@@ -8899,16 +8987,25 @@ static void yield_task_fair(struct rq *rq)
  	/*
  	 * Are we the only task in the tree?
  	 */
@@ -1207,7 +1093,7 @@ index b173a05931..0295537da1 100644
  	/*
  	 * Tell update_rq_clock() that we've just updated,
  	 * so we don't do microscopic update in schedule()
-@@ -13161,6 +13228,9 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
+@@ -13156,6 +13253,9 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
  	WARN_ON_ONCE(p->se.sched_delayed);
  
  	attach_task_cfs_rq(p);
@@ -1232,10 +1118,10 @@ index 3c12d9f933..abadc5ca74 100644
   * Allow wakeup of tasks with a shorter slice to cancel RUN_TO_PARITY for
   * current.
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index be9745d104..21b300d78a 100644
+index cf2109b67f..aa70f36084 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
-@@ -2102,7 +2102,11 @@ extern int group_balance_cpu(struct sched_group *sg);
+@@ -2127,7 +2127,11 @@ extern int group_balance_cpu(struct sched_group *sg);
  extern void update_sched_domain_debugfs(void);
  extern void dirty_sched_domain_sysctl(int cpu);
  
@@ -1247,7 +1133,7 @@ index be9745d104..21b300d78a 100644
  
  static inline const struct cpumask *task_user_cpus(struct task_struct *p)
  {
-@@ -2778,7 +2782,12 @@ extern void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags);
+@@ -2803,7 +2807,12 @@ extern void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags);
  extern __read_mostly unsigned int sysctl_sched_nr_migrate;
  extern __read_mostly unsigned int sysctl_sched_migration_cost;
  
