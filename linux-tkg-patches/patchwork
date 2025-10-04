@@ -1,7 +1,13 @@
 #!/bin/bash
 
 msg2() {
-  [[ "$_silent" = "true" ]] || echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
+  # silence output of prepare script
+  # echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
+  :
+}
+
+info() {
+  echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
 }
 
 error() {
@@ -63,6 +69,8 @@ _rebase_start(){
     exit 1
   fi
 
+  info "Checking $_patch"
+
   local _patch_name=$(basename "$_patch")
   local _kernel_ver=$(dirname "$_patch")
   _version="$_kernel_ver-latest"
@@ -82,7 +90,7 @@ _rebase_start(){
     fi
 
     local _parent_patch_name=$(cat "$_patch_dep_file")
-    msg2 "Patch $_child_patch depends on $_parent_patch_name"
+    info "Patch $_child_patch depends on $_parent_patch_name"
 
     if [[ ! -f "$_where/linux-tkg-patches/$_kernel_ver/$_parent_patch_name" ]]; then
       error "$_kernel_ver: parent patch $_parent_patch_name of $_child_patch doesn't exist"
@@ -105,13 +113,14 @@ _rebase_start(){
 
     if [[ "$_patch_branch_curr_hash" == "${!_patch_tree_hash_var_name}" && "$_kernel_git_tag" == "${!_kernel_tag_var_name}" ]]
     then
+      info "Cache hit: patch good!"
       return 0
+    else
+      info "Cache miss: last check outdated"
     fi
   fi
 
   _prepare_kernel
-
-  msg2 "Working on patch $_patch"
 
   cd "$_kernel_work_folder_abs"
 
@@ -135,6 +144,7 @@ _rebase_start(){
 
   if [[ "$2" == "is-clean" ]]; then
     if patch -Np1 -i "$_where/linux-tkg-patches/$_patch"; then
+      info "Updating cache"
       mkdir -p "$(dirname "$_last_check_file")"
       echo "$_patch_tree_hash_var_name=$(_hash "$_patch_file")" > "$_last_check_file"
       echo "$_kernel_tag_var_name=$_kernel_git_tag" >> "$_last_check_file"
@@ -146,16 +156,16 @@ _rebase_start(){
 
   if head -n 10 "$_where/linux-tkg-patches/$_patch" |  grep -E '^Subject:' &> /dev/null ; then
 
-    msg2 "$_patch is mail-formatted, recreating commits with 'git am'"
-    msg2 "Starting 'git am'"
+    info "$_patch is mail-formatted, recreating commits with 'git am'"
+    info "Starting 'git am'"
 
     if git am "$_where/linux-tkg-patches/$_patch"; then
-      msg2 "If you add changes that you want included in the original patch:
+      info "If you add changes that you want included in the original patch:
             Do './patchwork rebase done' To update the original patch file with the changes
             Note: all changes need to be committed, do not edit the first commit as it's the upstream one."
       return 0
     else
-      msg2 "When a patch fails and needs updating
+      info "When a patch fails and needs updating
         1. Use either
             - git am --show-current-patch=diff | git apply --reject
             - git am --show-current-patch=diff | git apply -3
@@ -168,15 +178,15 @@ _rebase_start(){
 
   else
 
-    msg2 "$_patch is a simple diff file, not mail formatted."
-    msg2 "Please commit your changes so './patchwork rebase done' picks it up"
+    info "$_patch is a simple diff file, not mail formatted."
+    info "Please commit your changes so './patchwork rebase done' picks it up"
 
     _clean_patch="true"
     if ! git apply --reject "$_where/linux-tkg-patches/$_patch"; then
       _clean_patch="false"
     fi
 
-    msg2 "If you add changes that you want included in the original patch:
+    info "If you add changes that you want included in the original patch:
           1. Stage & commit the changes (as many commits as needed)
           2. Do './patchwork rebase done' To update the original patch file with the changes"
 
@@ -206,8 +216,6 @@ _get_unclean_patch_list(){
 
   _old_silent="$_silent"
 
-  _silent=true
-
   local _max=""
   if [[ "$1" =~ ^[0-9]+$ ]]; then
     _max="$1"
@@ -218,7 +226,7 @@ _get_unclean_patch_list(){
 
   for kernel_ver in "${_kernel_verr_arr[@]}"; do
 
-    echo "Checking patches of kernel $kernel_ver" >& 2
+    info "Checking patches of kernel $kernel_ver" >& 2
 
     local _patch_dir=$(realpath "$_where/linux-tkg-patches/$kernel_ver")
 
@@ -270,7 +278,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         echo $_patch
       done
     else
-      msg2 "All patches apply cleanly!"
+      info "All patches apply cleanly!"
     fi
 
   elif [[ "$1" == 'rebase' && "$2" == 'start' ]]; then
@@ -278,7 +286,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     _patch="$3"
     if [[ -z "$3" ]]; then
       _get_unclean_patch_list 1
-      [[ "${#_unclean_patches[@]}" == 0 ]] && msg2 "All patches good!" && exit 0
+      [[ "${#_unclean_patches[@]}" == 0 ]] && info "All patches good!" && exit 0
       _patch="${_unclean_patches[0]}"
     fi
 
@@ -294,7 +302,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 
   else
 
-      msg2 "Argument not recognized, options are:
+      info "Argument not recognized, options are:
             - 'print'
               - 'unclean': prints list of patches that don't apply against latest kernel .z version,
                           for each currently maintained x.y kernel version (full version string being x.y.z)
