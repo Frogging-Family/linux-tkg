@@ -30,6 +30,7 @@ _where="$PWD" # track basedir as different Arch based distros are moving srcdir 
 if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
 
   cp "$_where"/customization.cfg "$_where"/BIG_UGLY_FROGMINER
+  echo >> "$_where"/BIG_UGLY_FROGMINER
 
   # extract and define value of _EXT_CONFIG_PATH from customization file
   if [[ -z "$_EXT_CONFIG_PATH" ]]; then
@@ -39,6 +40,7 @@ if [ ! -e "$_where"/BIG_UGLY_FROGMINER ]; then
   if [ -f "$_EXT_CONFIG_PATH" ]; then
     msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
     cat "$_EXT_CONFIG_PATH" >> "$_where"/BIG_UGLY_FROGMINER
+    echo >> "$_where"/BIG_UGLY_FROGMINER
   fi
 
   declare -p -x >> "$_where"/BIG_UGLY_FROGMINER
