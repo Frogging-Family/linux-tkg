@@ -98,6 +98,7 @@ _rt_rev_map=(
 
 _undefine() {
   for _config_name in "$@"; do
+    echo "# CONFIG_$_config_name removed" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --undefine "${_config_name}"
     echo "Undefined ${_config_name}" >> "$_where"/logs/prepare.log.txt
   done
@@ -105,6 +106,7 @@ _undefine() {
 
 _enable() {
   for _config_name in "$@"; do
+    echo "CONFIG_${_config_name}=y" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --enable "${_config_name}"
     echo "Enabled ${_config_name}" >> "$_where"/logs/prepare.log.txt
   done
@@ -112,6 +114,7 @@ _enable() {
 
 _disable() {
   for _config_name in "$@"; do
+    echo "# CONFIG_$_config_name is not set" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --disable "${_config_name}"
     echo "Disabled ${_config_name}" >> "$_where"/logs/prepare.log.txt
   done
@@ -119,9 +122,20 @@ _disable() {
 
 _module() {
   for _config_name in "$@"; do
+    echo "CONFIG_${_config_name}=m" >> "$_where"/tkg-all-config-changes.txt
     scripts/config -k --module "${_config_name}"
     echo "Defined ${_config_name} as module" >> "$_where"/logs/prepare.log.txt
   done
+}
+
+_set_str() {
+  if [ $# != "2" ]; then
+    warning "Internal bug: setting .config str with an invalid number of arguments. please report this issue."
+    exit 1
+  fi
+
+  echo "$1=\"$2\"" >> "$_where"/tkg-all-config-changes.txt
+  scripts/config --set-str "$1" "$2"
 }
 
 _prompt_from_array() {
@@ -582,12 +596,13 @@ _tkg_initscript() {
     "_dracut_options"
     "_bcachefs"
     "_eevdf_sched_ext_support"
+    "_random_trust_cpu"
   )
 
   for _deprecated_var in "${_deprecated_config_vars[@]}"; do
     if [ -n "${!_deprecated_var}" ]; then
       warning "The deprecated config var $_deprecated_var has been set"
-      warning "Please check the latest customization.cfg file to see what replaces it"
+      warning "Please check the latest customization.cfg file or the relevant commit message for more information"
       exit 1
     fi
   done
@@ -690,6 +705,9 @@ _tkg_patcher() {
 }
 
 _tkg_srcprep() {
+
+  # Clear config change files
+  echo "" > "$_where"/tkg-all-config-changes.txt
 
   cd "$_kernel_work_folder_abs"
 
@@ -917,17 +935,21 @@ _tkg_srcprep() {
 
   if [ "${_distro}" = "Arch" ]; then
     # Reset local version string if ever it's in the .config file
-    scripts/config --set-str localversion ""
+    _set_str localversion ""
   else
     _disable "LOCALVERSION_AUTO"
-    scripts/config --set-str "DEFAULT_HOSTNAME" "(none)"
+    _set_str "DEFAULT_HOSTNAME" "(none)"
   fi
 
   if [ -z $_debug ]; then
 
   # Set some -tkg defaults
   _disable "DYNAMIC_FAULT" "DEFAULT_FQ_CODEL" "WERROR"
-  _enable "DEFAULT_CAKE" "AMD_PRIVATE_COLOR"
+  _enable "DEFAULT_CAKE"
+
+  [[ "$_kver" -ge 608 ]] && _enable AMD_PRIVATE_COLOR
+  [[ "$_kver" -ge 517 ]] && _enable X86_AMD_PSTATE
+
   if [ "$_kver" = "504" ]; then
     _module "TP_SMAPI"
     _enable "RAID6_USE_PREFER_GEN"
@@ -936,11 +958,11 @@ _tkg_srcprep() {
     scripts/config --set-val "RCU_BOOST_DELAY" "0"
   fi
   _disable "NTP_PPS" "ZSWAP_COMPRESSOR_DEFAULT_LZO" "PROFILE_ALL_BRANCHES"
-  _enable "CRYPTO_LZ4" "CRYPTO_LZ4HC" "LZ4_COMPRESS" "LZ4HC_COMPRESS" "X86_AMD_PSTATE" "AMD_PINCTRL"
+  _enable "CRYPTO_LZ4" "CRYPTO_LZ4HC" "LZ4_COMPRESS" "LZ4HC_COMPRESS"
   _disable "DEBUG_FORCE_FUNCTION_ALIGN_64B" "X86_P6_NOP" "RCU_STRICT_GRACE_PERIOD"
   if [ $_kver -le 605 ]; then
     _enable "ZSWAP_COMPRESSOR_DEFAULT_LZ4"
-    scripts/config --set-str "ZSWAP_COMPRESSOR_DEFAULT" "lz4"
+    _set_str "ZSWAP_COMPRESSOR_DEFAULT" "lz4"
   fi
   _enable "CPU_FREQ_DEFAULT_GOV_SCHEDUTIL"
   _disable "CPU_FREQ_DEFAULT_GOV_ONDEMAND" "CPU_FREQ_DEFAULT_GOV_CONSERVATIVE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE" "CPU_FREQ_DEFAULT_GOV_PERFORMANCE_NODEF"
@@ -962,7 +984,6 @@ _tkg_srcprep() {
   # buggy project C/PSI interaction workaround
   if [ "${_cpusched}" = "pds" ] || [ "${_cpusched}" = "bmq" ]; then
     _disable "PSI"
-    _enable "PSI_DEFAULT_DISABLED"
     # Disable MLX5_CORE on Prjc
     plain "Disable MLX5_CORE for Prjc"
     _disable "MLX5_CORE"
@@ -975,7 +996,7 @@ _tkg_srcprep() {
   if [ -n "$_custom_commandline" ]; then
     _enable "CMDLINE_BOOL"
     _disable "CMDLINE_OVERRIDE"
-    scripts/config --set-str "CMDLINE" "${_custom_commandline}"
+    _set_str "CMDLINE" "${_custom_commandline}"
   fi
 
   # openrgb
@@ -1013,7 +1034,7 @@ _tkg_srcprep() {
   # Prevent Debian and Ubuntu to sign stuff because it breaks stuff
   if [[ "$_distro" = "Debian" || "$_distro" = "Ubuntu" ]]; then
     #Help Debian cert compile problem.
-    scripts/config --set-str "SYSTEM_TRUSTED_KEYS" ""
+    _set_str "SYSTEM_TRUSTED_KEYS" ""
     if [[ $_kver -lt 612 ]]; then # note: 6.12 removed MODULE_COMPRESS_NONE
       #Debian/Ubuntu don't properly support zstd module compression
       _disable "MODULE_COMPRESS_ZSTD"
@@ -1112,7 +1133,7 @@ _tkg_srcprep() {
   fi
 
   # TCP algorithms
-  _tcp_cong_alg_list=("yeah" "bbr" "cubic" "vegas" "westwood" "reno")
+  _tcp_cong_alg_list=("yeah" "bbr" "cubic" "vegas" "westwood")
   _user_set_tcp_alg="false"
 
   _enable "TCP_CONG_ADVANCED"
@@ -1124,16 +1145,12 @@ _tkg_srcprep() {
     if [ "$_tcp_cong_alg" = "$_alg" ];then
       _user_set_tcp_alg="true"
       _enable "DEFAULT_${_alg_upper}"
-      scripts/config --set-str "DEFAULT_TCP_CONG" "${_alg}"
-    else
+      _set_str "DEFAULT_TCP_CONG" "${_alg}"
+    elif [[ -n "$_tcp_cong_alg" ]]; then
       _disable "DEFAULT_${_alg_upper}"
     fi
   done
 
-  if [ "$_user_set_tcp_alg" = "false" ];then
-    _enable "DEFAULT_CUBIC"
-    scripts/config --set-str DEFAULT_TCP_CONG "cubic"
-  fi
 
   #######
 
@@ -1325,11 +1342,6 @@ _tkg_srcprep() {
     _disable "SMT_NICE"
   fi
 
-  # random trust cpu
-  if [ "$_random_trust_cpu" = "true" ]; then
-    _enable "RANDOM_TRUST_CPU"
-  fi
-
   # rq sharing
   if [ "${_cpusched}" = "muqss" ]; then
     _disable "RQ_NONE" "RQ_SMT" "RQ_MC" "RQ_MC_LLC" "RQ_SMP" "RQ_ALL"
@@ -1380,9 +1392,9 @@ _tkg_srcprep() {
 
   for _freq in "${_avail_timer_frequencies[@]}"; do
     if [ "$_freq" = "$_timer_freq" ]; then
-      _enable "HZ_${_freq}" "HZ_${_freq}_NODEF"
+      _enable "HZ_${_freq}"
     else
-      _disable "HZ_${_freq}" "HZ_${_freq}_NODEF"
+      _disable "HZ_${_freq}"
     fi
   done
 
@@ -1544,113 +1556,9 @@ _tkg_srcprep() {
   fi
 
   if [ "$_expert" = "true" ]; then
-    echo -e "\r# start of config expert\r
-# CONFIG_BASE_SMALL is not set\r
-# CONFIG_DEBUG_RSEQ is not set\r
-# CONFIG_PC104 is not set\r
-# CONFIG_SLUB_MEMCG_SYSFS_ON is not set\r
-# CONFIG_SLOB is not set\r
-# CONFIG_PROCESSOR_SELECT is not set\r
-# CONFIG_SUSPEND_SKIP_SYNC is not set\r
-# CONFIG_DPM_WATCHDOG is not set\r
-# CONFIG_ACPI_REDUCED_HARDWARE_ONLY is not set\r
-# CONFIG_PCI_CNB20LE_QUIRK is not set\r
-# CONFIG_ISA_BUS is not set\r
-CONFIG_KVM_WERROR=y\r
-# CONFIG_KVM_SW_PROTECTED_VM is not set\r
-# CONFIG_KVM_INTEL_PROVE_VE is not set\r
-# CONFIG_KVM_PROVE_MMU is not set\r
-# CONFIG_SLUB_TINY is not set\r
-# CONFIG_GCC_PLUGIN_CYC_COMPLEXITY is not set\r
-# CONFIG_CFG80211_CERTIFICATION_ONUS is not set\r
-# CONFIG_PCIE_BUS_TUNE_OFF is not set\r
-CONFIG_PCIE_BUS_DEFAULT=y\r
-# CONFIG_PCIE_BUS_SAFE is not set\r
-# CONFIG_PCIE_BUS_PERFORMANCE is not set\r
-# CONFIG_PCIE_BUS_PEER2PEER is not set\r
-# CONFIG_PATA_PLATFORM is not set\r
-# CONFIG_TTY_PRINTK is not set\r
-# CONFIG_GPIO_SLOPPY_LOGIC_ANALYZER is not set\r
-# CONFIG_GPIO_SYSFS is not set\r
-# CONFIG_VIDEO_TDA1997X is not set\r
-# CONFIG_VIDEO_TLV320AIC23B is not set\r
-# CONFIG_VIDEO_ADV7180 is not set\r
-# CONFIG_VIDEO_ADV7183 is not set\r
-# CONFIG_VIDEO_ADV7604 is not set\r
-# CONFIG_VIDEO_ADV7842 is not set\r
-# CONFIG_VIDEO_BT819 is not set\r
-# CONFIG_VIDEO_BT856 is not set\r
-# CONFIG_VIDEO_BT866 is not set\r
-# CONFIG_VIDEO_KS0127 is not set\r
-# CONFIG_VIDEO_ML86V7667 is not set\r
-# CONFIG_VIDEO_SAA7110 is not set\r
-# CONFIG_VIDEO_TC358743 is not set\r
-# CONFIG_VIDEO_TC358746 is not set\r
-# CONFIG_VIDEO_TVP514X is not set\r
-# CONFIG_VIDEO_TVP7002 is not set\r
-# CONFIG_VIDEO_TW9900 is not set\r
-# CONFIG_VIDEO_TW9910 is not set\r
-# CONFIG_VIDEO_VPX3220 is not set\r
-# CONFIG_VIDEO_SAA7185 is not set\r
-# CONFIG_VIDEO_ADV7170 is not set\r
-# CONFIG_VIDEO_ADV7175 is not set\r
-# CONFIG_VIDEO_ADV7343 is not set\r
-# CONFIG_VIDEO_ADV7393 is not set\r
-# CONFIG_VIDEO_ADV7511 is not set\r
-# CONFIG_VIDEO_AD9389B is not set\r
-# CONFIG_VIDEO_AK881X is not set\r
-# CONFIG_VIDEO_THS8200 is not set\r
-# CONFIG_VIDEO_THS7303 is not set\r
-# CONFIG_VIDEO_I2C is not set\r
-# CONFIG_VIDEO_ST_MIPID02 is not set\r
-# CONFIG_VIDEO_GS1662 is not set\r
-# CONFIG_MEDIA_TUNER_MSI001 is not set\r
-# CONFIG_DVB_S5H1432 is not set\r
-# CONFIG_DVB_DIB9000 is not set\r
-# CONFIG_DVB_CXD2880 is not set\r
-# CONFIG_DVB_MN88443X is not set\r
-# CONFIG_DVB_LNBH29 is not set\r
-# CONFIG_DVB_LGS8GL5 is not set\r
-# CONFIG_DRM_DEBUG_DP_MST_TOPOLOGY_REFS is not set\r
-# CONFIG_DRM_DEBUG_MODESET_LOCK is not set\r
-# CONFIG_DRM_FBDEV_LEAK_PHYS_SMEM is not set\r
-# CONFIG_DRM_I915_WERROR is not set\r
-# CONFIG_DRM_I915_DEBUG is not set\r
-# CONFIG_DRM_I915_DEBUG_MMIO is not set\r
-# CONFIG_DRM_I915_SW_FENCE_DEBUG_OBJECTS is not set\r
-# CONFIG_DRM_I915_SW_FENCE_CHECK_DAG is not set\r
-# CONFIG_DRM_I915_DEBUG_GUC is not set\r
-# CONFIG_DRM_I915_SELFTEST is not set\r
-# CONFIG_DRM_I915_LOW_LEVEL_TRACEPOINTS is not set\r
-# CONFIG_DRM_I915_DEBUG_VBLANK_EVADE is not set\r
-# CONFIG_DRM_I915_DEBUG_RUNTIME_PM is not set\r
-# CONFIG_DRM_AMDGPU_WERROR is not set\r
-# CONFIG_DRM_XE_WERROR is not set\r
-# CONFIG_DRM_XE_DEBUG is not set\r
-# CONFIG_DRM_XE_DEBUG_VM is not set\r
-# CONFIG_DRM_XE_DEBUG_SRIOV is not set\r
-# CONFIG_DRM_XE_DEBUG_MEM is not set\r
-# CONFIG_DRM_XE_LARGE_GUC_BUFFER is not set\r
-# CONFIG_DRM_XE_USERPTR_INVAL_INJECT is not set\r
-# CONFIG_DRM_MGAG200_DISABLE_WRITECOMBINE is not set\r
-# CONFIG_DRM_WERROR is not set\r
-# CONFIG_RESET_SIMPLE is not set\r
-# CONFIG_KFENCE_STATIC_KEYS is not set\r
-# CONFIG_FB_INTEL is not set\r
-# CONFIG_SND_SOC_SOF_DEVELOPER_SUPPORT is not set\r
-# CONFIG_USB_KBD is not set\r
-# CONFIG_USB_MOUSE is not set\r
-# CONFIG_USB_OTG_DISABLE_EXTERNAL_HUB is not set\r
-# CONFIG_HARDENED_USERCOPY_PAGESPAN is not set\r
-CONFIG_PAHOLE_HAS_SPLIT_BTF=y\r
-CONFIG_DEBUG_INFO_BTF_MODULES=y\r
-# CONFIG_DEBUG_FORCE_FUNCTION_ALIGN_32B is not set\r
-# CONFIG_WIRELESS_WDS is not set\r
-# CONFIG_UNWINDER_GUESS is not set\r
-# CONFIG_TRIM_UNUSED_KSYMS is not set\r
-# CONFIG_VMLINUX_MAP is not set\r
-# end of config expert\n">> ./.config
-fi
+    _disable ACPI_REDUCED_HARDWARE_ONLY BASE_SMALL CFG80211_CERTIFICATION_ONUS DEBUG_FORCE_FUNCTION_ALIGN_32B DEBUG_RSEQ DPM_WATCHDOG DRM_AMDGPU_WERROR DRM_DEBUG_DP_MST_TOPOLOGY_REFS DRM_DEBUG_MODESET_LOCK DRM_FBDEV_LEAK_PHYS_SMEM DRM_I915_DEBUG DRM_I915_DEBUG_GUC DRM_I915_DEBUG_MMIO DRM_I915_DEBUG_RUNTIME_PM DRM_I915_DEBUG_VBLANK_EVADE DRM_I915_LOW_LEVEL_TRACEPOINTS DRM_I915_SELFTEST DRM_I915_SW_FENCE_CHECK_DAG DRM_I915_SW_FENCE_DEBUG_OBJECTS DRM_I915_WERROR DRM_MGAG200_DISABLE_WRITECOMBINE DRM_WERROR DRM_XE_DEBUG DRM_XE_DEBUG_MEM DRM_XE_DEBUG_SRIOV DRM_XE_DEBUG_VM DRM_XE_LARGE_GUC_BUFFER DRM_XE_USERPTR_INVAL_INJECT DRM_XE_WERROR DVB_CXD2880 DVB_DIB9000 DVB_LGS8GL5 DVB_LNBH29 DVB_MN88443X DVB_S5H1432 FB_INTEL GCC_PLUGIN_CYC_COMPLEXITY GPIO_SLOPPY_LOGIC_ANALYZER GPIO_SYSFS HARDENED_USERCOPY_PAGESPAN ISA_BUS KFENCE_STATIC_KEYS KVM_INTEL_PROVE_VE KVM_PROVE_MMU KVM_SW_PROTECTED_VM MEDIA_TUNER_MSI001 PATA_PLATFORM PC104 PCI_CNB20LE_QUIRK PCIE_BUS_PEER2PEER PCIE_BUS_PERFORMANCE PCIE_BUS_SAFE PCIE_BUS_TUNE_OFF PROCESSOR_SELECT RESET_SIMPLE SLOB SLUB_MEMCG_SYSFS_ON SLUB_TINY SND_SOC_SOF_DEVELOPER_SUPPORT SUSPEND_SKIP_SYNC TRIM_UNUSED_KSYMS TTY_PRINTK UNWINDER_GUESS USB_KBD USB_MOUSE USB_OTG_DISABLE_EXTERNAL_HUB VIDEO_AD9389B VIDEO_ADV7170 VIDEO_ADV7175 VIDEO_ADV7180 VIDEO_ADV7183 VIDEO_ADV7343 VIDEO_ADV7393 VIDEO_ADV7511 VIDEO_ADV7604 VIDEO_ADV7842 VIDEO_AK881X VIDEO_BT819 VIDEO_BT856 VIDEO_BT866 VIDEO_GS1662 VIDEO_I2C VIDEO_KS0127 VIDEO_ML86V7667 VIDEO_SAA7110 VIDEO_SAA7185 VIDEO_ST_MIPID02 VIDEO_TC358743 VIDEO_TC358746 VIDEO_TDA1997X VIDEO_THS7303 VIDEO_THS8200 VIDEO_TLV320AIC23B VIDEO_TVP514X VIDEO_TVP7002 VIDEO_TW9900 VIDEO_TW9910 VIDEO_VPX3220 VMLINUX_MAP WIRELESS_WDS
+    _enable PCIE_BUS_DEFAULT PAHOLE_HAS_SPLIT_BTF DEBUG_INFO_BTF_MODULES KVM_WERROR
+  fi
 
   # ntsync support
   tkgpatch="$srcdir/0007-v${_basekernel}-ntsync.patch"
@@ -1691,18 +1599,28 @@ fi
   if [ "${_cpusched}" != "pds" ] && [ "${_cpusched}" != "bmq" ]; then
     _enable "ANDROID" "ANDROID_BINDER_IPC" "ANDROID_BINDERFS"
     _disable "ANDROID_BINDER_IPC_SELFTEST"
-    scripts/config --set-str "ANDROID_BINDER_DEVICES" ""
+    _set_str "ANDROID_BINDER_DEVICES" ""
   fi
 
   # NR_CPUS
   if [ "$_basever" != "601" ]; then
     if [ -n "$_NR_CPUS_value" ]; then
       msg2 "Setting Max core number that kernel can handle to $_NR_CPUS_value"
-      _disable CPUMASK_OFFSTACK MAXSMP
+      _disable MAXSMP
       scripts/config --set-val "NR_CPUS" "$_NR_CPUS_value"
     fi
   else
     warning "NR_CPUS is bugged on 6.1.y, so your setting was ignored"
+  fi
+
+  # Modify the kernel config file to fit Fedora SELinux configuration
+  if [ "$_distro" = "Fedora" ] ; then
+    msg2 "SELinux activation for Fedora"
+    _enable "AUDIT"
+    _enable "SECURITY_SELINUX"
+    _enable "DEFAULT_SECURITY_SELINUX"
+    _disable "DEFAULT_SECURITY_DAC"
+    _set_str "LSM" "lockdown,yama,integrity,selinux,bpf,landlock"
   fi
 
   fi
@@ -1742,6 +1660,55 @@ fi
 
     # get kernel version
     #make prepare ${llvm_opt}
+  fi
+
+  # Fnalize the .config file then check that the .config changes actually were taken into account
+
+  # we should not use _enable, _disable, _undefine, _set_str after this.
+  unset _enable _disable _undefine _set_str
+
+  # rewrite configuration
+  msg2 "Setting config"
+  make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
+
+  # Check that all the config changes actually got applied
+
+  failed_configs=()
+  _failed_config_diffs=()
+  while read -r _config_line; do
+    if [[ "$_config_line" =~ ^'# '(CONFIG_.*)' removed'$ ]]; then
+      local _config="${BASH_REMATCH[1]}"
+      if grep -F "$_config" .config &> /dev/null; then
+        local _match=$(set +e; grep -F "$_config" .config)
+        _failed_config_diffs+=("| $_config_line | $_match |")
+        failed_configs+=("$_config")
+      fi
+    elif [[ "$_config_line" =~ ^'# '(CONFIG_.*)' is not set'$ ]]; then
+      local _config="${BASH_REMATCH[1]}"
+      # either match the whole '# CONFIG_FOO is not set' or 'CONFIG_FOO' doesn't appear at all, which is acceptable too
+      if ( ! grep -F "$_config_line" .config &> /dev/null ) && \
+           ( grep -F "$_config" .config &> /dev/null ) ; then
+        local _match=$(set +e; grep -F "$_config" .config)
+        _failed_config_diffs+=("| $_config_line | $_match |")
+        failed_configs+=("$_config")
+      fi
+    elif [[ "$_config_line" =~ ^(CONFIG_.*)'=' ]]; then
+      local _config="${BASH_REMATCH[1]}"
+      if ! grep -F "$_config_line" .config &> /dev/null; then
+        local _match=$(set +e; grep -F -e "$_config=" -e "$_config " .config)
+        [[ -z "$_match" ]] && _match="_undefined_"
+        _failed_config_diffs+=("| $_config_line | $_match |")
+        failed_configs+=("$_config")
+      fi
+    fi
+  done < "$_where"/tkg-all-config-changes.txt
+
+  if [[ "${#_failed_config_diffs}" != 0 ]]; then
+    msg2 "Some .config changes were not applied. They are logged in logs/tkg-failed-config-diffs.md.txt when this script ends."
+    echo -e "| Wanted State | Actual State |\n| --- | ---|" >> "$_where"/tkg-failed-config-diffs.md.txt
+    printf "%s\n" "${_failed_config_diffs[@]}" >> "$_where"/tkg-failed-config-diffs.md.txt
+    printf "%s\n" "${failed_configs[@]}" > "$_where"/tkg-failed-configs.txt
+    sleep 1s
   fi
 
   # modprobed-db
@@ -1800,20 +1767,6 @@ fi
     if [ 0 -lt "${#fragments[@]}" ]; then
       scripts/kconfig/merge_config.sh -m .config "${fragments[@]}"
     fi
-  fi
-
-  # rewrite configuration
-  msg2 "Setting config"
-  make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
-
-  # Modify the kernel config file to fit Fedora SELinux configuration
-  if [ "$_distro" = "Fedora" ] ; then
-    msg2 "SELinux activation for Fedora"
-    _enable "AUDIT"
-    _enable "SECURITY_SELINUX"
-    _enable "DEFAULT_SECURITY_SELINUX"
-    _disable "DEFAULT_SECURITY_DAC"
-    scripts/config --set-str "LSM" "lockdown,yama,integrity,selinux,bpf,landlock"
   fi
 
   # menuconfig / nconfig
@@ -1917,6 +1870,8 @@ fi
 
 exit_cleanup() {
 
+  mkdir -p "$_where/logs"
+
   # Move eventual shell-output.log file to logs folder
   if [ -f "$_where/shell-output.log" ]; then
     mv -f "$_where"/shell-output.log "$_where"/logs/shell-output.log.txt
@@ -2011,6 +1966,15 @@ exit_cleanup() {
 
   [[ -f "$_where"/git_work.log.txt ]] && \
     mv -f "$_where"/git_work.log.txt "$_where"/logs/git_work.log.txt
+
+  [[ -f "$_where"/tkg-all-config-changes.txt ]] && \
+    mv -f "$_where"/tkg-all-config-changes.txt "$_where"/logs/tkg-all-config-changes.txt
+
+  [[ -f "$_where"/tkg-failed-config-diffs.md.txt ]] && \
+    mv -f "$_where"/tkg-failed-config-diffs.md.txt "$_where"/logs/tkg-failed-config-diffs.md.txt
+
+  [[ -f "$_where"/tkg-failed-configs.txt ]] && \
+    mv -f "$_where"/tkg-failed-configs.txt "$_where"/logs/tkg-failed-configs.txt
 
   # Create logs/system-info.txt
   cat /etc/os-release > "$_where"/logs/system-info.txt

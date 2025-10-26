@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Stop the script at any ecountered error
+# Stop the script at any encountered error
 set -e
 
 ###################### Definition of helper variables and functions
 
-_where=`pwd`
+_where=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 srcdir="$_where"
 
 # Command used for superuser privileges (`sudo`, `doas`, `su`)
@@ -41,17 +41,17 @@ plain() {
 # we don't export the environment in the script sub-command so sourcing current_env will
 # get us the actual environment
 if [[ -z "$SCRIPT" ]]; then
-  declare -p -x > current_env
+  declare -p -x > "$_where"/current_env
 fi
 
-source customization.cfg
+source "$_where"/customization.cfg
 
 if [ -e "$_EXT_CONFIG_PATH" ]; then
   msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
   source "$_EXT_CONFIG_PATH"
 fi
 
-. current_env
+. "$_where"/current_env
 
 if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   # using script is enabled, but we are not within the script sub-command
@@ -61,7 +61,7 @@ if [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   exit
 fi
 
-source linux-tkg-config/prepare
+source "$_where"/linux-tkg-config/prepare
 
 ####################################################################
 
@@ -82,13 +82,16 @@ _install_dependencies() {
   elif [ "$_distro" = "Suse" ]; then
     msg2 "Installing dependencies"
     sudo zypper install -y hostname bc bison ccache dwarves elfutils flex gcc-c++ git libXi-devel libelf-devel libqt5-qtbase-common-devel libqt5-qtbase-devel lz4 make ncurses-devel openssl-devel patch pesign rpm-build rpmdevtools schedtool python3 rsync zstd libdw-devel llvm clang lld
+  else
+    msg2 "Installing dependencies on this distro is unsupported, assume them installed and continue"
   fi
 }
 
-if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]; then
+if [[ ! "$1" =~ ^(install|install-deps|config|uninstall-help)$ ]]; then
   msg2 "Argument not recognised, options are:
         - config : interactive script that shallow clones the linux kernel git tree into the folder \$_kernel_work_folder, then applies extra patches and prepares the .config file
                    by copying the one from the currently running linux system and updates it.
+        - install-deps: install dependencies only
         - install : does the config step, proceeds to compile, then prompts to install
                     - 'DEB' distros: it creates .deb packages that will be installed then stored in the DEBS folder.
                     - 'RPM' distros: it creates .rpm packages that will be installed then stored in the RPMS folder.
@@ -97,12 +100,17 @@ if [ "$1" != "install" ] && [ "$1" != "config" ] && [ "$1" != "uninstall-help" ]
   exit 0
 fi
 
-if [ "$1" = "install" ] || [ "$1" = "config" ]; then
+if [[ "$1" =~ ^(install|install-deps)$ ]]; then
 
   if [[ -z "$_distro" || ! "$_distro" =~ ^(Ubuntu|Debian|Fedora|Suse|Gentoo|Generic)$ ]]; then
     msg2 "Variable \"_distro\" in \"customization.cfg\" has been set to an unkown value. Prompting..."
     _distro_prompt
   fi
+
+  _install_dependencies
+fi
+
+if [ "$1" = "install" ] || [ "$1" = "config" ]; then
 
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
@@ -110,12 +118,6 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   if [[ "${_compiler}" = "llvm" && "${_distro}" =~ ^(Generic|Gentoo)$ && "${_libunwind_replace}" = "true" ]]; then
       export LDFLAGS_MODULE="-unwindlib=libunwind"
       export HOSTLDFLAGS="-unwindlib=libunwind"
-  fi
-
-  # Install the needed dependencies if the user wants to install the kernel
-  # Not needed if the user asks for install.sh config
-  if [ "$1" == "install" ]; then
-    _install_dependencies
   fi
 
   _tkg_srcprep
