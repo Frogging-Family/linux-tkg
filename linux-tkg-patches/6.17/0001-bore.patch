@@ -1,7 +1,7 @@
-From 2c7d26c12268e7791a5b3ab6d7539dad8d3c6bd4 Mon Sep 17 00:00:00 2001
+From 925fe3dcbc65ccbeca8f9dc5bebebc5a727503ef Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Mon, 20 Oct 2025 15:42:21 +0900
-Subject: [PATCH] linux6.17.4-bore-6.5.8
+Date: Wed, 12 Nov 2025 04:55:39 +0900
+Subject: [PATCH] linux6.17.4-bore-6.5.9
 
 ---
  include/linux/sched.h      |  29 +++
@@ -11,13 +11,13 @@ Subject: [PATCH] linux6.17.4-bore-6.5.8
  kernel/fork.c              |   8 +
  kernel/futex/waitwake.c    |  11 ++
  kernel/sched/Makefile      |   1 +
- kernel/sched/bore.c        | 393 +++++++++++++++++++++++++++++++++++++
+ kernel/sched/bore.c        | 387 +++++++++++++++++++++++++++++++++++++
  kernel/sched/core.c        |  12 ++
  kernel/sched/debug.c       |  61 ++++++
  kernel/sched/fair.c        | 124 ++++++++++--
  kernel/sched/features.h    |   3 +
  kernel/sched/sched.h       |   9 +
- 13 files changed, 712 insertions(+), 12 deletions(-)
+ 13 files changed, 706 insertions(+), 12 deletions(-)
  create mode 100644 include/linux/sched/bore.h
  create mode 100644 kernel/sched/bore.c
 
@@ -70,7 +70,7 @@ index e4ce0a7683..fa9c484128 100644
  #ifdef CONFIG_SCHED_CORE
 diff --git a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 new file mode 100644
-index 0000000000..ff768c3201
+index 0000000000..79dd72b9aa
 --- /dev/null
 +++ b/include/linux/sched/bore.h
 @@ -0,0 +1,39 @@
@@ -86,7 +86,7 @@ index 0000000000..ff768c3201
 +#define SCHED_BORE_AUTHOR   "Masahito Suzuki"
 +#define SCHED_BORE_PROGNAME "BORE CPU Scheduler modification"
 +
-+#define SCHED_BORE_VERSION  "6.5.8"
++#define SCHED_BORE_VERSION  "6.5.9"
 +
 +extern u8   __read_mostly sched_bore;
 +extern u8   __read_mostly sched_burst_inherit_type;
@@ -233,10 +233,10 @@ index 8ae86371dd..b688084bce 100644
 +obj-$(CONFIG_SCHED_BORE) += bore.o
 diff --git a/kernel/sched/bore.c b/kernel/sched/bore.c
 new file mode 100644
-index 0000000000..c9e76eda35
+index 0000000000..7c1baa1bdf
 --- /dev/null
 +++ b/kernel/sched/bore.c
-@@ -0,0 +1,393 @@
+@@ -0,0 +1,387 @@
 +/*
 + *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
 + *  Copyright (C) 2021-2025 Masahito Suzuki <firelzrd@gmail.com>
@@ -321,15 +321,9 @@ index 0000000000..c9e76eda35
 +	struct bore_ctx *ctx = &p->bore;
 +
 +	u8  prev_prio = effective_prio_bore(p);
-+	u32 penalty = 0;
 +
-+	if (!(p->flags & PF_KTHREAD)) {
-+		u32 curr_penalty = ctx->curr_penalty;
-+		penalty = ctx->prev_penalty;
-+		if (penalty < curr_penalty)
-+			penalty = curr_penalty;
-+	}
-+	ctx->penalty = penalty;
++	ctx->penalty = (p->flags & PF_KTHREAD)? 0:
++		max(ctx->curr_penalty, ctx->prev_penalty);
 +
 +	u8 new_prio = effective_prio_bore(p);
 +	if (new_prio != prev_prio)
