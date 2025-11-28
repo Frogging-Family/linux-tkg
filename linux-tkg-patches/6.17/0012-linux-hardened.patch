@@ -102,15 +102,15 @@ index 9756d16e3df1..43e92535f3b1 100644
  	If enabled, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index 1383a6e417a4..651c5efa5ef5 100644
+index 8b61f038a365..874491b52e72 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 6
  PATCHLEVEL = 17
- SUBLEVEL = 8
+ SUBLEVEL = 9
 -EXTRAVERSION =
-+EXTRAVERSION = -hardened2
++EXTRAVERSION = -hardened1
  NAME = Baby Opossum Posse
  
  # *DOCUMENTATION*
@@ -1582,7 +1582,7 @@ index 10e6802a2edf..01f8700fafc6 100644
  
  	/* We encountered a memory safety error, taint the kernel! */
 diff --git a/mm/mm_init.c b/mm/mm_init.c
-index 5c21b3af216b..c0cab50d4049 100644
+index 5f1c1096a13f..c671f9c2d77d 100644
 --- a/mm/mm_init.c
 +++ b/mm/mm_init.c
 @@ -2002,6 +2002,7 @@ static void __init deferred_free_pages(unsigned long pfn,
@@ -1768,7 +1768,7 @@ index bfe7c40eeee1..04a5e278a874 100644
  static int __init setup_slab_nomerge(char *str)
  {
 diff --git a/mm/slub.c b/mm/slub.c
-index 2bf22bfce846..385de79c1257 100644
+index c76ac34a1f51..a59559e7e38a 100644
 --- a/mm/slub.c
 +++ b/mm/slub.c
 @@ -41,6 +41,7 @@
@@ -1888,7 +1888,7 @@ index 2bf22bfce846..385de79c1257 100644
  	if (s->flags & SLAB_STORE_USER) {
  		/* We also have user information there */
  		off += 2 * sizeof(struct track);
-@@ -2354,11 +2398,19 @@ struct rcu_delayed_free {
+@@ -2358,11 +2402,19 @@ struct rcu_delayed_free {
   */
  static __always_inline
  bool slab_free_hook(struct kmem_cache *s, void *x, bool init,
@@ -1909,7 +1909,7 @@ index 2bf22bfce846..385de79c1257 100644
  	kmemleak_free_recursive(x, s->flags);
  	kmsan_slab_free(s, x);
  
-@@ -2432,7 +2484,14 @@ bool slab_free_hook(struct kmem_cache *s, void *x, bool init,
+@@ -2436,7 +2488,14 @@ bool slab_free_hook(struct kmem_cache *s, void *x, bool init,
  		 */
  		set_orig_size(s, x, orig_size);
  
@@ -1924,7 +1924,7 @@ index 2bf22bfce846..385de79c1257 100644
  	/* KASAN might put x into memory quarantine, delaying its reuse. */
  	return !kasan_slab_free(s, x, init, still_accessible);
  }
-@@ -2448,7 +2507,7 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
+@@ -2452,7 +2511,7 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
  	bool init;
  
  	if (is_kfence_address(next)) {
@@ -1933,7 +1933,7 @@ index 2bf22bfce846..385de79c1257 100644
  		return false;
  	}
  
-@@ -2463,7 +2522,7 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
+@@ -2467,7 +2526,7 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
  		next = get_freepointer(s, object);
  
  		/* If object's reuse doesn't have to be delayed */
@@ -1942,7 +1942,7 @@ index 2bf22bfce846..385de79c1257 100644
  			/* Move object to the new freelist */
  			set_freepointer(s, object, *head);
  			*head = object;
-@@ -2475,6 +2534,22 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
+@@ -2479,6 +2538,22 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
  			 * accordingly if object's reuse is delayed.
  			 */
  			--(*cnt);
@@ -1965,7 +1965,7 @@ index 2bf22bfce846..385de79c1257 100644
  		}
  	} while (object != old_tail);
  
-@@ -2484,8 +2559,9 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
+@@ -2488,8 +2563,9 @@ bool slab_free_freelist_hook(struct kmem_cache *s, void **head, void **tail,
  static void *setup_object(struct kmem_cache *s, void *object)
  {
  	setup_object_debug(s, object);
@@ -1976,7 +1976,7 @@ index 2bf22bfce846..385de79c1257 100644
  		kasan_unpoison_new_object(s, object);
  		s->ctor(object);
  		kasan_poison_new_object(s, object);
-@@ -4207,6 +4283,8 @@ bool slab_post_alloc_hook(struct kmem_cache *s, struct list_lru *lru,
+@@ -4211,6 +4287,8 @@ bool slab_post_alloc_hook(struct kmem_cache *s, struct list_lru *lru,
  		if (p[i] && init && (!kasan_init ||
  				     !kasan_has_integrated_init()))
  			memset(p[i], 0, zero_size);
@@ -1985,7 +1985,7 @@ index 2bf22bfce846..385de79c1257 100644
  		kmemleak_alloc_recursive(p[i], s->object_size, 1,
  					 s->flags, init_flags);
  		kmsan_slab_alloc(s, p[i], init_flags);
-@@ -4243,7 +4321,24 @@ static __fastpath_inline void *slab_alloc_node(struct kmem_cache *s, struct list
+@@ -4247,7 +4325,24 @@ static __fastpath_inline void *slab_alloc_node(struct kmem_cache *s, struct list
  	object = __slab_alloc_node(s, gfpflags, node, addr, orig_size);
  
  	maybe_wipe_obj_freeptr(s, object);
@@ -2011,7 +2011,7 @@ index 2bf22bfce846..385de79c1257 100644
  
  out:
  	/*
-@@ -4704,10 +4799,15 @@ static __fastpath_inline
+@@ -4708,10 +4803,15 @@ static __fastpath_inline
  void slab_free(struct kmem_cache *s, struct slab *slab, void *object,
  	       unsigned long addr)
  {
@@ -2028,7 +2028,7 @@ index 2bf22bfce846..385de79c1257 100644
  		do_slab_free(s, slab, object, object, 1, addr);
  }
  
-@@ -4716,7 +4816,11 @@ void slab_free(struct kmem_cache *s, struct slab *slab, void *object,
+@@ -4720,7 +4820,11 @@ void slab_free(struct kmem_cache *s, struct slab *slab, void *object,
  static noinline
  void memcg_alloc_abort_single(struct kmem_cache *s, void *object)
  {
@@ -2041,7 +2041,7 @@ index 2bf22bfce846..385de79c1257 100644
  		do_slab_free(s, virt_to_slab(object), object, object, 1, _RET_IP_);
  }
  #endif
-@@ -4757,7 +4861,7 @@ static void slab_free_after_rcu_debug(struct rcu_head *rcu_head)
+@@ -4761,7 +4865,7 @@ static void slab_free_after_rcu_debug(struct rcu_head *rcu_head)
  		return;
  
  	/* resume freeing */
@@ -2050,7 +2050,7 @@ index 2bf22bfce846..385de79c1257 100644
  		do_slab_free(s, slab, object, object, 1, _THIS_IP_);
  }
  #endif /* CONFIG_SLUB_RCU_DEBUG */
-@@ -4774,8 +4878,12 @@ static inline struct kmem_cache *virt_to_cache(const void *obj)
+@@ -4778,8 +4882,12 @@ static inline struct kmem_cache *virt_to_cache(const void *obj)
  	struct slab *slab;
  
  	slab = virt_to_slab(obj);
@@ -2063,7 +2063,7 @@ index 2bf22bfce846..385de79c1257 100644
  	return slab->slab_cache;
  }
  
-@@ -4788,10 +4896,15 @@ static inline struct kmem_cache *cache_from_obj(struct kmem_cache *s, void *x)
+@@ -4792,10 +4900,15 @@ static inline struct kmem_cache *cache_from_obj(struct kmem_cache *s, void *x)
  		return s;
  
  	cachep = virt_to_cache(x);
@@ -2082,7 +2082,7 @@ index 2bf22bfce846..385de79c1257 100644
  	return cachep;
  }
  
-@@ -4822,8 +4935,12 @@ static void free_large_kmalloc(struct folio *folio, void *object)
+@@ -4826,8 +4939,12 @@ static void free_large_kmalloc(struct folio *folio, void *object)
  		return;
  	}
  
@@ -2095,7 +2095,7 @@ index 2bf22bfce846..385de79c1257 100644
  
  	kmemleak_free(object);
  	kasan_kfree_large(object);
-@@ -5323,7 +5440,7 @@ int __kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+@@ -5327,7 +5444,7 @@ int __kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
  {
  	struct kmem_cache_cpu *c;
  	unsigned long irqflags;
@@ -2104,7 +2104,7 @@ index 2bf22bfce846..385de79c1257 100644
  
  	/*
  	 * Drain objects in the per cpu slab, while disabling local
-@@ -5379,6 +5496,28 @@ int __kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+@@ -5383,6 +5500,28 @@ int __kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
  	local_unlock_irqrestore(&s->cpu_slab->lock, irqflags);
  	slub_put_cpu_ptr(s->cpu_slab);
  
@@ -2133,7 +2133,7 @@ index 2bf22bfce846..385de79c1257 100644
  	return i;
  
  error:
-@@ -5422,6 +5561,7 @@ int kmem_cache_alloc_bulk_noprof(struct kmem_cache *s, gfp_t flags, size_t size,
+@@ -5426,6 +5565,7 @@ int kmem_cache_alloc_bulk_noprof(struct kmem_cache *s, gfp_t flags, size_t size,
  				 void **p)
  {
  	int i;
@@ -2141,7 +2141,7 @@ index 2bf22bfce846..385de79c1257 100644
  
  	if (!size)
  		return 0;
-@@ -5438,8 +5578,11 @@ int kmem_cache_alloc_bulk_noprof(struct kmem_cache *s, gfp_t flags, size_t size,
+@@ -5442,8 +5582,11 @@ int kmem_cache_alloc_bulk_noprof(struct kmem_cache *s, gfp_t flags, size_t size,
  	 * memcg and kmem_cache debug support and memory initialization.
  	 * Done outside of the IRQ disabled fastpath loop.
  	 */
@@ -2154,7 +2154,7 @@ index 2bf22bfce846..385de79c1257 100644
  		return 0;
  	}
  	return i;
-@@ -5466,10 +5609,10 @@ EXPORT_SYMBOL(kmem_cache_alloc_bulk_noprof);
+@@ -5470,10 +5613,10 @@ EXPORT_SYMBOL(kmem_cache_alloc_bulk_noprof);
   * and increases the number of allocations possible without having to
   * take the list_lock.
   */
@@ -2168,7 +2168,7 @@ index 2bf22bfce846..385de79c1257 100644
  
  /*
   * Calculate the order of allocation given an slab object size.
-@@ -5651,6 +5794,7 @@ static void early_kmem_cache_node_alloc(int node)
+@@ -5655,6 +5798,7 @@ static void early_kmem_cache_node_alloc(int node)
  #ifdef CONFIG_SLUB_DEBUG
  	init_object(kmem_cache_node, n, SLUB_RED_ACTIVE);
  #endif
@@ -2176,7 +2176,7 @@ index 2bf22bfce846..385de79c1257 100644
  	n = kasan_slab_alloc(kmem_cache_node, n, GFP_KERNEL, false);
  	slab->freelist = get_freepointer(kmem_cache_node, n);
  	slab->inuse = 1;
-@@ -5821,6 +5965,9 @@ static int calculate_sizes(struct kmem_cache_args *args, struct kmem_cache *s)
+@@ -5825,6 +5969,9 @@ static int calculate_sizes(struct kmem_cache_args *args, struct kmem_cache *s)
  		s->offset = ALIGN_DOWN(s->object_size / 2, sizeof(void *));
  	}
  
@@ -2186,7 +2186,7 @@ index 2bf22bfce846..385de79c1257 100644
  #ifdef CONFIG_SLUB_DEBUG
  	if (flags & SLAB_STORE_USER) {
  		/*
-@@ -6126,6 +6273,9 @@ void __check_heap_object(const void *ptr, unsigned long n,
+@@ -6130,6 +6277,9 @@ void __check_heap_object(const void *ptr, unsigned long n,
  		offset -= s->red_left_pad;
  	}
  
@@ -2196,7 +2196,7 @@ index 2bf22bfce846..385de79c1257 100644
  	/* Allow address range falling entirely within usercopy region. */
  	if (offset >= s->useroffset &&
  	    offset - s->useroffset <= s->usersize &&
-@@ -6433,6 +6583,10 @@ int do_kmem_cache_create(struct kmem_cache *s, const char *name,
+@@ -6437,6 +6587,10 @@ int do_kmem_cache_create(struct kmem_cache *s, const char *name,
  	s->flags = kmem_cache_flags(flags, s->name);
  #ifdef CONFIG_SLAB_FREELIST_HARDENED
  	s->random = get_random_long();
