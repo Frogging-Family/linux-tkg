@@ -405,11 +405,6 @@ if [ "$1" = "install" ]; then
       sudo ln -sfn "/usr/src/$_headers_folder_name" "/usr/src/linux"
 
       msg2 "Rebuild kernel modules with \"emerge @module-rebuild\" ?"
-      if [ "$_compiler" = "llvm" ];then
-        warning "Building modules with LLVM/Clang is mostly unsupported OOTB by \"emerge @module-rebuild\" except for Nvidia 465.31+"
-        warning "     Manually setting \"CC=clang\" for some modules may work if you haven't used LTO"
-      fi
-
       read -p "Y/[n]: " _continue
       if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
         sudo emerge @module-rebuild --keep-going
