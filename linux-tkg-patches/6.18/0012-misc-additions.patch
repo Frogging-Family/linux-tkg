@@ -317,3 +317,355 @@ index ed9dac00ebfb18..b3fd5e9df44c6f 100644
  			"New power limit (%d) is out of range [%d,%d]\n",
  			limit, smu->min_power_limit, smu->max_power_limit);
 
+From 7227d6611966695b00d0df59700ac545f2294a9e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Christian=20K=C3=B6nig?= <christian.koenig@amd.com>
+Date: Wed, 29 Oct 2025 15:36:32 +0100
+Subject: [PATCH] drm/amdgpu: avoid memory allocation in the critical code path
+ v3
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When we run out of VMIDs we need to wait for some to become available.
+Previously we were using a dma_fence_array for that, but this means that
+we have to allocate memory.
+
+Instead just wait for the first not signaled fence from the least recently
+used VMID to signal. That is not as efficient since we end up in this
+function multiple times again, but allocating memory can easily fail or
+deadlock if we have to wait for memory to become available.
+
+v2: remove now unused VM manager fields
+v3: fix dma_fence reference
+
+Signed-off-by: Christian König <christian.koenig@amd.com>
+Closes: https://gitlab.freedesktop.org/drm/amd/-/issues/4258
+Reviewed-by: Alex Deucher <alexander.deucher@amd.com>
+Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/issues/164
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c | 52 +++++++------------------
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c  |  7 ----
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h  |  4 --
+ 3 files changed, 14 insertions(+), 49 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c
+index 3ef5bc95642cab..b2af2cc6826c44 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c
+@@ -201,58 +201,34 @@ static int amdgpu_vmid_grab_idle(struct amdgpu_ring *ring,
+ 	struct amdgpu_device *adev = ring->adev;
+ 	unsigned vmhub = ring->vm_hub;
+ 	struct amdgpu_vmid_mgr *id_mgr = &adev->vm_manager.id_mgr[vmhub];
+-	struct dma_fence **fences;
+-	unsigned i;
+ 
++	/* If anybody is waiting for a VMID let everybody wait for fairness */
+ 	if (!dma_fence_is_signaled(ring->vmid_wait)) {
+ 		*fence = dma_fence_get(ring->vmid_wait);
+ 		return 0;
+ 	}
+ 
+-	fences = kmalloc_array(id_mgr->num_ids, sizeof(void *), GFP_NOWAIT);
+-	if (!fences)
+-		return -ENOMEM;
+-
+ 	/* Check if we have an idle VMID */
+-	i = 0;
+-	list_for_each_entry((*idle), &id_mgr->ids_lru, list) {
++	list_for_each_entry_reverse((*idle), &id_mgr->ids_lru, list) {
+ 		/* Don't use per engine and per process VMID at the same time */
+ 		struct amdgpu_ring *r = adev->vm_manager.concurrent_flush ?
+ 			NULL : ring;
+ 
+-		fences[i] = amdgpu_sync_peek_fence(&(*idle)->active, r);
+-		if (!fences[i])
+-			break;
+-		++i;
++		*fence = amdgpu_sync_peek_fence(&(*idle)->active, r);
++		if (!(*fence))
++			return 0;
+ 	}
+ 
+-	/* If we can't find a idle VMID to use, wait till one becomes available */
+-	if (&(*idle)->list == &id_mgr->ids_lru) {
+-		u64 fence_context = adev->vm_manager.fence_context + ring->idx;
+-		unsigned seqno = ++adev->vm_manager.seqno[ring->idx];
+-		struct dma_fence_array *array;
+-		unsigned j;
+-
+-		*idle = NULL;
+-		for (j = 0; j < i; ++j)
+-			dma_fence_get(fences[j]);
+-
+-		array = dma_fence_array_create(i, fences, fence_context,
+-					       seqno, true);
+-		if (!array) {
+-			for (j = 0; j < i; ++j)
+-				dma_fence_put(fences[j]);
+-			kfree(fences);
+-			return -ENOMEM;
+-		}
+-
+-		*fence = dma_fence_get(&array->base);
+-		dma_fence_put(ring->vmid_wait);
+-		ring->vmid_wait = &array->base;
+-		return 0;
+-	}
+-	kfree(fences);
++	/*
++	 * If we can't find a idle VMID to use, wait on a fence from the least
++	 * recently used in the hope that it will be available soon.
++	 */
++	*idle = NULL;
++	dma_fence_put(ring->vmid_wait);
++	ring->vmid_wait = dma_fence_get(*fence);
+ 
++	/* This is the reference we return */
++	dma_fence_get(*fence);
+ 	return 0;
+ }
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index 3d2f9d0e2d2397..63e49577a5b2e4 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -2830,8 +2830,6 @@ void amdgpu_vm_fini(struct amdgpu_device *adev, struct amdgpu_vm *vm)
+  */
+ void amdgpu_vm_manager_init(struct amdgpu_device *adev)
+ {
+-	unsigned i;
+-
+ 	/* Concurrent flushes are only possible starting with Vega10 and
+ 	 * are broken on Navi10 and Navi14.
+ 	 */
+@@ -2840,11 +2838,6 @@ void amdgpu_vm_manager_init(struct amdgpu_device *adev)
+ 					      adev->asic_type == CHIP_NAVI14);
+ 	amdgpu_vmid_mgr_init(adev);
+ 
+-	adev->vm_manager.fence_context =
+-		dma_fence_context_alloc(AMDGPU_MAX_RINGS);
+-	for (i = 0; i < AMDGPU_MAX_RINGS; ++i)
+-		adev->vm_manager.seqno[i] = 0;
+-
+ 	spin_lock_init(&adev->vm_manager.prt_lock);
+ 	atomic_set(&adev->vm_manager.num_prt_users, 0);
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+index cf0ec94e8a0754..15d757c016cbbc 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+@@ -453,10 +453,6 @@ struct amdgpu_vm_manager {
+ 	unsigned int				first_kfd_vmid;
+ 	bool					concurrent_flush;
+ 
+-	/* Handling of VM fences */
+-	u64					fence_context;
+-	unsigned				seqno[AMDGPU_MAX_RINGS];
+-
+ 	uint64_t				max_pfn;
+ 	uint32_t				num_level;
+ 	uint32_t				block_size;
+
+From c883e01164baff48d205061323e239d2050c6341 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Christian=20K=C3=B6nig?= <christian.koenig@amd.com>
+Date: Tue, 28 Oct 2025 11:16:12 +0100
+Subject: [PATCH] drm/amdgpu: use GFP_ATOMIC instead of NOWAIT in the critical
+ path
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Otherwise job submissions can fail with ENOMEM.
+
+We probably need to re-design the per VMID tracking at some point.
+
+Signed-off-by: Christian König <christian.koenig@amd.com>
+Closes: https://gitlab.freedesktop.org/drm/amd/-/issues/4258
+Reviewed-by: Alex Deucher <alexander.deucher@amd.com>
+Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/issues/164
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c
+index b2af2cc6826c44..9cab36322c1658 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ids.c
+@@ -289,7 +289,7 @@ static int amdgpu_vmid_grab_reserved(struct amdgpu_vm *vm,
+ 	* user of the VMID.
+ 	*/
+ 	r = amdgpu_sync_fence(&(*id)->active, &job->base.s_fence->finished,
+-			      GFP_NOWAIT);
++			      GFP_ATOMIC);
+ 	if (r)
+ 		return r;
+ 
+@@ -349,7 +349,7 @@ static int amdgpu_vmid_grab_used(struct amdgpu_vm *vm,
+ 		 */
+ 		r = amdgpu_sync_fence(&(*id)->active,
+ 				      &job->base.s_fence->finished,
+-				      GFP_NOWAIT);
++				      GFP_ATOMIC);
+ 		if (r)
+ 			return r;
+ 
+@@ -402,7 +402,7 @@ int amdgpu_vmid_grab(struct amdgpu_vm *vm, struct amdgpu_ring *ring,
+ 			/* Remember this submission as user of the VMID */
+ 			r = amdgpu_sync_fence(&id->active,
+ 					      &job->base.s_fence->finished,
+-					      GFP_NOWAIT);
++					      GFP_ATOMIC);
+ 			if (r)
+ 				goto error;
+ 
+
+From d9dd14a20b5306c70bc9b0a216904240c202370b Mon Sep 17 00:00:00 2001
+From: Alice Ryhl <aliceryhl@google.com>
+Date: Mon, 29 Dec 2025 15:38:14 +0000
+Subject: [PATCH] rust_binder: correctly handle FDA objects of length zero
+
+Fix a bug where an empty FDA (fd array) object with 0 fds would cause an
+out-of-bounds error. The previous implementation used `skip == 0` to
+mean "this is a pointer fixup", but 0 is also the correct skip length
+for an empty FDA. If the FDA is at the end of the buffer, then this
+results in an attempt to write 8-bytes out of bounds. This is caught and
+results in an EINVAL error being returned to userspace.
+
+The pattern of using `skip == 0` as a special value originates from the
+C-implementation of Binder. As part of fixing this bug, this pattern is
+replaced with a Rust enum.
+
+I considered the alternate option of not pushing a fixup when the length
+is zero, but I think it's cleaner to just get rid of the zero-is-special
+stuff.
+
+The root cause of this bug was diagnosed by Gemini CLI on first try. I
+used the following prompt:
+
+> There appears to be a bug in @drivers/android/binder/thread.rs where
+> the Fixups oob bug is triggered with 316 304 316 324. This implies
+> that we somehow ended up with a fixup where buffer A has a pointer to
+> buffer B, but the pointer is located at an index in buffer A that is
+> out of bounds. Please investigate the code to find the bug. You may
+> compare with @drivers/android/binder.c that implements this correctly.
+
+Cc: stable@vger.kernel.org
+Reported-by: DeepChirp <DeepChirp@outlook.com>
+Closes: https://github.com/waydroid/waydroid/issues/2157
+Fixes: eafedbc7c050 ("rust_binder: add Rust Binder driver")
+Tested-by: DeepChirp <DeepChirp@outlook.com>
+Signed-off-by: Alice Ryhl <aliceryhl@google.com>
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/issues/173
+---
+ drivers/android/binder/thread.rs | 59 ++++++++++++++++++--------------
+ 1 file changed, 34 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/android/binder/thread.rs b/drivers/android/binder/thread.rs
+index 7e34ccd394f804..33a9053b6adf06 100644
+--- a/drivers/android/binder/thread.rs
++++ b/drivers/android/binder/thread.rs
+@@ -69,17 +69,24 @@ struct ScatterGatherEntry {
+ }
+ 
+ /// This entry specifies that a fixup should happen at `target_offset` of the
+-/// buffer. If `skip` is nonzero, then the fixup is a `binder_fd_array_object`
+-/// and is applied later. Otherwise if `skip` is zero, then the size of the
+-/// fixup is `sizeof::<u64>()` and `pointer_value` is written to the buffer.
+-struct PointerFixupEntry {
+-    /// The number of bytes to skip, or zero for a `binder_buffer_object` fixup.
+-    skip: usize,
+-    /// The translated pointer to write when `skip` is zero.
+-    pointer_value: u64,
+-    /// The offset at which the value should be written. The offset is relative
+-    /// to the original buffer.
+-    target_offset: usize,
++/// buffer.
++enum PointerFixupEntry {
++    /// A fixup for a `binder_buffer_object`.
++    Fixup {
++        /// The translated pointer to write.
++        pointer_value: u64,
++        /// The offset at which the value should be written. The offset is relative
++        /// to the original buffer.
++        target_offset: usize,
++    },
++    /// A skip for a `binder_fd_array_object`.
++    Skip {
++        /// The number of bytes to skip.
++        skip: usize,
++        /// The offset at which the skip should happen. The offset is relative
++        /// to the original buffer.
++        target_offset: usize,
++    },
+ }
+ 
+ /// Return type of `apply_and_validate_fixup_in_parent`.
+@@ -762,8 +769,7 @@ impl Thread {
+ 
+                     parent_entry.fixup_min_offset = info.new_min_offset;
+                     parent_entry.pointer_fixups.push(
+-                        PointerFixupEntry {
+-                            skip: 0,
++                        PointerFixupEntry::Fixup {
+                             pointer_value: buffer_ptr_in_user_space,
+                             target_offset: info.target_offset,
+                         },
+@@ -807,9 +813,8 @@ impl Thread {
+                 parent_entry
+                     .pointer_fixups
+                     .push(
+-                        PointerFixupEntry {
++                        PointerFixupEntry::Skip {
+                             skip: fds_len,
+-                            pointer_value: 0,
+                             target_offset: info.target_offset,
+                         },
+                         GFP_KERNEL,
+@@ -871,17 +876,21 @@ impl Thread {
+             let mut reader =
+                 UserSlice::new(UserPtr::from_addr(sg_entry.sender_uaddr), sg_entry.length).reader();
+             for fixup in &mut sg_entry.pointer_fixups {
+-                let fixup_len = if fixup.skip == 0 {
+-                    size_of::<u64>()
+-                } else {
+-                    fixup.skip
++                let (fixup_len, fixup_offset) = match fixup {
++                    PointerFixupEntry::Fixup { target_offset, .. } => {
++                        (size_of::<u64>(), *target_offset)
++                    }
++                    PointerFixupEntry::Skip {
++                        skip,
++                        target_offset,
++                    } => (*skip, *target_offset),
+                 };
+ 
+-                let target_offset_end = fixup.target_offset.checked_add(fixup_len).ok_or(EINVAL)?;
+-                if fixup.target_offset < end_of_previous_fixup || offset_end < target_offset_end {
++                let target_offset_end = fixup_offset.checked_add(fixup_len).ok_or(EINVAL)?;
++                if fixup_offset < end_of_previous_fixup || offset_end < target_offset_end {
+                     pr_warn!(
+                         "Fixups oob {} {} {} {}",
+-                        fixup.target_offset,
++                        fixup_offset,
+                         end_of_previous_fixup,
+                         offset_end,
+                         target_offset_end
+@@ -890,13 +899,13 @@ impl Thread {
+                 }
+ 
+                 let copy_off = end_of_previous_fixup;
+-                let copy_len = fixup.target_offset - end_of_previous_fixup;
++                let copy_len = fixup_offset - end_of_previous_fixup;
+                 if let Err(err) = alloc.copy_into(&mut reader, copy_off, copy_len) {
+                     pr_warn!("Failed copying into alloc: {:?}", err);
+                     return Err(err.into());
+                 }
+-                if fixup.skip == 0 {
+-                    let res = alloc.write::<u64>(fixup.target_offset, &fixup.pointer_value);
++                if let PointerFixupEntry::Fixup { pointer_value, .. } = fixup {
++                    let res = alloc.write::<u64>(fixup_offset, pointer_value);
+                     if let Err(err) = res {
+                         pr_warn!("Failed copying ptr into alloc: {:?}", err);
+                         return Err(err.into());
