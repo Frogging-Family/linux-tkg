@@ -1,0 +1,38 @@
+From 64c99752ad64d944a08c8d7b4860309e6223a19c Mon Sep 17 00:00:00 2001
+From: Peter Jung <admin@ptr1337.dev>
+Date: Thu, 26 Feb 2026 16:53:26 +0100
+Subject: [PATCH] kernel-open/Makefile: Fix PAHOLE_VARIABLES for kernels using
+ gen-btf.sh, fix for 7.0rc1
+
+scripts/gen-btf.sh was introduced in kernel 7.0 (formerly 6.17) when
+scripts/pahole-flags.sh was removed. The gen-btf.sh-based BTF generation
+calls ${PAHOLE} inside a shell script, so the awk wrapper used here is
+incompatible (shell word-splitting breaks the single-quoted awk program).
+
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
+---
+ kernel-open/Makefile | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/kernel-open/Makefile b/kernel-open/Makefile
+index f7a8db69f..9a3fc281e 100644
+--- a/kernel-open/Makefile
++++ b/kernel-open/Makefile
+@@ -92,8 +92,13 @@ else
+   PAHOLE_AWK_PROGRAM = BEGIN { pahole_cmd = \"pahole\"; for (i = 1; i < ARGC; i++) { if (ARGV[i] ~ /--lang_exclude=/) { pahole_cmd = pahole_cmd sprintf(\" %s,c++\", ARGV[i]); } else { pahole_cmd = pahole_cmd sprintf(\" %s\", ARGV[i]); } } system(pahole_cmd); }
+-  # If scripts/pahole-flags.sh is not present in the kernel tree, add PAHOLE and
+-  # PAHOLE_AWK_PROGRAM assignments to PAHOLE_VARIABLES; otherwise assign the
+-  # empty string to PAHOLE_VARIABLES.
+-  PAHOLE_VARIABLES=$(if $(wildcard $(KERNEL_SOURCES)/scripts/pahole-flags.sh),,"PAHOLE=$(AWK) '$(PAHOLE_AWK_PROGRAM)'")
++  # If scripts/pahole-flags.sh is not present AND scripts/gen-btf.sh is not
++  # present in the kernel tree, add PAHOLE and PAHOLE_AWK_PROGRAM assignments
++  # to PAHOLE_VARIABLES; otherwise assign the empty string to PAHOLE_VARIABLES.
++  #
++  # scripts/gen-btf.sh was introduced in kernel 7.0 (formerly 6.17) when
++  # scripts/pahole-flags.sh was removed.  The gen-btf.sh-based BTF generation
++  # calls ${PAHOLE} inside a shell script, so the awk wrapper used here is
++  # incompatible (shell word-splitting breaks the single-quoted awk program).
++  PAHOLE_VARIABLES=$(if $(or $(wildcard $(KERNEL_SOURCES)/scripts/pahole-flags.sh),$(wildcard $(KERNEL_SOURCES)/scripts/gen-btf.sh)),,"PAHOLE=$(AWK) '$(PAHOLE_AWK_PROGRAM)'")
+ 
+   ifndef ARCH
+     ARCH := $(shell uname -m | sed -e 's/i.86/i386/' \
