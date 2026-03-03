@@ -182,15 +182,11 @@ build() {
     return 0
   )
 
-  # Build nvidia-open modules if requested
+  # Build nvidia-open modules
   if [ "$_build_nvidia_open" = "true" ]; then
     local _nv_open_src="${srcdir}/${_nv_open_pkg}"
     local _kernuname
-    if [ -n "$_custom_pkgbase" ]; then
-      _kernuname="${pkgver}-${pkgrel}"
-    else
-      _kernuname="${pkgver}-${pkgrel}-tkg-${_cpusched}${_compiler_name}"
-    fi
+    _kernuname="$(< "${_kernel_work_folder_abs}/include/config/kernel.release")"
     local MODULE_FLAGS=(
       KERNEL_UNAME="${_kernuname}"
       IGNORE_PREEMPT_RT_PRESENCE=1
@@ -315,6 +311,12 @@ hackheaders() {
   install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
   cp -t "$builddir" -a scripts
 
+  # Module signing keys for later out-of-tree module signing
+  if [[ "$_install_signing_keys" == "true" ]] && [[ -f "certs/signing_key.pem" ]]; then
+    msg2 "Installing module signing keys..."
+    install -Dt "$builddir/certs" -m 400 certs/signing_key.pem certs/signing_key.x509
+  fi
+
   # add objtool for external module building and enabled VALIDATION_STACK option
   install -Dt "$builddir/tools/objtool" tools/objtool/objtool
 
@@ -414,10 +416,9 @@ hacknvidia_open() {
   # Strip modules
   local strip_bin="strip"
   [ "$_compiler_name" = "-llvm" ] && strip_bin="llvm-strip"
-  find "${modulesdir}" -type f -name '*.ko' \
-    -exec "${strip_bin}" --strip-debug '{}' \;
+  find "${modulesdir}" -type f -name '*.ko' -exec "${strip_bin}" --strip-debug '{}' \;
 
-  # Sign modules (optional, experimental)
+  # Sign modules
   if [[ "$_nvidia_open_sign_modules" == "true" ]]; then
     if ! grep -q 'CONFIG_MODULE_SIG=y' "${_kernel_work_folder_abs}/.config"; then
       warning "_nvidia_open_sign_modules is enabled but CONFIG_MODULE_SIG=y is not set in .config — skipping module signing."
