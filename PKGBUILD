@@ -309,6 +309,30 @@ hackbase() {
     [ "$_compiler_name" = "-llvm" ] && strip_bin="llvm-strip"
     "${strip_bin}" --strip-debug "${modulesdir}/extramodules/v4l2loopback.ko"
 
+    # Sign module
+    if [[ "$_v4l2loopback_sign_modules" == "true" ]]; then
+      if ! grep -q 'CONFIG_MODULE_SIG=y' "${_kernel_work_folder_abs}/.config"; then
+        warning "_v4l2loopback_sign_modules is enabled but CONFIG_MODULE_SIG=y is not set in .config — skipping module signing."
+      else
+        local sign_script="${_kernel_work_folder_abs}/scripts/sign-file"
+        local sign_key
+        sign_key="$(grep -Po 'CONFIG_MODULE_SIG_KEY="\K[^"]*' "${_kernel_work_folder_abs}/.config")"
+        [[ "$sign_key" =~ ^/ ]] || sign_key="${_kernel_work_folder_abs}/${sign_key}"
+        local sign_cert="${_kernel_work_folder_abs}/certs/signing_key.x509"
+        local hash_algo
+        hash_algo="$(grep -Po 'CONFIG_MODULE_SIG_HASH="\K[^"]*' "${_kernel_work_folder_abs}/.config")"
+
+        if [[ ! -f "$sign_key" ]]; then
+          warning "Module signing key not found: ${sign_key} — skipping module signing."
+        elif [[ ! -f "$sign_cert" ]]; then
+          warning "Module signing certificate not found: ${sign_cert} — skipping module signing."
+        else
+          msg2 "Signing v4l2loopback kernel module..."
+          "${sign_script}" "${hash_algo}" "${sign_key}" "${sign_cert}" "${modulesdir}/extramodules/v4l2loopback.ko"
+        fi
+      fi
+    fi
+
     # Compress module
     zstd --rm -19 -T0 "${modulesdir}/extramodules/v4l2loopback.ko"
 
