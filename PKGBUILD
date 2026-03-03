@@ -61,7 +61,7 @@ else
   pkgbase=linux"${_basever}"-tkg-"${_cpusched}"${_compiler_name}
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
-[ "$_build_nvidia_open" = "true" ] && pkgname+=("${pkgbase}-nvidia-open")
+[ "$_nvidia_open" = "true" ] && pkgname+=("${pkgbase}-nvidia-open")
 pkgver="${_basekernel}"."${_sub}"
 pkgrel=273
 pkgdesc='Linux-tkg'
@@ -75,7 +75,7 @@ fi
 
 # nvidia-open: source tarball and patches from Frogging-Family/nvidia-all
 _nv_open_pkg="NVIDIA-kernel-module-source-${_nvidia_open_version}"
-if [ "$_build_nvidia_open" = "true" ]; then
+if [ "$_nvidia_open" = "true" ]; then
   source+=(
     "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/${_nv_open_pkg}.tar.xz"
     "0001-Enable-atomic-kernel-modesetting-by-default.patch::https://raw.githubusercontent.com/Frogging-Family/nvidia-all/master/patches/0001-Enable-atomic-kernel-modesetting-by-default.diff"
@@ -100,9 +100,9 @@ prepare() {
   source "$_where"/linux-tkg-config/prepare
 
   # Sanity checks for nvidia-open compatibility
-  if [ "$_build_nvidia_open" = "true" ] && { [ "$_numadisable" = "true" ] || [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; }; then
-    [ "$_numadisable" = "true" ] && error "_build_nvidia_open=\"true\" requires _numadisable=\"false\" (NUMA enabled) for CUDA/NvEnc to work."
-    { [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; } && error "_build_nvidia_open=\"true\" cannot be combined with PREEMPT_RT due to licensing issues."
+  if [ "$_nvidia_open" = "true" ] && { [ "$_numadisable" = "true" ] || [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; }; then
+    [ "$_numadisable" = "true" ] && error "_nvidia_open=\"true\" requires _numadisable=\"false\" (NUMA enabled) for CUDA/NvEnc to work."
+    { [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; } && error "_nvidia_open=\"true\" cannot be combined with PREEMPT_RT due to licensing issues."
     return 1
   fi
 
@@ -113,7 +113,7 @@ prepare() {
   _tkg_srcprep
 
   # Apply nvidia-open patches if requested
-  if [ "$_build_nvidia_open" = "true" ]; then
+  if [ "$_nvidia_open" = "true" ]; then
     local _nv_open_src="${srcdir}/${_nv_open_pkg}"
     msg2 "NVIDIA-open-module source version ${_nvidia_open_version} will be built and installed alongside this kernel."
     msg2 "Applying NVIDIA-open-module patches (${_nvidia_open_version})..."
@@ -126,6 +126,12 @@ prepare() {
       msg2 "Applying NVIDIA-open-module build fix patch for ${_basekernel}..."
       patch -Np1 -i "$_nv_open_fix" -d "${_nv_open_src}"
     fi
+  fi
+
+  # Clone v4l2loopback source if requested
+  if [ "$_v4l2loopback" = "true" ]; then
+    msg2 "Cloning v4l2loopback source..."
+    git clone --depth=1 https://github.com/v4l2loopback/v4l2loopback.git "${srcdir}/v4l2loopback"
   fi
 }
 
@@ -183,7 +189,7 @@ build() {
   )
 
   # Build nvidia-open modules
-  if [ "$_build_nvidia_open" = "true" ]; then
+  if [ "$_nvidia_open" = "true" ]; then
     local _nv_open_src="${srcdir}/${_nv_open_pkg}"
     local _kernuname
     _kernuname="$(< "${_kernel_work_folder_abs}/include/config/kernel.release")"
@@ -197,6 +203,12 @@ build() {
     msg2 "Building NVIDIA open kernel modules (${_nvidia_open_version})..."
     CFLAGS= CXXFLAGS= LDFLAGS= make "${BUILD_FLAGS[@]}" "${MODULE_FLAGS[@]}" \
       -C "${_nv_open_src}" -j"$(nproc)" modules
+  fi
+
+  # Build v4l2loopback module
+  if [ "$_v4l2loopback" = "true" ]; then
+    msg2 "Building v4l2loopback kernel module..."
+    make ${_force_all_threads} ${llvm_opt} -C "${_kernel_work_folder_abs}" M="${srcdir}/v4l2loopback" modules
   fi
 }
 
@@ -285,6 +297,27 @@ hackbase() {
     msg2 "Installing udev rule for ntsync"
     install -Dm644 "${srcdir}"/ntsync.rules "${pkgdir}/etc/udev/rules.d/ntsync.rules"
   fi
+
+  # v4l2loopback
+  if [ "$_v4l2loopback" = "true" ]; then
+    msg2 "Installing v4l2loopback module..."
+    install -dm755 "${modulesdir}/extramodules"
+    install -m644 "${srcdir}/v4l2loopback/v4l2loopback.ko" "${modulesdir}/extramodules/"
+
+    # Strip module
+    local strip_bin="strip"
+    [ "$_compiler_name" = "-llvm" ] && strip_bin="llvm-strip"
+    "${strip_bin}" --strip-debug "${modulesdir}/extramodules/v4l2loopback.ko"
+
+    # Compress module
+    zstd --rm -19 -T0 "${modulesdir}/extramodules/v4l2loopback.ko"
+
+    # Auto-load v4l2loopback at boot
+    echo "v4l2loopback" | install -Dm644 /dev/stdin "${pkgdir}/etc/modules-load.d/v4l2loopback-${pkgbase}.conf"
+
+    # Clean up cloned source
+    rm -rf "${srcdir}/v4l2loopback"
+  fi
 }
 
 hackheaders() {
@@ -312,7 +345,7 @@ hackheaders() {
   cp -t "$builddir" -a scripts
 
   # Module signing keys for later out-of-tree module signing
-  if [[ "$_install_signing_keys" == "true" ]] && [[ -f "certs/signing_key.pem" ]]; then
+  if [[ "$_signing_keys" == "true" ]] && [[ -f "certs/signing_key.pem" ]]; then
     msg2 "Installing module signing keys..."
     install -Dt "$builddir/certs" -m 400 certs/signing_key.pem certs/signing_key.x509
   fi
@@ -389,7 +422,7 @@ hackheaders() {
   fi
 
   # Skip srcdir cleanup if nvidia-open package still needs it (runs after headers)
-  if [ "$_NUKR" = "true" ] && [ "$_build_nvidia_open" != "true" ]; then
+  if [ "$_NUKR" = "true" ] && [ "$_nvidia_open" != "true" ]; then
     rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
   fi
 }
@@ -464,5 +497,5 @@ hackbase
 package_${pkgbase}-headers() {
 hackheaders
 }
-$( [ "$_build_nvidia_open" = "true" ] && printf 'package_%s-nvidia-open() {\nhacknvidia_open\n}' "${pkgbase}" )
+$( [ "$_nvidia_open" = "true" ] && printf 'package_%s-nvidia-open() {\nhacknvidia_open\n}' "${pkgbase}" )
 EOF

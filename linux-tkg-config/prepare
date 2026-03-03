@@ -575,13 +575,27 @@ _setup_kernel_work_folder() {
   _set_kver_internal_vars
 }
 
+# Build v4l2loopback kernel module
+_set_v4l2loopback() {
+  if [ -z "$_v4l2loopback" ]; then
+    plain "[EXPERIMENTAL] Do you want to build the v4l2loopback kernel module?"
+    plain "Creates virtual /dev/video* devices for use as virtual webcams (e.g. OBS virtual camera)."
+    _v4l2loopback_array_text=("No (disable)" "Yes (enable)")
+    _v4l2loopback_array=("false" "true")
+    _default_index="0"
+    _prompt_from_array "${_v4l2loopback_array_text[@]}"
+    _v4l2loopback="${_v4l2loopback_array[$_selected_index]}"
+    echo -e "_v4l2loopback='$_v4l2loopback'" >> "$_where"/BIG_UGLY_FROGMINER
+  fi
+}
+
 # Separate package that builds the open NVIDIA kernel modules
 _set_nvidia_open() {
-  if [ -z "$_build_nvidia_open" ]; then
+  if [ -z "$_nvidia_open" ]; then
     # Skip prompt entirely when RT is active — nvidia-open is incompatible
     if [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; then
       warning "PREEMPT_RT is enabled — nvidia-open is incompatible due to licensing issues. Disabling automatically."
-      _build_nvidia_open="false"
+      _nvidia_open="false"
     else
       plain "Do you want to build the open NVIDIA kernel modules as a separate package?"
       plain "Requires Turing+ GPU (RTX 20xx or newer). Cannot be combined with RT scheduler."
@@ -589,15 +603,15 @@ _set_nvidia_open() {
       _nvidia_open_array=("false" "true")
       _default_index="0"
       _prompt_from_array "${_nvidia_open_array_text[@]}"
-      _build_nvidia_open="${_nvidia_open_array[$_selected_index]}"
+      _nvidia_open="${_nvidia_open_array[$_selected_index]}"
     fi
-    echo -e "_build_nvidia_open='$_build_nvidia_open'" >> "$_where"/BIG_UGLY_FROGMINER
+    echo -e "_nvidia_open='$_nvidia_open'" >> "$_where"/BIG_UGLY_FROGMINER
   fi
 
   # Signing nvidia-open modules
-  if [ "$_build_nvidia_open" = "true" ] && [ -z "$_nvidia_open_sign_modules" ]; then
+  if [ "$_nvidia_open" = "true" ] && [ -z "$_nvidia_open_sign_modules" ]; then
     plain "[EXPERIMENTAL] Do you want to sign the NVIDIA open kernel modules?"
-    plain "Requires CONFIG_MODULE_SIG=y in your kernel config. Has no effect without _build_nvidia_open."
+    plain "Requires CONFIG_MODULE_SIG=y in your kernel config. Has no effect without _nvidia_open."
     _nvidia_open_sign_array_text=("No (disable — recommended)" "Yes (enable — experimental)")
     _nvidia_open_sign_array=("false" "true")
     _default_index="0"
@@ -607,7 +621,7 @@ _set_nvidia_open() {
   fi
 
   # Version selection
-  if [ "$_build_nvidia_open" = "true" ] && [ -z "$_nvidia_open_version" ]; then
+  if [ "$_nvidia_open" = "true" ] && [ -z "$_nvidia_open_version" ]; then
     plain "Enter the NVIDIA open module driver version to use."
     plain "See https://github.com/Frogging-Family/nvidia-all for available versions (e.g. 590.48.01)."
     while [ -z "$_nvidia_open_version" ]; do
@@ -617,7 +631,6 @@ _set_nvidia_open() {
     echo -e "_nvidia_open_version='$_nvidia_open_version'" >> "$_where"/BIG_UGLY_FROGMINER
   fi
 }
-
 
 _tkg_initscript() {
 
@@ -664,6 +677,8 @@ _tkg_initscript() {
   cp "$_where"/linux-tkg-config/${_basekernel}/* "$_where" # copy config files and hooks inside the PKGBUILD's dir to preserve makepkg sourcing and md5sum checking
 
   _set_compiler
+
+  _set_v4l2loopback
 
   _set_nvidia_open
 
