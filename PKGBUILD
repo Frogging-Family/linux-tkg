@@ -73,15 +73,13 @@ if [ "$_compiler_name" = "-llvm" ]; then
   makedepends+=( 'lld' 'clang' 'llvm')
 fi
 
-# nvidia-open: source tarball and patches from Frogging-Family/nvidia-all
+# nvidia-open: source tarball from NVIDIA, patches are in linux-tkg-patches/<version>/
 _nv_open_pkg="NVIDIA-kernel-module-source-${_nvidia_open_version}"
 if [ "$_nvidia_open" = "true" ]; then
   source+=(
     "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/${_nv_open_pkg}.tar.xz"
-    "0001-Enable-atomic-kernel-modesetting-by-default.patch::https://raw.githubusercontent.com/Frogging-Family/nvidia-all/master/patches/0001-Enable-atomic-kernel-modesetting-by-default.diff"
-    "0002-Add-IBT-support.patch::https://raw.githubusercontent.com/Frogging-Family/nvidia-all/master/patches/0002-Add-IBT-support.diff"
   )
-  sha256sums+=('SKIP' 'SKIP' 'SKIP')
+  sha256sums+=('SKIP')
 fi
 optdepends=('schedtool')
 options=('!strip' 'docs')
@@ -117,8 +115,8 @@ prepare() {
     local _nv_open_src="${srcdir}/${_nv_open_pkg}"
     msg2 "NVIDIA-open-module source version ${_nvidia_open_version} will be built and installed alongside this kernel."
     msg2 "Applying NVIDIA-open-module patches (${_nvidia_open_version})..."
-    patch -Np1 -i "${srcdir}/0001-Enable-atomic-kernel-modesetting-by-default.patch" -d "${_nv_open_src}/kernel-open"
-    patch -Np1 -i "${srcdir}/0002-Add-IBT-support.patch" -d "${_nv_open_src}"
+    patch -Np1 -i "${srcdir}/0015-nvidia-enable-atomic-modesetting.patch" -d "${_nv_open_src}/kernel-open"
+    patch -Np1 -i "${srcdir}/0015-nvidia-add-ibt-support.patch" -d "${_nv_open_src}"
     # Kernel-version-specific NVIDIA build fix patch (e.g. 6.19, 7.0)
     local _nv_open_fix
     _nv_open_fix="$(find "$srcdir" -maxdepth 1 -name '*-nvidia-build-fix.patch' -print -quit)"
