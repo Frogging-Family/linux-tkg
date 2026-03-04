@@ -110,14 +110,14 @@ prepare() {
 
   _tkg_srcprep
 
-  # Apply nvidia-open patches if requested
+  # Apply nvidia-open patches and prepare source
   if [ "$_nvidia_open" = "true" ]; then
     local _nv_open_src="${srcdir}/${_nv_open_pkg}"
     msg2 "NVIDIA-open-module source version ${_nvidia_open_version} will be built and installed alongside this kernel."
     msg2 "Applying NVIDIA-open-module patches (${_nvidia_open_version})..."
     patch -Np1 -i "${srcdir}/0015-nvidia-enable-atomic-modesetting.patch" -d "${_nv_open_src}/kernel-open"
     patch -Np1 -i "${srcdir}/0015-nvidia-add-ibt-support.patch" -d "${_nv_open_src}"
-    # Kernel-version-specific NVIDIA build fix patch (e.g. 6.19, 7.0)
+    # Kernel-version-specific NVIDIA build fix patch
     local _nv_open_fix
     _nv_open_fix="$(find "$srcdir" -maxdepth 1 -name '*-nvidia-build-fix.patch' -print -quit)"
     if [ -n "$_nv_open_fix" ]; then
@@ -126,7 +126,7 @@ prepare() {
     fi
   fi
 
-  # Clone v4l2loopback source if requested
+  # Clone v4l2loopback source
   if [ "$_v4l2loopback" = "true" ]; then
     msg2 "Cloning v4l2loopback source..."
     git clone --depth=1 https://github.com/v4l2loopback/v4l2loopback.git "${srcdir}/v4l2loopback"
@@ -286,8 +286,8 @@ hackbase() {
       fi
     fi
     # load ntsync module at boot
-    msg2 "Set the ntsync module to be loaded at boot through /etc/modules-load.d"
-    install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/etc/modules-load.d/ntsync-${pkgbase}.conf"
+    msg2 "Set the ntsync module to be loaded at boot through /usr/lib/modules-load.d"
+    install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/usr/lib/modules-load.d/ntsync-${pkgbase}.conf"
   fi
 
   # install udev rule for ntsync if needed (<6.14)
@@ -335,7 +335,7 @@ hackbase() {
     zstd --rm -19 -T0 "${modulesdir}/extramodules/v4l2loopback.ko"
 
     # Auto-load v4l2loopback at boot
-    echo "v4l2loopback" | install -Dm644 /dev/stdin "${pkgdir}/etc/modules-load.d/v4l2loopback-${pkgbase}.conf"
+    echo "v4l2loopback" | install -Dm644 /dev/stdin "${pkgdir}/usr/lib/modules-load.d/v4l2loopback-${pkgbase}.conf"
 
     # Clean up cloned source
     rm -rf "${srcdir}/v4l2loopback"
@@ -366,8 +366,8 @@ hackheaders() {
   install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
   cp -t "$builddir" -a scripts
 
-  # Module signing keys for later out-of-tree module signing
-  if [[ "$_signing_keys" == "true" ]] && [[ -f "certs/signing_key.pem" ]]; then
+  # Install kernel signing keys for later out-of-tree module signing
+  if [[ "$_install_signing_keys" == "true" ]] && [[ -f "certs/signing_key.pem" ]]; then
     msg2 "Installing module signing keys..."
     install -Dt "$builddir/certs" -m 400 certs/signing_key.pem certs/signing_key.x509
   fi
@@ -452,7 +452,7 @@ hackheaders() {
 hacknvidia_open() {
   source "$_where"/BIG_UGLY_FROGMINER
 
-  pkgdesc="NVIDIA open kernel modules (${_nvidia_open_version}) for the $pkgdesc kernel - https://github.com/Frogging-Family/nvidia-all"
+  pkgdesc="NVIDIA open kernel modules"
   depends=("${pkgbase}=${pkgver}" "nvidia-utils=${_nvidia_open_version}" 'libglvnd')
   provides=('NVIDIA-MODULE' 'nvidia-open')
   conflicts=("${pkgbase}-nvidia" 'nvidia' 'nvidia-dkms' 'nvidia-open' 'nvidia-open-dkms')
