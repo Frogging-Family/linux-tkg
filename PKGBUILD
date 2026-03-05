@@ -125,12 +125,6 @@ prepare() {
       patch -Np1 -i "$_nv_open_fix" -d "${_nv_open_src}"
     fi
   fi
-
-  # Clone v4l2loopback source
-  if [ "$_v4l2loopback" = "true" ]; then
-    msg2 "Cloning v4l2loopback source..."
-    git clone --depth=1 https://github.com/v4l2loopback/v4l2loopback.git "${srcdir}/v4l2loopback"
-  fi
 }
 
 build() {
@@ -202,12 +196,6 @@ build() {
     CFLAGS= CXXFLAGS= LDFLAGS= make "${BUILD_FLAGS[@]}" "${MODULE_FLAGS[@]}" \
       -C "${_nv_open_src}" -j"$(nproc)" modules
   fi
-
-  # Build v4l2loopback module
-  if [ "$_v4l2loopback" = "true" ]; then
-    msg2 "Building v4l2loopback kernel module..."
-    make ${_force_all_threads} ${llvm_opt} -C "${_kernel_work_folder_abs}" M="${srcdir}/v4l2loopback" modules
-  fi
 }
 
 hackbase() {
@@ -254,20 +242,6 @@ hackbase() {
   # remove build and source links
   rm -f "$modulesdir"/{source,build}
 
-  # Re-sign modules after stripping (INSTALL_MOD_STRIP removes embedded signatures)
-  if [[ "$_RESIGN_AFTER_STRIP" == "true" ]] && [[ "$_STRIP" == "true" ]] && grep -q 'CONFIG_MODULE_SIG=y' "${_kernel_work_folder_abs}/.config"; then
-    msg2 "Re-signing kernel modules after strip..."
-    local sign_script="${_kernel_work_folder_abs}/scripts/sign-file"
-    local sign_key
-    sign_key="$(grep -Po 'CONFIG_MODULE_SIG_KEY="\K[^"]*' "${_kernel_work_folder_abs}/.config")"
-    [[ "$sign_key" =~ ^/ ]] || sign_key="${_kernel_work_folder_abs}/${sign_key}"
-    local sign_cert="${_kernel_work_folder_abs}/certs/signing_key.x509"
-    local hash_algo
-    hash_algo="$(grep -Po 'CONFIG_MODULE_SIG_HASH="\K[^"]*' "${_kernel_work_folder_abs}/.config")"
-    find "${modulesdir}" -type f -name '*.ko' \
-      -exec "${sign_script}" "${hash_algo}" "${sign_key}" "${sign_cert}" '{}' \;
-  fi
-
   # install cleanup pacman hook and script
   sed -e "s|cleanup|${pkgbase}-cleanup|g" "${srcdir}"/90-cleanup.hook |
     install -Dm644 /dev/stdin "${pkgdir}/usr/share/libalpm/hooks/90-${pkgbase}.hook"
@@ -295,51 +269,6 @@ hackbase() {
     msg2 "Installing udev rule for ntsync"
     install -Dm644 "${srcdir}"/ntsync.rules "${pkgdir}/etc/udev/rules.d/ntsync.rules"
   fi
-
-  # v4l2loopback
-  if [ "$_v4l2loopback" = "true" ]; then
-    msg2 "Installing v4l2loopback module..."
-    install -dm755 "${modulesdir}/extramodules"
-    install -m644 "${srcdir}/v4l2loopback/v4l2loopback.ko" "${modulesdir}/extramodules/"
-
-    # Strip module
-    local strip_bin="strip"
-    [ "$_compiler_name" = "-llvm" ] && strip_bin="llvm-strip"
-    "${strip_bin}" --strip-debug "${modulesdir}/extramodules/v4l2loopback.ko"
-
-    # Sign module
-    if [[ "$_v4l2loopback_sign_modules" == "true" ]]; then
-      if ! grep -q 'CONFIG_MODULE_SIG=y' "${_kernel_work_folder_abs}/.config"; then
-        warning "_v4l2loopback_sign_modules is enabled but CONFIG_MODULE_SIG=y is not set in .config — skipping module signing."
-      else
-        local sign_script="${_kernel_work_folder_abs}/scripts/sign-file"
-        local sign_key
-        sign_key="$(grep -Po 'CONFIG_MODULE_SIG_KEY="\K[^"]*' "${_kernel_work_folder_abs}/.config")"
-        [[ "$sign_key" =~ ^/ ]] || sign_key="${_kernel_work_folder_abs}/${sign_key}"
-        local sign_cert="${_kernel_work_folder_abs}/certs/signing_key.x509"
-        local hash_algo
-        hash_algo="$(grep -Po 'CONFIG_MODULE_SIG_HASH="\K[^"]*' "${_kernel_work_folder_abs}/.config")"
-
-        if [[ ! -f "$sign_key" ]]; then
-          warning "Module signing key not found: ${sign_key} — skipping module signing."
-        elif [[ ! -f "$sign_cert" ]]; then
-          warning "Module signing certificate not found: ${sign_cert} — skipping module signing."
-        else
-          msg2 "Signing v4l2loopback kernel module..."
-          "${sign_script}" "${hash_algo}" "${sign_key}" "${sign_cert}" "${modulesdir}/extramodules/v4l2loopback.ko"
-        fi
-      fi
-    fi
-
-    # Compress module
-    zstd --rm -19 -T0 "${modulesdir}/extramodules/v4l2loopback.ko"
-
-    # Auto-load v4l2loopback at boot
-    echo "v4l2loopback" | install -Dm644 /dev/stdin "${pkgdir}/usr/lib/modules-load.d/v4l2loopback-${pkgbase}.conf"
-
-    # Clean up cloned source
-    rm -rf "${srcdir}/v4l2loopback"
-  fi
 }
 
 hackheaders() {
@@ -365,12 +294,6 @@ hackheaders() {
   install -Dt "$builddir/kernel" -m644 kernel/Makefile
   install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
   cp -t "$builddir" -a scripts
-
-  # Install kernel signing keys for later out-of-tree module signing
-  if [[ "$_install_signing_keys" == "true" ]] && [[ -f "certs/signing_key.pem" ]]; then
-    msg2 "Installing module signing keys..."
-    install -Dt "$builddir/certs" -m 400 certs/signing_key.pem certs/signing_key.x509
-  fi
 
   # add objtool for external module building and enabled VALIDATION_STACK option
   install -Dt "$builddir/tools/objtool" tools/objtool/objtool
