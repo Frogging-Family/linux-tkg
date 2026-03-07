@@ -116,6 +116,7 @@ prepare() {
     msg2 "NVIDIA-open-module source version ${_nvidia_open_version} will be built and installed alongside this kernel."
     msg2 "Applying NVIDIA-open-module patches (${_nvidia_open_version})..."
     patch -Np1 -i "${srcdir}/0015-nvidia-add-ibt-support.patch" -d "${_nv_open_src}"
+    patch -Np1 -i "${srcdir}/0015-nvidia-build-fix.patch" -d "${_nv_open_src}"
   fi
 }
 
