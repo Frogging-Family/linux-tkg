@@ -110,20 +110,12 @@ prepare() {
 
   _tkg_srcprep
 
-  # Apply nvidia-open patches and prepare source
+  # Apply nvidia-open patches and prepare source only 595 and 7.0 for testing set
   if [ "$_nvidia_open" = "true" ]; then
     local _nv_open_src="${srcdir}/${_nv_open_pkg}"
     msg2 "NVIDIA-open-module source version ${_nvidia_open_version} will be built and installed alongside this kernel."
     msg2 "Applying NVIDIA-open-module patches (${_nvidia_open_version})..."
-    patch -Np1 -i "${srcdir}/0015-nvidia-enable-atomic-modesetting.patch" -d "${_nv_open_src}/kernel-open"
     patch -Np1 -i "${srcdir}/0015-nvidia-add-ibt-support.patch" -d "${_nv_open_src}"
-    # Kernel-version-specific NVIDIA build fix patch
-    local _nv_open_fix
-    _nv_open_fix="$(find "$srcdir" -maxdepth 1 -name '*-nvidia-build-fix.patch' -print -quit)"
-    if [ -n "$_nv_open_fix" ]; then
-      msg2 "Applying NVIDIA-open-module build fix patch for ${_basekernel}..."
-      patch -Np1 -i "$_nv_open_fix" -d "${_nv_open_src}"
-    fi
   fi
 }
 
