@@ -111,6 +111,11 @@ _rt_rev_map=(
   ["6.10"]="11"
 )
 
+# NVIDIA open module version definitions
+_nvidia_open_latest_version="595.45.04"
+_nvidia_open_legacy_version="580.126.18"
+_nvidia_open_supported_kernels=("6.12" "6.18" "6.19" "7.0")
+
 _undefine() {
   for _config_name in "$@"; do
     scripts/config -k --undefine "${_config_name}"
@@ -575,34 +580,67 @@ _setup_kernel_work_folder() {
   _set_kver_internal_vars
 }
 
-# Builds the open NVIDIA kernel modules as a separate package
 _set_nvidia_open() {
+  if [ "$_nvidia_open" = "false" ]; then
+    return
+  fi
+
+  # RT must be disabled
+  if [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; then
+    warning "PREEMPT_RT is enabled — nvidia-open is incompatible due to licensing issues. Disabling automatically."
+    _nvidia_open="false"
+    echo -e "_nvidia_open='false'" >> "$_where"/BIG_UGLY_FROGMINER
+    return
+  fi
+
+  # NUMA must be enabled
+  if [ "$_numadisable" = "true" ]; then
+    warning "nvidia-open requires NUMA enabled for CUDA/NvEnc. _numadisable is \"true\" — disabling nvidia-open."
+    _nvidia_open="false"
+    echo -e "_nvidia_open='false'" >> "$_where"/BIG_UGLY_FROGMINER
+    return
+  fi
+
+  # Prompt if not set
   if [ -z "$_nvidia_open" ]; then
-    # Skip prompt entirely when RT is active — nvidia-open is incompatible
-    if [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; then
-      warning "PREEMPT_RT is enabled — nvidia-open is incompatible due to licensing issues. Disabling automatically."
-      _nvidia_open="false" # for now we set it to false to avoid prompting
-    else
       plain "Do you want to build the open NVIDIA kernel modules as a separate package?"
-      plain "Requires Turing+ GPU (RTX 20xx or newer). Cannot be combined with RT scheduler."
-      _nvidia_open_array_text=("No (disable)" "Yes (enable)")
-      _nvidia_open_array=("false" "true")
+      plain "Requires Turing+ GPU (RTX 20xx or newer)."
+      plain "This will disable RT and enable NUMA."
+      plain "  latest = current NVIDIA branch (${_nvidia_open_latest_version})"
+      plain "  legacy = older LTS branch (${_nvidia_open_legacy_version})"
+      _nvidia_open_array_text=("No (disable)" "latest (${_nvidia_open_latest_version})" "legacy (${_nvidia_open_legacy_version})")
+      _nvidia_open_array=("false" "latest" "legacy")
       _default_index="0"
       _prompt_from_array "${_nvidia_open_array_text[@]}"
       _nvidia_open="${_nvidia_open_array[$_selected_index]}"
-    fi
     echo -e "_nvidia_open='$_nvidia_open'" >> "$_where"/BIG_UGLY_FROGMINER
   fi
 
-  # Version selection
-  if [ "$_nvidia_open" = "true" ] && [ -z "$_nvidia_open_version" ]; then
-    plain "Enter the NVIDIA open module driver version to use."
-    plain "See https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/ for available versions (e.g. 590.126.18)."
-    while [ -z "$_nvidia_open_version" ]; do
-      read -rp "> Version: " _nvidia_open_version
-      [ -z "$_nvidia_open_version" ] && plain "Version must not be empty. Please enter a valid driver version."
+  # Resolve version and validate kernel support
+  if [ "$_nvidia_open" != "false" ]; then
+    local _kernel_supported="false"
+    for _k in "${_nvidia_open_supported_kernels[@]}"; do
+      if [ "$_k" = "$_basekernel" ]; then
+        _kernel_supported="true"
+        break
+      fi
     done
-    echo -e "_nvidia_open_version='$_nvidia_open_version'" >> "$_where"/BIG_UGLY_FROGMINER
+    if [ "$_kernel_supported" != "true" ]; then
+      error "nvidia-open is not supported for kernel ${_basekernel}. Supported kernels: ${_nvidia_open_supported_kernels[*]}"
+      error "Disabling nvidia-open."
+      _nvidia_open="false"
+    fi
+
+    # Set version based on selection
+    if [ "$_nvidia_open" = "latest" ]; then
+      _nvidia_open_version="${_nvidia_open_latest_version}"
+    elif [ "$_nvidia_open" = "legacy" ]; then
+      _nvidia_open_version="${_nvidia_open_legacy_version}"
+    fi
+
+    if [ "$_nvidia_open" != "false" ]; then
+      echo -e "_nvidia_open_version='$_nvidia_open_version'" >> "$_where"/BIG_UGLY_FROGMINER
+    fi
   fi
 }
 
@@ -927,6 +965,21 @@ _tkg_srcprep() {
   if [ "${_cpusched}" = "cfs" ] || [ "${_cpusched}" = "bore" ] || [[ "${_cpusched}" =~ "eevdf" ]]; then
     _msg="Applying Glitched CFS/EEVDF patch"
     tkgpatch="$srcdir/0003-glitched-cfs.patch" && _tkg_patcher
+  fi
+
+  # Apply nvidia-open patches to NVIDIA source tree
+  if [ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ]; then
+    local _nv_open_src="${srcdir}/${_nv_open_pkg}"
+    msg2 "NVIDIA-open-module source version ${_nvidia_open_version} (${_nvidia_open}) will be built and installed alongside this kernel."
+    msg2 "Applying NVIDIA-open-module patches (${_nvidia_open_version})..."
+
+    local _nv_patch="${srcdir}/0015-nvidia-${_nvidia_open}.patch"
+    if [ -f "$_nv_patch" ]; then
+      msg2 "Applying $(basename "$_nv_patch")..."
+      patch -Np1 -i "$_nv_patch" -d "${_nv_open_src}"
+    else
+      msg2 "No nvidia patch found (looked for $(basename "$_nv_patch"))."
+    fi
   fi
 
   fi

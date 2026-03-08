@@ -61,7 +61,7 @@ else
   pkgbase=linux"${_basever}"-tkg-"${_cpusched}"${_compiler_name}
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
-[ "$_nvidia_open" = "true" ] && pkgname+=("${pkgbase}-nvidia-open")
+[ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ] && pkgname+=("${pkgbase}-nvidia-open") # Separate package for open NVIDIA kernel modules, built alongside the main kernel package.
 pkgver="${_basekernel}"."${_sub}"
 pkgrel=273
 pkgdesc='Linux-tkg'
@@ -73,9 +73,9 @@ if [ "$_compiler_name" = "-llvm" ]; then
   makedepends+=( 'lld' 'clang' 'llvm')
 fi
 
-# nvidia-open: source tarball from NVIDIA, patches are in linux-tkg-patches/<version>/
+# nvidia-open source tarball from NVIDIA
 _nv_open_pkg="NVIDIA-kernel-module-source-${_nvidia_open_version}"
-if [ "$_nvidia_open" = "true" ]; then
+if [ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ]; then
   source+=(
     "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/${_nv_open_pkg}.tar.xz"
   )
@@ -97,27 +97,11 @@ prepare() {
   source "$_where"/BIG_UGLY_FROGMINER
   source "$_where"/linux-tkg-config/prepare
 
-  # Sanity checks for nvidia-open compatibility
-  if [ "$_nvidia_open" = "true" ] && { [ "$_numadisable" = "true" ] || [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; }; then
-    [ "$_numadisable" = "true" ] && error "_nvidia_open=\"true\" requires _numadisable=\"false\" (NUMA enabled) for CUDA/NvEnc to work."
-    { [ "$_preempt_rt" = "1" ] || [ "$_preempt_rt_force" = "1" ]; } && error "_nvidia_open=\"true\" cannot be combined with PREEMPT_RT due to licensing issues."
-    return 1
-  fi
-
   rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
   ln -s "${_kernel_work_folder_abs}" "${srcdir}"
 
   _tkg_srcprep
-
-  # Apply nvidia-open patches and prepare source only 595 and 7.0 for testing set
-  if [ "$_nvidia_open" = "true" ]; then
-    local _nv_open_src="${srcdir}/${_nv_open_pkg}"
-    msg2 "NVIDIA-open-module source version ${_nvidia_open_version} will be built and installed alongside this kernel."
-    msg2 "Applying NVIDIA-open-module patches (${_nvidia_open_version})..."
-    patch -Np1 -i "${srcdir}/0015-nvidia-add-ibt-support.patch" -d "${_nv_open_src}"
-    patch -Np1 -i "${srcdir}/0015-nvidia-build-fix.patch" -d "${_nv_open_src}"
-  fi
 }
 
 build() {
@@ -174,7 +158,7 @@ build() {
   )
 
   # Build nvidia-open modules
-  if [ "$_nvidia_open" = "true" ]; then
+  if [ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ]; then
     local _nv_open_src="${srcdir}/${_nv_open_pkg}"
     local _kernuname
     _kernuname="$(< "${_kernel_work_folder_abs}/include/config/kernel.release")"
@@ -360,7 +344,7 @@ hackheaders() {
   fi
 
   # Skip srcdir cleanup if nvidia-open package still needs it (runs after headers)
-  if [ "$_NUKR" = "true" ] && [ "$_nvidia_open" != "true" ]; then
+  if [ "$_NUKR" = "true" ] && { [ "$_nvidia_open" = "false" ] || [ -z "$_nvidia_open" ]; }; then
     rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
   fi
 }
@@ -410,5 +394,5 @@ hackbase
 package_${pkgbase}-headers() {
 hackheaders
 }
-$( [ "$_nvidia_open" = "true" ] && printf 'package_%s-nvidia-open() {\nhacknvidia_open\n}' "${pkgbase}" )
+$( [ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ] && printf 'package_%s-nvidia-open() {\nhacknvidia_open\n}' "${pkgbase}" )
 EOF
