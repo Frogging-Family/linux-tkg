@@ -1,9 +1,9 @@
 #!/bin/bash
 
+export TKG_PATCHWORK_SILENT_BACKEND=${TKG_PATCHWORK_SILENT_BACKEND:=true}
+
 msg2() {
-  # silence output of prepare script
-  # echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
-  :
+  [[ "$TKG_PATCHWORK_SILENT_BACKEND" == "true" ]] || echo -e " \033[1;34m->\033[1;0m \033[1;1m$1\033[1;0m" >&2
 }
 
 info() {
@@ -19,7 +19,7 @@ warning() {
 }
 
 plain() {
-  [[ "$_silent" = "true" ]] || echo -e "$1" >&2
+  [[ "$TKG_PATCHWORK_SILENT_BACKEND" == "true" ]] || echo -e "$1" >&2
 }
 
 _rebase_end(){
@@ -140,12 +140,14 @@ _rebase_start(){
 
   if [[ "$2" == "is-clean" ]]; then
     if patch -Np1 -i "$_where/linux-tkg-patches/$_patch"; then
+      info "Patch good!"
       info "Updating cache"
       mkdir -p "$(dirname "$_last_check_file")"
       echo "$_patch_tree_hash_var_name=$_patch_branch_curr_hash" > "$_last_check_file"
       echo "$_kernel_tag_var_name=$_kernel_git_tag" >> "$_last_check_file"
       return 0
     else
+      info "Patch bad"
       return 1
     fi
   fi
@@ -197,54 +199,59 @@ _rebase_start(){
 }
 
 _get_unclean_patch_list(){
-
-  typeset -A _skiplist
-  _skiplist=(
-    ["0012-linux-hardened.patch"]="1"
-    ["0001-bore.patch"]="1"
-  )
+  # fills up the global variable array _unclean_patches with paths to unclean patches
+  # Args:
+  # - $1: max number of unclean patches to find
+  # - $2 .... $n: optional arbitrary number of arguments in the form
+  #   - X.Y: check all patches of kernel X.Y
+  #   - X.Y/foo.patch: check this specific patch
 
   cd "$_where"/linux-tkg-patches
-
-  _unclean_patches=()
-
-  _gnu_vs_git_patches=()
-
-  _old_silent="$_silent"
 
   local _max=""
   if [[ "$1" =~ ^[0-9]+$ ]]; then
     _max="$1"
+  else
+    error "_get_unclean_patch_list: first argument should be the maximum number of unclean patches to find"
+    exit 1
   fi
+
+  shift;
+
+  _unclean_patches=()
 
   _kernel_verr_arr=("${_current_kernels[@]}")
   _kernel_verr_arr+=("${_eol_kernels[@]}")
 
-  for kernel_ver in "${_kernel_verr_arr[@]}"; do
+  if [[ "$#" == 0 ]]; then
+    # recursive tail-call with all the folders within linux-tkg-patches
+    _get_unclean_patch_list "$_max" ${_kernel_verr_arr[*]}
+    return
+  fi
 
-    info "Checking patches of kernel $kernel_ver" >& 2
-
-    local _patch_dir=$(realpath "$_where/linux-tkg-patches/$kernel_ver")
-
-    for _patch in "$_patch_dir"/*.patch; do
-      local _patch_name="$(basename $_patch)"
-      [[ -v _skiplist["$_patch_name"] ]] && continue
-
-      local _patch_num="${#_unclean_patches}"
-      [[ -n "$_max" && "${_patch_num}" -ge "$_max" ]] && break
-
-      local _patch_rel=$(realpath --relative-to=$(dirname $(dirname $_patch)) $_patch)
-      if ! _rebase_start "$_patch_rel" "is-clean" > /dev/null ; then
-        _unclean_patches+=("$_patch_rel")
-      fi
-    done
-
-    local _patch_num="${#_unclean_patches}"
-    [[ -n "$_max" && "${_patch_num}" -ge "$_max" ]] && break
-
+  # populate list of patches to explore
+  local _patches_to_test=()
+  for f in "$@"
+  do
+    if [[ -d "$f" ]]; then
+      # we received X.Y, add all its patches to the array
+      for p in "$f"/*; do
+        [[ -f "$p" && "$p" =~ .*'.patch' ]] && _patches_to_test+=("$p")
+      done
+    elif [[ -f "$f" && "$f" =~ .*'.patch' ]]; then
+      # it's a specific patch
+      _patches_to_test+=($f)
+    else
+      error "$f is neither a kernel X.Y version or an existing patch file in the from X.Y/foo.patch"
+    fi
   done
 
-  _silent="$_old_silent"
+  for _patch in "${_patches_to_test[@]}"; do
+    if ! _rebase_start "$_patch" "is-clean" > /dev/null ; then
+      _unclean_patches+=("$_patch")
+      [[ "${#_unclean_patches}" -ge "$_max" ]] && break
+    fi
+  done
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -266,9 +273,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 
   _define_kernel_tags
 
-  if [[ "$1" == 'print' && "$2" == 'unclean' ]]; then
+  if [[ "$1" == 'check' ]]; then
 
-    shift; shift;
+    shift;
     _get_unclean_patch_list 1000 "$@"
 
     if [[ "${#_unclean_patches}" != 0 ]]; then
@@ -302,16 +309,20 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   else
 
       info "Argument not recognized, options are:
-            - 'print'
-              - 'unclean': prints list of patches that don't apply against latest kernel .z version,
-                          for each currently maintained x.y kernel version (full version string being x.y.z)
+            - 'check'
+              - [no argument]: prints list of patches that don't apply, for each latest version of every x.y kernel
+              - Arbitrary number of arguments, each argument can have be either
+                - <x.y>: Checks all patches of latest version of kernel x.y
+                - <x.y/foo.patch>: checks that specific patch on latest version of kernel x.y
             - 'rebase'
               - 'start [<X.Y/patch-path>]' : sets a workfolder with a kernel where you can do any number of extra commits or commit edits on top
                                             Note: the first commit should be left intact so re-creating the patch (after edits) still works.
                 - [no argument]: sets a workfolder of the first kernel version x.y.z where a patch
                                 doesn't apply and starts a 'git am' with that patch.
                 - <x.y/patch-name> [optional]: sets a workfolder of kernel version x.y.z (where .z is the latest) and applies the given patch in argument
-              - 'end' : Rebase done, re-create the patch that has been pulled with the user added changes."
+              - 'end' : Rebase done, re-create the patch that has been pulled with the user added changes.
+            Recognized env vars:
+            - TKG_PATCHWORK_SILENT_BACKEND: set to anything other than 'true' to see logs from 'prepare' backend script"
       exit 1
 
   fi
