@@ -246,8 +246,18 @@ _get_unclean_patch_list(){
     fi
   done
 
+  _patch_skip=($TKG_PATCHWORK_CHECK_SKIP)
+
   for _patch in "${_patches_to_test[@]}"; do
-    if ! _rebase_start "$_patch" "is-clean" > /dev/null ; then
+    local _skip="false"
+    for _regex in "${_patch_skip[@]}"; do
+      if [[ "$_patch" =~ $_regex ]]; then
+        _skip="true";
+        info "Skipping $_patch as it matches a regex in \$TKG_PATCHWORK_CHECK_SKIP"
+        break;
+      fi
+    done
+    if ! $_skip && ! ( _rebase_start "$_patch" "is-clean" > /dev/null ) ; then
       _unclean_patches+=("$_patch")
       [[ "${#_unclean_patches}" -ge "$_max" ]] && break
     fi
@@ -322,6 +332,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
                 - <x.y/patch-name> [optional]: sets a workfolder of kernel version x.y.z (where .z is the latest) and applies the given patch in argument
               - 'end' : Rebase done, re-create the patch that has been pulled with the user added changes.
             Recognized env vars:
+            - TKG_PATCHWORK_CHECK_SKIP: space separated regexes, if a x.y/foo.patch matches with any of them it's skipped during 'check' command and won't show even if unclean
             - TKG_PATCHWORK_SILENT_BACKEND: set to anything other than 'true' to see logs from 'prepare' backend script"
       exit 1
 
