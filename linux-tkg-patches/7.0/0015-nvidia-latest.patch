@@ -1,0 +1,37 @@
+# Patches sourced from the CachyOS project (https://github.com/CachyOS/kernel-patches).
+# Many thanks to the CachyOS team for their excellent work!
+# Multiple individual nvidia-open patches have been merged into this single file for convenience.
+diff --git a/kernel-open/Makefile b/kernel-open/Makefile
+index f7a8db69f..9a3fc281e 100644
+--- a/kernel-open/Makefile
++++ b/kernel-open/Makefile
+@@ -92,8 +92,13 @@ else
+   PAHOLE_AWK_PROGRAM = BEGIN { pahole_cmd = \"pahole\"; for (i = 1; i < ARGC; i++) { if (ARGV[i] ~ /--lang_exclude=/) { pahole_cmd = pahole_cmd sprintf(\" %s,c++\", ARGV[i]); } else { pahole_cmd = pahole_cmd sprintf(\" %s\", ARGV[i]); } } system(pahole_cmd); }
+-  # If scripts/pahole-flags.sh is not present in the kernel tree, add PAHOLE and
+-  # PAHOLE_AWK_PROGRAM assignments to PAHOLE_VARIABLES; otherwise assign the
+-  # empty string to PAHOLE_VARIABLES.
+-  PAHOLE_VARIABLES=$(if $(wildcard $(KERNEL_SOURCES)/scripts/pahole-flags.sh),,"PAHOLE=$(AWK) '$(PAHOLE_AWK_PROGRAM)'")
++  # If scripts/pahole-flags.sh is not present AND scripts/gen-btf.sh is not
++  # present in the kernel tree, add PAHOLE and PAHOLE_AWK_PROGRAM assignments
++  # to PAHOLE_VARIABLES; otherwise assign the empty string to PAHOLE_VARIABLES.
++  #
++  # scripts/gen-btf.sh was introduced in kernel 7.0 (formerly 6.17) when
++  # scripts/pahole-flags.sh was removed.  The gen-btf.sh-based BTF generation
++  # calls ${PAHOLE} inside a shell script, so the awk wrapper used here is
++  # incompatible (shell word-splitting breaks the single-quoted awk program).
++  PAHOLE_VARIABLES=$(if $(or $(wildcard $(KERNEL_SOURCES)/scripts/pahole-flags.sh),$(wildcard $(KERNEL_SOURCES)/scripts/gen-btf.sh)),,"PAHOLE=$(AWK) '$(PAHOLE_AWK_PROGRAM)'")
+ 
+   ifndef ARCH
+     ARCH := $(shell uname -m | sed -e 's/i.86/i386/' \
+diff --git a/src/nvidia-modeset/Makefile b/src/nvidia-modeset/Makefile
+index 8f24541d..195d0fcf 100644
+--- a/src/nvidia-modeset/Makefile
++++ b/src/nvidia-modeset/Makefile
+@@ -154,6 +154,7 @@ ifeq ($(TARGET_ARCH),x86_64)
+   CONDITIONAL_CFLAGS += $(call TEST_CC_ARG, -fno-jump-tables)
+   CONDITIONAL_CFLAGS += $(call TEST_CC_ARG, -mindirect-branch=thunk-extern)
+   CONDITIONAL_CFLAGS += $(call TEST_CC_ARG, -mindirect-branch-register)
++  CONDITIONAL_CFLAGS += $(call TEST_CC_ARG, -mharden-sls=all)
+ endif
+ 
+ CFLAGS += $(CONDITIONAL_CFLAGS)
