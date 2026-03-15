@@ -102,23 +102,23 @@ index dcbb6f6caf6d..d9d2ea78cd4b 100644
  	If set, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index ae059d188511..9e99e287f05a 100644
+index 930fcea203d7..d7cf5d660406 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 6
  PATCHLEVEL = 12
- SUBLEVEL = 76
+ SUBLEVEL = 77
 -EXTRAVERSION =
 +EXTRAVERSION = -hardened1
  NAME = Baby Opossum Posse
  
  # *DOCUMENTATION*
 diff --git a/arch/Kconfig b/arch/Kconfig
-index 593452b43dd4..30e3820df588 100644
+index 1812e4e4d714..67fc925bf66a 100644
 --- a/arch/Kconfig
 +++ b/arch/Kconfig
-@@ -1090,7 +1090,7 @@ config ARCH_MMAP_RND_BITS
+@@ -1091,7 +1091,7 @@ config ARCH_MMAP_RND_BITS
  	int "Number of bits to use for ASLR of mmap base address" if EXPERT
  	range ARCH_MMAP_RND_BITS_MIN ARCH_MMAP_RND_BITS_MAX
  	default ARCH_MMAP_RND_BITS_DEFAULT if ARCH_MMAP_RND_BITS_DEFAULT
@@ -127,7 +127,7 @@ index 593452b43dd4..30e3820df588 100644
  	depends on HAVE_ARCH_MMAP_RND_BITS
  	help
  	  This value can be used to select the number of bits to use to
-@@ -1124,7 +1124,7 @@ config ARCH_MMAP_RND_COMPAT_BITS
+@@ -1125,7 +1125,7 @@ config ARCH_MMAP_RND_COMPAT_BITS
  	int "Number of bits to use for ASLR of mmap base address for compatible applications" if EXPERT
  	range ARCH_MMAP_RND_COMPAT_BITS_MIN ARCH_MMAP_RND_COMPAT_BITS_MAX
  	default ARCH_MMAP_RND_COMPAT_BITS_DEFAULT if ARCH_MMAP_RND_COMPAT_BITS_DEFAULT
@@ -136,7 +136,7 @@ index 593452b43dd4..30e3820df588 100644
  	depends on HAVE_ARCH_MMAP_RND_COMPAT_BITS
  	help
  	  This value can be used to select the number of bits to use to
-@@ -1428,6 +1428,7 @@ config RANDOMIZE_KSTACK_OFFSET
+@@ -1429,6 +1429,7 @@ config RANDOMIZE_KSTACK_OFFSET
  config RANDOMIZE_KSTACK_OFFSET_DEFAULT
  	bool "Default state of kernel stack offset randomization"
  	depends on RANDOMIZE_KSTACK_OFFSET
@@ -1128,7 +1128,7 @@ index dac4df77e376..68bb3279b14f 100644
  
  /**
 diff --git a/kernel/events/core.c b/kernel/events/core.c
-index 01a87cd9b5cc..a6cefbdd169c 100644
+index 814b6536b09d..8aab0f54f221 100644
 --- a/kernel/events/core.c
 +++ b/kernel/events/core.c
 @@ -462,8 +462,13 @@ static struct kmem_cache *perf_event_cache;
@@ -1145,7 +1145,7 @@ index 01a87cd9b5cc..a6cefbdd169c 100644
  
  /* Minimum for 512 kiB + 1 user control page */
  int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024); /* 'free' kiB per user */
-@@ -12848,7 +12853,7 @@ SYSCALL_DEFINE5(perf_event_open,
+@@ -12888,7 +12893,7 @@ SYSCALL_DEFINE5(perf_event_open,
  		return err;
  
  	/* Do we allow access to perf_event_open(2) ? */
@@ -1771,7 +1771,7 @@ index 477fa471da18..83899e7963ea 100644
  static int __init setup_slab_nomerge(char *str)
  {
 diff --git a/mm/slub.c b/mm/slub.c
-index a6ed12d3e044..25a1058942ac 100644
+index a6ed12d3e044..bbffdef19808 100644
 --- a/mm/slub.c
 +++ b/mm/slub.c
 @@ -39,6 +39,7 @@
@@ -2225,17 +2225,18 @@ index a6ed12d3e044..25a1058942ac 100644
  #ifdef CONFIG_SLUB_DEBUG
  	if (flags & SLAB_STORE_USER) {
  		/*
-@@ -5719,6 +5878,9 @@ void __check_heap_object(const void *ptr, unsigned long n,
+@@ -5719,6 +5878,10 @@ void __check_heap_object(const void *ptr, unsigned long n,
  		offset -= s->red_left_pad;
  	}
  
-+	if (!is_kfence)
++	if (!is_kfence) {
 +		check_canary(s, (void *)ptr - offset, s->random_active);
++	}
 +
  	/* Allow address range falling entirely within usercopy region. */
  	if (offset >= s->useroffset &&
  	    offset - s->useroffset <= s->usersize &&
-@@ -6064,6 +6226,10 @@ int do_kmem_cache_create(struct kmem_cache *s, const char *name,
+@@ -6064,6 +6227,10 @@ int do_kmem_cache_create(struct kmem_cache *s, const char *name,
  	s->flags = kmem_cache_flags(flags, s->name);
  #ifdef CONFIG_SLAB_FREELIST_HARDENED
  	s->random = get_random_long();
@@ -2302,10 +2303,10 @@ index 6d2c97f8e9ef..a3dfa774f940 100644
 +
 +	  If unsure, say N.
 diff --git a/net/ipv4/sysctl_net_ipv4.c b/net/ipv4/sysctl_net_ipv4.c
-index a79b2a52ce01..2bc0d5e333b6 100644
+index 8d411cce0aed..45626d8a4f8a 100644
 --- a/net/ipv4/sysctl_net_ipv4.c
 +++ b/net/ipv4/sysctl_net_ipv4.c
-@@ -616,6 +616,15 @@ static struct ctl_table ipv4_table[] = {
+@@ -617,6 +617,15 @@ static struct ctl_table ipv4_table[] = {
  		.extra1		= &sysctl_fib_sync_mem_min,
  		.extra2		= &sysctl_fib_sync_mem_max,
  	},
