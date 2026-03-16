@@ -1,6 +1,6 @@
-From 78772f3ae124149a8a283ed3aea951c1ff223214 Mon Sep 17 00:00:00 2001
+From 7f23a3995a199112a52f83306d4e2cd6a07b29e5 Mon Sep 17 00:00:00 2001
 From: Adel KARA SLIMANE <adel.ks@zegrapher.com>
-Date: Mon, 16 Mar 2026 03:31:27 +0100
+Date: Mon, 16 Mar 2026 22:34:03 +0100
 Subject: [PATCH] Update PrjC -r2 patch against upstream v6.19.8
 
 Original upstream patch here:
@@ -43,14 +43,14 @@ https://gitlab.com/alfredchen/projectc/-/blob/master/6.19/prjc_v6.19-r2.patch
  kernel/sched/sched.h                        |    9 +
  kernel/sched/stats.c                        |    4 +
  kernel/sched/stats.h                        |    2 +
- kernel/sched/syscalls.c                     |  171 +-
+ kernel/sched/syscalls.c                     |  173 +-
  kernel/sched/topology.c                     |   33 +
  kernel/sysctl.c                             |   15 +
  kernel/time/posix-cpu-timers.c              |   10 +-
  kernel/trace/trace_osnoise.c                |    4 +
  kernel/trace/trace_selftest.c               |    5 +
  kernel/workqueue.c                          |   15 +
- 44 files changed, 10225 insertions(+), 31 deletions(-)
+ 44 files changed, 10227 insertions(+), 31 deletions(-)
  create mode 100644 Documentation/scheduler/sched-BMQ.txt
  create mode 100644 kernel/sched/alt_core.c
  create mode 100644 kernel/sched/alt_core.h
@@ -10882,7 +10882,7 @@ index c903f1a42891..b7acc1eeb0b7 100644
  #ifdef CONFIG_PSI
  void psi_task_change(struct task_struct *task, int clear, int set);
 diff --git a/kernel/sched/syscalls.c b/kernel/sched/syscalls.c
-index cadb0e9fe19b..a34a8269f60e 100644
+index cadb0e9fe19b..b27e3772ce3a 100644
 --- a/kernel/sched/syscalls.c
 +++ b/kernel/sched/syscalls.c
 @@ -16,6 +16,14 @@
@@ -11008,15 +11008,15 @@ index cadb0e9fe19b..a34a8269f60e 100644
  }
  
  /*
-@@ -313,6 +354,8 @@ static inline void __setscheduler_dl_pi(int newprio, int policy,
+@@ -284,6 +325,8 @@ static bool check_same_owner(struct task_struct *p)
+ 		uid_eq(cred->euid, pcred->uid));
  }
- #endif /* !CONFIG_RT_MUTEXES */
  
 +#ifndef CONFIG_SCHED_ALT
 +
- #ifdef CONFIG_UCLAMP_TASK
- 
- static int uclamp_validate(struct task_struct *p,
+ #ifdef CONFIG_RT_MUTEXES
+ static inline void __setscheduler_dl_pi(int newprio, int policy,
+ 			      struct task_struct *p,
 @@ -426,6 +469,7 @@ static inline int uclamp_validate(struct task_struct *p,
  static void __setscheduler_uclamp(struct task_struct *p,
  				  const struct sched_attr *attr) { }
@@ -11218,7 +11218,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	if (pi) {
  		/*
  		 * Take priority boosted tasks into account. If the new
-@@ -672,21 +769,27 @@ int __sched_setscheduler(struct task_struct *p,
+@@ -672,21 +769,29 @@ int __sched_setscheduler(struct task_struct *p,
  			queue_flags &= ~DEQUEUE_MOVE;
  	}
  
@@ -11228,7 +11228,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  
  	if (prev_class != next_class)
  		queue_flags |= DEQUEUE_CLASS;
-+#endif /* !CONFIG_SCHED_ALT
++#endif /* !CONFIG_SCHED_ALT */
  
  	scoped_guard (sched_change, p, queue_flags) {
  
@@ -11236,9 +11236,11 @@ index cadb0e9fe19b..a34a8269f60e 100644
  			__setscheduler_params(p, attr);
 +#ifndef CONFIG_SCHED_ALT
  			p->sched_class = next_class;
-+#endif /* !CONFIG_SCHED_ALT
++#endif /* !CONFIG_SCHED_ALT */
  			p->prio = newprio;
++#ifndef CONFIG_SCHED_ALT
  			__setscheduler_dl_pi(newprio, policy, p, scope);
++#endif /* !CONFIG_SCHED_ALT */
  		}
 +#ifndef CONFIG_SCHED_ALT
  		__setscheduler_uclamp(p, attr);
@@ -11246,7 +11248,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  
  		if (scope->queued) {
  			/*
-@@ -701,7 +804,11 @@ int __sched_setscheduler(struct task_struct *p,
+@@ -701,7 +806,11 @@ int __sched_setscheduler(struct task_struct *p,
  	/* Avoid rq from going away on us: */
  	preempt_disable();
  	head = splice_balance_callbacks(rq);
@@ -11258,7 +11260,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  
  	if (pi) {
  		if (cpuset_locked)
-@@ -716,7 +823,11 @@ int __sched_setscheduler(struct task_struct *p,
+@@ -716,7 +825,11 @@ int __sched_setscheduler(struct task_struct *p,
  	return 0;
  
  unlock:
@@ -11270,7 +11272,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	if (cpuset_locked)
  		cpuset_unlock();
  	return retval;
-@@ -731,8 +842,10 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
+@@ -731,8 +844,10 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
  		.sched_nice	= PRIO_TO_NICE(p->static_prio),
  	};
  
@@ -11281,7 +11283,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  
  	/* Fixup the legacy SCHED_RESET_ON_FORK hack. */
  	if ((policy != SETPARAM_POLICY) && (policy & SCHED_RESET_ON_FORK)) {
-@@ -913,13 +1026,18 @@ static int sched_copy_attr(struct sched_attr __user *uattr, struct sched_attr *a
+@@ -913,13 +1028,18 @@ static int sched_copy_attr(struct sched_attr __user *uattr, struct sched_attr *a
  
  static void get_params(struct task_struct *p, struct sched_attr *attr)
  {
@@ -11302,7 +11304,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	}
  }
  
-@@ -1100,6 +1218,7 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
+@@ -1100,6 +1220,7 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
  
  int dl_task_check_affinity(struct task_struct *p, const struct cpumask *mask)
  {
@@ -11310,7 +11312,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	/*
  	 * If the task isn't a deadline task or admission control is
  	 * disabled then we don't care about affinity changes.
-@@ -1123,6 +1242,7 @@ int dl_task_check_affinity(struct task_struct *p, const struct cpumask *mask)
+@@ -1123,6 +1244,7 @@ int dl_task_check_affinity(struct task_struct *p, const struct cpumask *mask)
  	guard(rcu)();
  	if (!cpumask_subset(task_rq(p)->rd->span, mask))
  		return -EBUSY;
@@ -11318,7 +11320,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  
  	return 0;
  }
-@@ -1146,9 +1266,11 @@ int __sched_setaffinity(struct task_struct *p, struct affinity_context *ctx)
+@@ -1146,9 +1268,11 @@ int __sched_setaffinity(struct task_struct *p, struct affinity_context *ctx)
  	ctx->new_mask = new_mask;
  	ctx->flags |= SCA_CHECK;
  
@@ -11330,7 +11332,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  
  	retval = __set_cpus_allowed_ptr(p, ctx);
  	if (retval)
-@@ -1328,13 +1450,34 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
+@@ -1328,13 +1452,34 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
  
  static void do_sched_yield(void)
  {
@@ -11366,7 +11368,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  
  	preempt_disable();
  	rq_unlock_irq(rq, &rf);
-@@ -1403,6 +1546,9 @@ EXPORT_SYMBOL(yield);
+@@ -1403,6 +1548,9 @@ EXPORT_SYMBOL(yield);
   */
  int __sched yield_to(struct task_struct *p, bool preempt)
  {
@@ -11376,7 +11378,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	struct task_struct *curr;
  	struct rq *rq, *p_rq;
  	int yielded = 0;
-@@ -1449,6 +1595,7 @@ int __sched yield_to(struct task_struct *p, bool preempt)
+@@ -1449,6 +1597,7 @@ int __sched yield_to(struct task_struct *p, bool preempt)
  		schedule();
  
  	return yielded;
@@ -11384,7 +11386,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  }
  EXPORT_SYMBOL_GPL(yield_to);
  
-@@ -1469,7 +1616,9 @@ SYSCALL_DEFINE1(sched_get_priority_max, int, policy)
+@@ -1469,7 +1618,9 @@ SYSCALL_DEFINE1(sched_get_priority_max, int, policy)
  	case SCHED_RR:
  		ret = MAX_RT_PRIO-1;
  		break;
@@ -11394,7 +11396,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	case SCHED_NORMAL:
  	case SCHED_BATCH:
  	case SCHED_IDLE:
-@@ -1497,7 +1646,9 @@ SYSCALL_DEFINE1(sched_get_priority_min, int, policy)
+@@ -1497,7 +1648,9 @@ SYSCALL_DEFINE1(sched_get_priority_min, int, policy)
  	case SCHED_RR:
  		ret = 1;
  		break;
@@ -11404,7 +11406,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	case SCHED_NORMAL:
  	case SCHED_BATCH:
  	case SCHED_IDLE:
-@@ -1509,7 +1660,9 @@ SYSCALL_DEFINE1(sched_get_priority_min, int, policy)
+@@ -1509,7 +1662,9 @@ SYSCALL_DEFINE1(sched_get_priority_min, int, policy)
  
  static int sched_rr_get_interval(pid_t pid, struct timespec64 *t)
  {
@@ -11414,7 +11416,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  	int retval;
  
  	if (pid < 0)
-@@ -1524,6 +1677,7 @@ static int sched_rr_get_interval(pid_t pid, struct timespec64 *t)
+@@ -1524,6 +1679,7 @@ static int sched_rr_get_interval(pid_t pid, struct timespec64 *t)
  		if (retval)
  			return retval;
  
@@ -11422,7 +11424,7 @@ index cadb0e9fe19b..a34a8269f60e 100644
  		scoped_guard (task_rq_lock, p) {
  			struct rq *rq = scope.rq;
  			if (p->sched_class->get_rr_interval)
-@@ -1532,6 +1686,13 @@ static int sched_rr_get_interval(pid_t pid, struct timespec64 *t)
+@@ -1532,6 +1688,13 @@ static int sched_rr_get_interval(pid_t pid, struct timespec64 *t)
  	}
  
  	jiffies_to_timespec64(time_slice, t);
