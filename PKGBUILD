@@ -67,9 +67,12 @@ pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="https://www.kernel.org/"
 license=('GPL2')
-makedepends=('bison' 'xmlto' 'docbook-xsl' 'inetutils' 'bc' 'libelf' 'pahole' 'patchutils' 'flex' 'python-sphinx' 'python-sphinx_rtd_theme' 'graphviz' 'imagemagick' 'git' 'cpio' 'perl' 'tar' 'xz' 'wget')
+makedepends=('bc' 'bison' 'cpio' 'docbook-xsl' 'flex' 'git' 'graphviz' 'imagemagick' 'inetutils' 'libelf' 'pahole' 'patchutils' 'perl' 'python-sphinx' 'python-sphinx_rtd_theme' 'tar' 'wget' 'xmlto' 'xz')
+if [[ $_kver -gt 600 ]]; then  
+  makedepends+=('gettext' 'python' 'rust' 'rust-bindgen' 'rust-src' 'zstd')
+fi
 if [ "$_compiler_name" = "-llvm" ]; then
-  makedepends+=( 'lld' 'clang' 'llvm')
+  makedepends+=('clang' 'llvm' 'lld')
 fi
 optdepends=('schedtool')
 options=('!strip' 'docs')
@@ -159,7 +162,8 @@ hackbase() {
               'modprobed-db: Keeps track of EVERY kernel module that has ever been probed. Useful for make localmodconfig.'
               'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
               'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
-              'update-grub: Simple wrapper around grub-mkconfig.')
+              'update-grub: Simple wrapper around grub-mkconfig.'
+              'scx-scheds: to use sched-ext schedulers')
   if [ -e "${srcdir}/ntsync.rules" ]; then
     provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE NTSYNC-MODULE ntsync-header)
   else
@@ -226,13 +230,9 @@ hackheaders() {
 
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel - https://github.com/Frogging-Family/linux-tkg"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
-  case $_basever in
-    54|57|58|59|510)
-    ;;
-    *)
-      depends=('pahole')
-    ;;
-  esac
+  if [[ $_kver -gt 510 ]]; then  
+    depends=('pahole')
+  fi
 
   cd "$_kernel_work_folder_abs"
 
