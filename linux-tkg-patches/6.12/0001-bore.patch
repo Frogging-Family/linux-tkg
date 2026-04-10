@@ -1,7 +1,7 @@
-From 86143463ae44e9b3c7c11eae17d52e4aa5f6e75f Mon Sep 17 00:00:00 2001
+From 576263703c7429ea25b0d3b9b84393a56f0d5d8a Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Sat, 14 Mar 2026 01:01:39 +0900
-Subject: [PATCH] linux6.12.37-bore-6.6.2
+Date: Fri, 10 Apr 2026 05:33:24 +0900
+Subject: [PATCH] linux6.12.37-bore-6.6.3
 
 ---
  include/linux/sched.h      |  34 +++
@@ -12,12 +12,12 @@ Subject: [PATCH] linux6.12.37-bore-6.6.2
  kernel/fork.c              |  13 ++
  kernel/futex/waitwake.c    |  11 +
  kernel/sched/Makefile      |   1 +
- kernel/sched/bore.c        | 428 +++++++++++++++++++++++++++++++++++++
- kernel/sched/core.c        |  12 ++
+ kernel/sched/bore.c        | 434 +++++++++++++++++++++++++++++++++++++
+ kernel/sched/core.c        |  12 +
  kernel/sched/debug.c       |  61 +++++-
- kernel/sched/fair.c        | 108 +++++++++-
+ kernel/sched/fair.c        | 108 ++++++++-
  kernel/sched/sched.h       |   9 +
- 13 files changed, 744 insertions(+), 12 deletions(-)
+ 13 files changed, 750 insertions(+), 12 deletions(-)
  create mode 100644 include/linux/sched/bore.h
  create mode 100644 kernel/sched/bore.c
 
@@ -75,7 +75,7 @@ index 0d1d70aded..5d2d7447d0 100644
  #ifdef CONFIG_SCHED_CORE
 diff --git a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 new file mode 100644
-index 0000000000..fbb73a64d0
+index 0000000000..9215c13a91
 --- /dev/null
 +++ b/include/linux/sched/bore.h
 @@ -0,0 +1,41 @@
@@ -92,7 +92,7 @@ index 0000000000..fbb73a64d0
 +#define SCHED_BORE_AUTHOR   "Masahito Suzuki"
 +#define SCHED_BORE_PROGNAME "BORE CPU Scheduler modification"
 +
-+#define SCHED_BORE_VERSION  "6.6.2"
++#define SCHED_BORE_VERSION  "6.6.3"
 +
 +extern u8   __read_mostly sched_bore;
 +DECLARE_STATIC_KEY_TRUE(sched_bore_key);
@@ -269,10 +269,10 @@ index 976092b7bd..83cbd093b8 100644
 +obj-$(CONFIG_SCHED_BORE) += bore.o
 diff --git a/kernel/sched/bore.c b/kernel/sched/bore.c
 new file mode 100644
-index 0000000000..759eee843c
+index 0000000000..c27a22cd63
 --- /dev/null
 +++ b/kernel/sched/bore.c
-@@ -0,0 +1,428 @@
+@@ -0,0 +1,434 @@
 +/*
 + *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
 + *  Copyright (C) 2021-2025 Masahito Suzuki <firelzrd@gmail.com>
@@ -423,8 +423,9 @@ index 0000000000..759eee843c
 +
 +static inline u32 count_children_upto2(struct task_struct *p) {
 +	struct list_head *head = &p->children;
-+	struct list_head *next = head->next;
-+	return (next != head) + (next->next != head);
++	struct list_head *first = READ_ONCE(head->next);
++	struct list_head *second = READ_ONCE(first->next);
++	return (first != head) + (second != head);
 +}
 +
 +static inline bool burst_cache_expired(struct bore_bc *bc, u64 now) {
@@ -499,9 +500,13 @@ index 0000000000..759eee843c
 +			if (scan_count++ >= BURST_CACHE_SCAN_LIMIT) break;
 +
 +			struct task_struct *descendant = direct_child;
-+			while (count_children_upto2(descendant) == 1)
-+				descendant = list_first_entry(&descendant->children,
-+												struct task_struct, sibling);
++			while (count_children_upto2(descendant) == 1) {
++				struct task_struct *next_descendant =
++					list_first_or_null_rcu(&descendant->children,
++											struct task_struct, sibling);
++				if (!next_descendant) break;
++				descendant = next_descendant;
++			}
 +
 +			if (!task_is_bore_eligible(descendant)) continue;
 +			count++;
@@ -522,10 +527,11 @@ index 0000000000..759eee843c
 +
 +	if (burst_cache_expired(bc, now)) {
 +		struct task_struct *sibling;
-+		u32 count = 0, total = 0;
++		u32 count = 0, total = 0, scan_count = 0;
 +
 +		for_each_thread(leader, sibling) {
 +			if (count >= BURST_CACHE_SAMPLE_LIMIT) break;
++			if (scan_count++ >= BURST_CACHE_SCAN_LIMIT) break;
 +
 +			if (!task_is_bore_eligible(sibling)) continue;
 +			count++;
