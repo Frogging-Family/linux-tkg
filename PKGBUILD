@@ -67,10 +67,27 @@ pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="https://www.kernel.org/"
 license=('GPL2')
-makedepends=('bc' 'bison' 'cpio' 'docbook-xsl' 'flex' 'git' 'graphviz' 'imagemagick' 'inetutils' 'libelf' 'pahole' 'patchutils' 'perl' 'python-sphinx' 'python-sphinx_rtd_theme' 'tar' 'wget' 'xmlto' 'xz')
-if [[ $_kver -gt 600 ]]; then  
-  makedepends+=('gettext' 'python' 'rust' 'rust-bindgen' 'rust-src' 'zstd')
-fi
+makedepends=(
+  bc
+  binutils
+  cpio
+  gettext
+  glibc
+  libelf
+  libgcc
+  openssl
+  pahole
+  perl
+  python
+  rust
+  rust-bindgen
+  rust-src
+  tar
+  xxhash
+  xz
+  zlib
+  zstd
+)
 if [ "$_compiler_name" = "-llvm" ]; then
   makedepends+=('clang' 'llvm' 'lld')
 fi
