@@ -1,46 +1,62 @@
+From 20fb2202b9cb6f6e7ec07aab20b19857e26eaaf4 Mon Sep 17 00:00:00 2001
+From: Frogging-Family
+From: damachine <damachin3@proton.me>
+Date: Wed, 15 Apr 2026 21:50:04 +0200
+Subject: [PATCH] Add compiler optimization option
+
+Add CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 Kconfig option that allows
+building the kernel with -O3 instead of the default -O2.
+Enable swing modulo scheduling (-fmodulo-sched, -fmodulo-sched-allow-regmoves,
+-fivopts) for additional loop optimization by overlapping iterations
+of innermost loops.
+
+Signed-off-by: damachine <damachin3@proton.me>
+
+---
+ Makefile     | 8 ++++++++
+ init/Kconfig | 6 ++++++
+ 2 files changed, 14 insertions(+)
+
 diff --git a/Makefile b/Makefile
+index d4677e7a7..4b4036962 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -442,7 +442,7 @@ endif
- HOSTPKG_CONFIG	= pkg-config
-
- KBUILD_USERHOSTCFLAGS := -Wall -Wmissing-prototypes -Wstrict-prototypes \
--			 -O2 -fomit-frame-pointer -std=gnu11
-+			 -O3 -fomit-frame-pointer -std=gnu11
- KBUILD_USERCFLAGS  := $(KBUILD_USERHOSTCFLAGS) $(USERCFLAGS)
- KBUILD_USERLDFLAGS := $(USERLDFLAGS)
-
-@@ -474,7 +474,7 @@ endif
- 
- KBUILD_HOSTCFLAGS   := $(KBUILD_USERHOSTCFLAGS) $(HOST_LFS_CFLAGS) \
- 		       $(HOSTCFLAGS) -I $(srctree)/scripts/include
--KBUILD_HOSTCXXFLAGS := -Wall -O2 $(HOST_LFS_CFLAGS) $(HOSTCXXFLAGS) \
-+KBUILD_HOSTCXXFLAGS := -Wall -O3 $(HOST_LFS_CFLAGS) $(HOSTCXXFLAGS) \
- 		       -I $(srctree)/scripts/include
- KBUILD_HOSTRUSTFLAGS := $(rust_common_flags) -O -Cstrip=debuginfo \
- 			-Zallow-features= $(HOSTRUSTFLAGS)
-@@ -757,7 +757,7 @@ KBUILD_CFLAGS       += $(call cc-disable-warning, format-overflow)
- KBUILD_CFLAGS  += $(call cc-disable-warning, address-of-packed-member)
-
+@@ -862,11 +862,19 @@ KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
  ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
--KBUILD_CFLAGS += -O2
-+KBUILD_CFLAGS += -O3
+ KBUILD_CFLAGS += -O2
  KBUILD_RUSTFLAGS += -Copt-level=2
++else ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
++KBUILD_CFLAGS += -O3
++KBUILD_RUSTFLAGS += -Copt-level=3
  else ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
  KBUILD_CFLAGS += -Os
+ KBUILD_RUSTFLAGS += -Copt-level=s
+ endif
+ 
++# Perform swing modulo scheduling immediately before the first scheduling pass.
++# This pass looks at innermost loops and reorders their instructions by
++# overlapping different iterations.
++KBUILD_CFLAGS += $(call cc-option,-fmodulo-sched -fmodulo-sched-allow-regmoves -fivopts)
++
+ # Always set `debug-assertions` and `overflow-checks` because their default
+ # depends on `opt-level` and `debug-assertions`, respectively.
+ KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
 diff --git a/init/Kconfig b/init/Kconfig
+index 2e15b4a84..587cf3165 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1401,10 +1401,10 @@ choice
- 	default CC_OPTIMIZE_FOR_PERFORMANCE
-
- config CC_OPTIMIZE_FOR_PERFORMANCE
--	bool "Optimize for performance (-O2)"
-+	bool "Optimize for performance (-O3)"
- 	help
- 	  This is the default optimization level for the kernel, building
--	  with the "-O2" compiler flag for best performance and most
-+	  with the "-O3" compiler flag for best performance and most
+@@ -1498,6 +1498,12 @@ config CC_OPTIMIZE_FOR_PERFORMANCE
+ 	  with the "-O2" compiler flag for best performance and most
  	  helpful compile-time warnings.
-
+ 
++config CC_OPTIMIZE_FOR_PERFORMANCE_O3
++	bool "Optimize more for performance (-O3)"
++	help
++	  Choosing this option will pass "-O3" to your compiler to optimize
++	  the kernel yet more for performance.
++
  config CC_OPTIMIZE_FOR_SIZE
+ 	bool "Optimize for size (-Os)"
+ 	help
+-- 
+2.53.0
