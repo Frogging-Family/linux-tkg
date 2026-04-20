@@ -131,6 +131,19 @@ index 000000000000..05c84eec0f31
 +spend most of their time blocked awaiting another user event. So they get the
 +priority boost from unblocking while background threads that do most of the
 +processing receive the priority penalty for using their entire timeslice.
+diff --git a/fs/f2fs/checkpoint.c b/fs/f2fs/checkpoint.c
+index 6dd39b7de11a..2147a500bdcf 100644
+--- a/fs/f2fs/checkpoint.c
++++ b/fs/f2fs/checkpoint.c
+@@ -28,7 +28,7 @@ static inline void get_lock_elapsed_time(struct f2fs_time_stat *ts)
+ {
+ 	ts->total_time = ktime_get();
+ #ifdef CONFIG_64BIT
+-	ts->running_time = current->se.sum_exec_runtime;
++	ts->running_time = tsk_seruntime(current);
+ #endif
+ #if defined(CONFIG_SCHED_INFO) && defined(CONFIG_SCHEDSTATS)
+ 	ts->runnable_time = current->sched_info.run_delay;
 diff --git a/fs/proc/base.c b/fs/proc/base.c
 index 4c863d17dfb4..38462e413fa2 100644
 --- a/fs/proc/base.c
@@ -428,7 +441,7 @@ index 45c0022b91ce..d281dabe444b 100644
  #else
  static inline void rebuild_sched_domains_energy(void)
 diff --git a/init/Kconfig b/init/Kconfig
-index 7484cd703bc1..da7ed630bf74 100644
+index 7484cd703bc1..3b3f4febce6a 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
 @@ -710,6 +710,7 @@ config TASK_IO_ACCOUNTING
@@ -483,6 +496,15 @@ index 7484cd703bc1..da7ed630bf74 100644
  	help
  	  This option adds support for automatic NUMA aware memory/task placement.
  	  The mechanism is quite primitive and is based on migrating memory when
+@@ -1280,7 +1311,7 @@ config CPUSETS
+ 
+ config CPUSETS_V1
+ 	bool "Legacy cgroup v1 cpusets controller"
+-	depends on CPUSETS
++	depends on (CPUSETS && !SCHED_ALT)
+ 	default n
+ 	help
+ 	  Legacy cgroup v1 cpusets controller which has been deprecated by
 @@ -1448,6 +1479,7 @@ config CHECKPOINT_RESTORE
  
  config SCHED_AUTOGROUP
@@ -771,7 +793,7 @@ index b1f1a367034f..b7f5f9931da3 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..16ad6b20a5be
+index 000000000000..768365bd2133
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
 @@ -0,0 +1,7612 @@
@@ -856,7 +878,7 @@ index 000000000000..16ad6b20a5be
 +__read_mostly int sysctl_resched_latency_warn_ms = 100;
 +__read_mostly int sysctl_resched_latency_warn_once = 1;
 +
-+#define ALT_SCHED_VERSION "v7.0-r1"
++#define ALT_SCHED_VERSION "v7.0-r2"
 +
 +#define STOP_PRIO		(MAX_RT_PRIO - 1)
 +
