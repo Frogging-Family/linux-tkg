@@ -44,6 +44,7 @@ _cpu_marchs=(
   ["znver3"]="AMD Ryzen 6000/5000 | Mobile Ryzen 7030/5000 | Threadripper 5000WX | EPYC 7003"
   ["znver2"]="AMD Ryzen 4000/3000 | Mobile Ryzen 5[3,5,7]00U | Threadripper 3000WX | EPYC 7002"
   ["znver1"]="AMD Ryzen 1000/2000 | Athlon 200/300/3000 | Threadripper 1000 | EPYC 7001"
+  ["pantherlake"]="Intel Laptop Core Ultra 300"
   ["arrowlake-s"]="Intel Desktop Core Ultra 200"
   ["arrowlake"]="Intel Laptop Core Ultra 200"
   ["lunarlake"]="Intel Laptop Core Ultra 200V"
@@ -406,7 +407,7 @@ _set_cpu_scheduler() {
 _set_compiler(){
   if ! [[ "$_compiler" =~ ^(gcc|llvm)$ ]]; then
     if [ -n "$_compiler" ] && [ "$_nofallback" = "true" ]; then
-      msg2 "Compiler \" $_compiler \" not recognized, exiting... "
+      msg2 "Compiler \" $_compiler \" not recognized, exiting..."
       exit 1
     else
       plain "Which compiler do you want to use?"
@@ -1064,12 +1065,11 @@ _tkg_srcprep() {
         return 1
       fi
     fi
-    # When Rust comes, soon :tm:
-    # if which rustc &> /dev/null; then
-    #   if ! ( rustc --print target-cpus | grep "$1" &> /dev/null ) ; then
-    #     return 1
-    #   fi
-    # fi
+    if which rustc &> /dev/null; then
+      if ! ( rustc --print target-cpus | grep "$1" &> /dev/null ) ; then
+        return 1
+      fi
+    fi
   }
 
   if [ -n "$_processor_opt" ] && ! _is_march_supported "$_processor_opt" ; then
@@ -1885,10 +1885,11 @@ fi
   [[ "$_processor_opt" =~ x86-64 ]] && _mtune="generic"
 
   set -o pipefail
-  if local cflags_source_line_number=$(grep -F -n 'KBUILD_CFLAGS   += $(KCFLAGS)' Makefile 2> /dev/null | cut -d":" -f1); then
-    sed -i "${cflags_source_line_number}i KBUILD_CFLAGS   += -mtune=$_mtune" Makefile
-    sed -i "${cflags_source_line_number}i KBUILD_CFLAGS   += -march=$_processor_opt" Makefile
+  if local cflags_source_line_number=$(grep -F -n 'KBUILD_CFLAGS += $(KCFLAGS)' Makefile 2> /dev/null | cut -d":" -f1); then
+    sed -i "${cflags_source_line_number}i KBUILD_CFLAGS += -mtune=$_mtune" Makefile
+    sed -i "${cflags_source_line_number}i KBUILD_CFLAGS += -march=$_processor_opt" Makefile
     sed -i "${cflags_source_line_number}i # The following two lines are added by linux-tkg script" Makefile
+
   else
     warning "Couldn't set -march and -mtune for C files in Makefile. Please open a bug report on this"
     [[ "$_nofallback" = "true" ]] && exit 1
