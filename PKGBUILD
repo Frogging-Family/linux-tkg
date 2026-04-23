@@ -61,6 +61,7 @@ else
   pkgbase=linux"${_basever}"-tkg-"${_cpusched}"${_compiler_name}
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
+[ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ] && pkgname+=("${pkgbase}-nvidia-open") # Separate package for open NVIDIA kernel modules, built alongside the main kernel package.
 pkgver="${_basekernel}"."${_sub}"
 pkgrel=273
 pkgdesc='Linux-tkg'
@@ -90,6 +91,15 @@ makedepends=(
 )
 if [ "$_compiler_name" = "-llvm" ]; then
   makedepends+=('clang' 'llvm' 'lld')
+fi
+
+# nvidia-open source tarball from NVIDIA
+_nv_open_pkg="NVIDIA-kernel-module-source-${_nvidia_open_version}"
+if [ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ]; then
+  source+=(
+    "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/${_nv_open_pkg}.tar.xz"
+  )
+  sha256sums+=('SKIP')
 fi
 optdepends=('schedtool')
 options=('!strip' 'docs')
@@ -166,6 +176,23 @@ build() {
     time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3
     return 0
   )
+
+  # Build nvidia-open modules
+  if [ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ]; then
+    local _nv_open_src="${srcdir}/${_nv_open_pkg}"
+    local _kernuname
+    _kernuname="$(< "${_kernel_work_folder_abs}/include/config/kernel.release")"
+    local MODULE_FLAGS=(
+      KERNEL_UNAME="${_kernuname}"
+      IGNORE_PREEMPT_RT_PRESENCE=1
+      SYSSRC="${_kernel_work_folder_abs}"
+      SYSOUT="${_kernel_work_folder_abs}"
+      IGNORE_CC_MISMATCH=yes
+    )
+    msg2 "Building NVIDIA open kernel modules (${_nvidia_open_version})..."
+    CFLAGS= CXXFLAGS= LDFLAGS= make "${BUILD_FLAGS[@]}" "${MODULE_FLAGS[@]}" \
+      -C "${_nv_open_src}" -j"$(nproc)" modules
+  fi
 }
 
 hackbase() {
@@ -231,8 +258,8 @@ hackbase() {
       fi
     fi
     # load ntsync module at boot
-    msg2 "Set the ntsync module to be loaded at boot through /etc/modules-load.d"
-    install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/etc/modules-load.d/ntsync-${pkgbase}.conf"
+    msg2 "Set the ntsync module to be loaded at boot through /usr/lib/modules-load.d"
+    install -Dm644 "${srcdir}"/ntsync.conf "${pkgdir}/usr/lib/modules-load.d/ntsync-${pkgbase}.conf"
   fi
 
   # install udev rule for ntsync if needed (<6.14)
@@ -333,8 +360,46 @@ hackheaders() {
     strip -v $STRIP_STATIC "$builddir/vmlinux"
   fi
 
-  if [ "$_NUKR" = "true" ]; then
+  # Skip srcdir cleanup if nvidia-open package still needs it (runs after headers)
+  if [ "$_NUKR" = "true" ] && { [ "$_nvidia_open" = "false" ] || [ -z "$_nvidia_open" ]; }; then
     rm -rf "$srcdir" # Nuke the entire src folder so it'll get regenerated clean on next build
+  fi
+}
+
+hacknvidia_open() {
+  source "$_where"/BIG_UGLY_FROGMINER
+
+  pkgdesc="NVIDIA open kernel modules"
+  depends=("${pkgbase}=${pkgver}" "nvidia-utils=${_nvidia_open_version}" 'libglvnd')
+  provides=('NVIDIA-MODULE' 'nvidia-open')
+  conflicts=("${pkgbase}-nvidia" 'nvidia' 'nvidia-dkms' 'nvidia-open' 'nvidia-open-dkms')
+  license=('MIT AND GPL-2.0-only')
+
+  local _nv_open_src="${srcdir}/${_nv_open_pkg}"
+
+  cd "$_kernel_work_folder_abs"
+  local _kernver="$(<version)"
+  local modulesdir="$pkgdir/usr/lib/modules/$_kernver/extramodules"
+
+  install -dm755 "${modulesdir}"
+  install -m644 "${_nv_open_src}"/kernel-open/*.ko "${modulesdir}"
+  install -Dt "$pkgdir/usr/share/licenses/${pkgname}" -m644 "${_nv_open_src}/COPYING"
+
+  # Strip modules
+  local strip_bin="strip"
+  [ "$_compiler_name" = "-llvm" ] && strip_bin="llvm-strip"
+  find "${modulesdir}" -type f -name '*.ko' -exec "${strip_bin}" --strip-debug '{}' \;
+
+  # Compress modules
+  find "${pkgdir}" -name '*.ko' -exec zstd --rm -19 -T0 {} +
+
+  # Blacklist modules
+  echo -e "blacklist nouveau\nblacklist lbm-nouveau\nblacklist nova_core\nblacklist nova_drm" |
+      install -Dm644 /dev/stdin "${pkgdir}/usr/lib/modprobe.d/${pkgname}-blacklist.conf"
+
+  # nvidia-open is the last package — do deferred srcdir cleanup now
+  if [ "$_NUKR" = "true" ]; then
+    rm -rf "$srcdir"
   fi
 }
 
@@ -346,4 +411,5 @@ hackbase
 package_${pkgbase}-headers() {
 hackheaders
 }
+$( [ "$_nvidia_open" != "false" ] && [ -n "$_nvidia_open" ] && printf 'package_%s-nvidia-open() {\nhacknvidia_open\n}' "${pkgbase}" )
 EOF
