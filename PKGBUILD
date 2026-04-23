@@ -162,6 +162,7 @@ build() {
 
     export KCPPFLAGS
     export KCFLAGS
+    export KRUSTFLAGS
 
     time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3
     return 0

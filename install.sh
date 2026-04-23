@@ -195,6 +195,7 @@ if [ "$1" = "install" ]; then
 
   export KCPPFLAGS
   export KCFLAGS
+  export KRUSTFLAGS
 
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
