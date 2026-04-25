@@ -183,9 +183,9 @@ hackbase() {
               'update-grub: Simple wrapper around grub-mkconfig.'
               'scx-scheds: to use sched-ext schedulers')
   if [ -e "${srcdir}/ntsync.rules" ]; then
-    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE NTSYNC-MODULE ntsync-header)
+    provides=("linux=${pkgver}" "${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE NTSYNC-MODULE ntsync-header)
   else
-    provides=("linux=${pkgver}" "${pkgbase}" VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+    provides=("linux=${pkgver}" "${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
   fi
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
@@ -248,9 +248,17 @@ hackheaders() {
 
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel - https://github.com/Frogging-Family/linux-tkg"
   provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
-  if [[ $_kver -gt 510 ]]; then  
-    depends=('pahole')
-  fi
+  depends=(
+    binutils
+    glibc
+    libelf
+    libgcc
+    openssl
+    pahole
+    xxhash
+    zlib
+    zstd
+  )
 
   cd "$_kernel_work_folder_abs"
 
