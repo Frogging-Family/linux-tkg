@@ -158,7 +158,7 @@ if [ "$1" = "install" ]; then
   fi
 
   # ccache
-  if [ "$_noccache" != "true" ]; then
+  if [ "$_noccache" != "true" ] && command -v ccache >/dev/null 2>&1; then
     export PATH="/usr/lib64/ccache/:/usr/lib/ccache/bin/:$PATH"
 
     export CCACHE_SLOPPINESS="file_macro,locale,time_macros"

@@ -66,7 +66,7 @@ pkgrel=273
 pkgdesc='Linux-tkg'
 arch=('x86_64') # no i686 in here
 url="https://www.kernel.org/"
-license=('GPL2')
+license=('GPL-2.0-only')
 makedepends=(
   bc
   binutils
@@ -174,14 +174,17 @@ hackbase() {
 
   pkgdesc="The $pkgdesc kernel and modules - https://github.com/Frogging-Family/linux-tkg"
   depends=('coreutils' 'kmod' 'initramfs')
-  optdepends=('linux-docs: Kernel hackers manual - HTML documentation that comes with the Linux kernel.'
-              'crda: to set the correct wireless channels of your country.'
-              'linux-firmware: Firmware files for Linux'
-              'modprobed-db: Keeps track of EVERY kernel module that has ever been probed. Useful for make localmodconfig.'
-              'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
-              'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
-              'update-grub: Simple wrapper around grub-mkconfig.'
-              'scx-scheds: to use sched-ext schedulers')
+  optdepends=(
+    "$pkgname-headers: headers and scripts for building modules"
+    'linux-firmware: firmware images needed for some devices'
+    'linux-docs: Kernel hackers manual - HTML documentation that comes with the Linux kernel.'
+    'nvidia-tkg: NVIDIA drivers for all installed kernels - non-dkms version.'
+    'nvidia-dkms-tkg: NVIDIA drivers for all installed kernels - dkms version.'
+    'modprobed-db: Keeps track of EVERY kernel module that has ever been probed. Useful for make localmodconfig.'
+    'update-grub: Simple wrapper around grub-mkconfig.'
+    'scx-scheds: to use sched-ext schedulers'
+    'wireless-regdb: to set the correct wireless channels of your country'
+  )
   if [ -e "${srcdir}/ntsync.rules" ]; then
     provides=("linux=${pkgver}" "${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE NTSYNC-MODULE ntsync-header)
   else
