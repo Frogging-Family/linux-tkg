@@ -24,10 +24,12 @@ fi
 
 source "$_where"/BIG_UGLY_FROGMINER
 
+_vanilla_tag=""
+_vanilla_mode && _vanilla_tag="vanilla-"
 if [ -n "$_custom_pkgbase" ]; then
   pkgbase="${_custom_pkgbase}"
 else
-  pkgbase=linux"${_basever}"-tkg-"${_cpusched}"${_compiler_name}
+  pkgbase="linux${_basever}-tkg-${_vanilla_tag}${_cpusched}${_compiler_name}"
 fi
 pkgname=("${pkgbase}" "${pkgbase}-headers")
 pkgver="${_basekernel}"."${_sub}"
