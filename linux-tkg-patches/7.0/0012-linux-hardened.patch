@@ -102,15 +102,15 @@ index 6921d8594b84..3dcd0f39cf84 100644
  	If enabled, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index dbc380a9339e..f2a23818a958 100644
+index a854e46c1171..fa6fa0ce866e 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 7
  PATCHLEVEL = 0
- SUBLEVEL = 6
+ SUBLEVEL = 7
 -EXTRAVERSION =
-+EXTRAVERSION = -hardened1
++EXTRAVERSION = -hardened2
  NAME = Baby Opossum Posse
  
  # *DOCUMENTATION*
@@ -910,6 +910,20 @@ index 48d851fbd8ea..b82bab945bf5 100644
  static inline int perf_allow_cpu(void)
  {
  	if (sysctl_perf_event_paranoid > 0 && !perfmon_capable())
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 007a0b61856d..d41e7a8f9c85 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -998,6 +998,9 @@ struct task_struct {
+ 	unsigned			sched_rt_mutex:1;
+ #endif
+ 
++	/* Save user-dumpable when mm goes away */
++	unsigned			user_dumpable:1;
++
+ 	/* Bit to tell TOMOYO we're in execve(): */
+ 	unsigned			in_execve:1;
+ 	unsigned			in_iowait:1;
 diff --git a/include/linux/sysctl.h b/include/linux/sysctl.h
 index 2886fbceb5d6..3e0b05485321 100644
 --- a/include/linux/sysctl.h
@@ -1079,6 +1093,21 @@ index 97260bca67e7..4f4b7dbb563c 100644
  		.extra2		= SYSCTL_TWO,
  	},
  	{
+diff --git a/io_uring/zcrx.c b/io_uring/zcrx.c
+index af4b88e106ab..ba509479fc10 100644
+--- a/io_uring/zcrx.c
++++ b/io_uring/zcrx.c
+@@ -587,6 +587,10 @@ static void io_zcrx_return_niov_freelist(struct net_iov *niov)
+ 	struct io_zcrx_area *area = io_zcrx_iov_to_area(niov);
+ 
+ 	spin_lock_bh(&area->freelist_lock);
++	if (WARN_ON_ONCE(area->free_count >= area->nia.num_niovs)) {
++		spin_unlock_bh(&area->freelist_lock);
++		return;
++	}
+ 	area->freelist[area->free_count++] = net_iov_idx(niov);
+ 	spin_unlock_bh(&area->freelist_lock);
+ }
 diff --git a/kernel/audit.c b/kernel/audit.c
 index 5a0216056524..e52ec85dcb77 100644
 --- a/kernel/audit.c
@@ -1150,6 +1179,18 @@ index 89b40e439717..b9205d90e6dd 100644
  	if (err)
  		return err;
  
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 9852444627a0..e2b636961254 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -571,6 +571,7 @@ static void exit_mm(void)
+ 	 */
+ 	smp_mb__after_spinlock();
+ 	local_irq_disable();
++	current->user_dumpable = (get_dumpable(mm) == SUID_DUMP_USER);
+ 	current->mm = NULL;
+ 	membarrier_update_current_mm(NULL);
+ 	enter_lazy_tlb(mm, current);
 diff --git a/kernel/fork.c b/kernel/fork.c
 index 2383c25b9fd4..7b8b07cb14d5 100644
 --- a/kernel/fork.c
@@ -1206,6 +1247,50 @@ index f15732e93c2e..1b8a2a652b19 100644
  static const struct ctl_table printk_sysctls[] = {
  	{
  		.procname	= "printk",
+diff --git a/kernel/ptrace.c b/kernel/ptrace.c
+index 392ec2f75f01..0e3ab697cff5 100644
+--- a/kernel/ptrace.c
++++ b/kernel/ptrace.c
+@@ -272,11 +272,24 @@ static bool ptrace_has_cap(struct user_namespace *ns, unsigned int mode)
+ 	return ns_capable(ns, CAP_SYS_PTRACE);
+ }
+ 
++static bool task_still_dumpable(struct task_struct *task, unsigned int mode)
++{
++	struct mm_struct *mm = task->mm;
++	if (mm) {
++		if (get_dumpable(mm) == SUID_DUMP_USER)
++			return true;
++		return ptrace_has_cap(mm->user_ns, mode);
++	}
++
++	if (task->user_dumpable)
++		return true;
++	return ptrace_has_cap(&init_user_ns, mode);
++}
++
+ /* Returns 0 on success, -errno on denial. */
+ static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
+ {
+ 	const struct cred *cred = current_cred(), *tcred;
+-	struct mm_struct *mm;
+ 	kuid_t caller_uid;
+ 	kgid_t caller_gid;
+ 
+@@ -337,11 +350,8 @@ static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
+ 	 * Pairs with a write barrier in commit_creds().
+ 	 */
+ 	smp_rmb();
+-	mm = task->mm;
+-	if (mm &&
+-	    ((get_dumpable(mm) != SUID_DUMP_USER) &&
+-	     !ptrace_has_cap(mm->user_ns, mode)))
+-	    return -EPERM;
++	if (!task_still_dumpable(task, mode))
++		return -EPERM;
+ 
+ 	return security_ptrace_access_check(task, mode);
+ }
 diff --git a/kernel/softirq.c b/kernel/softirq.c
 index 77198911b8dd..1c508ce336ae 100644
 --- a/kernel/softirq.c
@@ -2655,6 +2740,62 @@ index 8134e1afca68..4e747ea55e52 100644
  	return 0;
  
  err:
+diff --git a/net/core/gro.c b/net/core/gro.c
+index 31d21de5b15a..9f8960789b2c 100644
+--- a/net/core/gro.c
++++ b/net/core/gro.c
+@@ -213,10 +213,12 @@ int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb)
+ 	p->data_len += len;
+ 	p->truesize += delta_truesize;
+ 	p->len += len;
++	skb_shinfo(p)->flags |= skbinfo->flags & SKBFL_SHARED_FRAG;
+ 	if (lp != p) {
+ 		lp->data_len += len;
+ 		lp->truesize += delta_truesize;
+ 		lp->len += len;
++		skb_shinfo(lp)->flags |= skbinfo->flags & SKBFL_SHARED_FRAG;
+ 	}
+ 	NAPI_GRO_CB(skb)->same_flow = 1;
+ 	return 0;
+@@ -244,6 +246,8 @@ int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb)
+ 	p->truesize += skb->truesize;
+ 	p->len += skb->len;
+ 
++	skb_shinfo(p)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
++
+ 	NAPI_GRO_CB(skb)->same_flow = 1;
+ 
+ 	return 0;
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 43ee86dcf2ea..4cfb4886e1b2 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -2258,6 +2258,7 @@ struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb, int headroom,
+ 			skb_frag_ref(skb, i);
+ 		}
+ 		skb_shinfo(n)->nr_frags = i;
++		skb_shinfo(n)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
+ 	}
+ 
+ 	if (skb_has_frag_list(skb)) {
+@@ -4373,6 +4374,8 @@ int skb_shift(struct sk_buff *tgt, struct sk_buff *skb, int shiftlen)
+ 	tgt->ip_summed = CHECKSUM_PARTIAL;
+ 	skb->ip_summed = CHECKSUM_PARTIAL;
+ 
++	skb_shinfo(tgt)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
++
+ 	skb_len_add(skb, -shiftlen);
+ 	skb_len_add(tgt, shiftlen);
+ 
+@@ -6226,6 +6229,8 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
+ 	       from_shinfo->frags,
+ 	       from_shinfo->nr_frags * sizeof(skb_frag_t));
+ 	to_shinfo->nr_frags += from_shinfo->nr_frags;
++	if (from_shinfo->nr_frags)
++		to_shinfo->flags |= from_shinfo->flags & SKBFL_SHARED_FRAG;
+ 
+ 	if (!skb_cloned(from))
+ 		from_shinfo->nr_frags = 0;
 diff --git a/net/ipv4/Kconfig b/net/ipv4/Kconfig
 index df922f9f5289..845b67882e64 100644
 --- a/net/ipv4/Kconfig
@@ -3024,7 +3165,7 @@ index 5588c4d573f6..567a33eae460 100644
  	  This selects Security-Enhanced Linux (SELinux).
  	  You will also need a policy configuration and a labeled filesystem.
 diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
-index 76e0fb7dcb36..2cf58c49b62f 100644
+index 6c154a4d94b9..8b1f3501f289 100644
 --- a/security/selinux/hooks.c
 +++ b/security/selinux/hooks.c
 @@ -141,18 +141,6 @@ static int __init selinux_enabled_setup(char *str)
@@ -3046,32 +3187,6 @@ index 76e0fb7dcb36..2cf58c49b62f 100644
  /**
   * selinux_secmark_enabled - Check to see if SECMARK is currently enabled
   *
-diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
-index 3245cc531555..48939f6f25f9 100644
---- a/security/selinux/selinuxfs.c
-+++ b/security/selinux/selinuxfs.c
-@@ -710,20 +710,12 @@ static ssize_t sel_write_checkreqprot(struct file *file, const char __user *buf,
- 	if (IS_ERR(page))
- 		return PTR_ERR(page);
- 
--	if (sscanf(page, "%u", &new_value) != 1) {
-+	if (sscanf(page, "%u", &new_value) != 1 || new_value) {
- 		length = -EINVAL;
- 		goto out;
- 	}
- 	length = count;
- 
--	if (new_value) {
--		char comm[sizeof(current->comm)];
--
--		strscpy(comm, current->comm);
--		pr_err("SELinux: %s (%d) set checkreqprot to 1. This is no longer supported.\n",
--		       comm, current->pid);
--	}
--
- 	selinux_ima_measure_state();
- 
- out:
 diff --git a/security/yama/Kconfig b/security/yama/Kconfig
 index a810304123ca..b809050b25d2 100644
 --- a/security/yama/Kconfig
