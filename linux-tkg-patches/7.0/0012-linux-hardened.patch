@@ -102,15 +102,15 @@ index 6921d8594b84..3dcd0f39cf84 100644
  	If enabled, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index a854e46c1171..fa6fa0ce866e 100644
+index a0565b83ae40..cd27baa3a44b 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 7
  PATCHLEVEL = 0
- SUBLEVEL = 7
+ SUBLEVEL = 8
 -EXTRAVERSION =
-+EXTRAVERSION = -hardened2
++EXTRAVERSION = -hardened1
  NAME = Baby Opossum Posse
  
  # *DOCUMENTATION*
@@ -910,20 +910,6 @@ index 48d851fbd8ea..b82bab945bf5 100644
  static inline int perf_allow_cpu(void)
  {
  	if (sysctl_perf_event_paranoid > 0 && !perfmon_capable())
-diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 007a0b61856d..d41e7a8f9c85 100644
---- a/include/linux/sched.h
-+++ b/include/linux/sched.h
-@@ -998,6 +998,9 @@ struct task_struct {
- 	unsigned			sched_rt_mutex:1;
- #endif
- 
-+	/* Save user-dumpable when mm goes away */
-+	unsigned			user_dumpable:1;
-+
- 	/* Bit to tell TOMOYO we're in execve(): */
- 	unsigned			in_execve:1;
- 	unsigned			in_iowait:1;
 diff --git a/include/linux/sysctl.h b/include/linux/sysctl.h
 index 2886fbceb5d6..3e0b05485321 100644
 --- a/include/linux/sysctl.h
@@ -1179,18 +1165,6 @@ index 89b40e439717..b9205d90e6dd 100644
  	if (err)
  		return err;
  
-diff --git a/kernel/exit.c b/kernel/exit.c
-index 9852444627a0..e2b636961254 100644
---- a/kernel/exit.c
-+++ b/kernel/exit.c
-@@ -571,6 +571,7 @@ static void exit_mm(void)
- 	 */
- 	smp_mb__after_spinlock();
- 	local_irq_disable();
-+	current->user_dumpable = (get_dumpable(mm) == SUID_DUMP_USER);
- 	current->mm = NULL;
- 	membarrier_update_current_mm(NULL);
- 	enter_lazy_tlb(mm, current);
 diff --git a/kernel/fork.c b/kernel/fork.c
 index 2383c25b9fd4..7b8b07cb14d5 100644
 --- a/kernel/fork.c
@@ -1247,50 +1221,6 @@ index f15732e93c2e..1b8a2a652b19 100644
  static const struct ctl_table printk_sysctls[] = {
  	{
  		.procname	= "printk",
-diff --git a/kernel/ptrace.c b/kernel/ptrace.c
-index 392ec2f75f01..0e3ab697cff5 100644
---- a/kernel/ptrace.c
-+++ b/kernel/ptrace.c
-@@ -272,11 +272,24 @@ static bool ptrace_has_cap(struct user_namespace *ns, unsigned int mode)
- 	return ns_capable(ns, CAP_SYS_PTRACE);
- }
- 
-+static bool task_still_dumpable(struct task_struct *task, unsigned int mode)
-+{
-+	struct mm_struct *mm = task->mm;
-+	if (mm) {
-+		if (get_dumpable(mm) == SUID_DUMP_USER)
-+			return true;
-+		return ptrace_has_cap(mm->user_ns, mode);
-+	}
-+
-+	if (task->user_dumpable)
-+		return true;
-+	return ptrace_has_cap(&init_user_ns, mode);
-+}
-+
- /* Returns 0 on success, -errno on denial. */
- static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
- {
- 	const struct cred *cred = current_cred(), *tcred;
--	struct mm_struct *mm;
- 	kuid_t caller_uid;
- 	kgid_t caller_gid;
- 
-@@ -337,11 +350,8 @@ static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
- 	 * Pairs with a write barrier in commit_creds().
- 	 */
- 	smp_rmb();
--	mm = task->mm;
--	if (mm &&
--	    ((get_dumpable(mm) != SUID_DUMP_USER) &&
--	     !ptrace_has_cap(mm->user_ns, mode)))
--	    return -EPERM;
-+	if (!task_still_dumpable(task, mode))
-+		return -EPERM;
- 
- 	return security_ptrace_access_check(task, mode);
- }
 diff --git a/kernel/softirq.c b/kernel/softirq.c
 index 77198911b8dd..1c508ce336ae 100644
 --- a/kernel/softirq.c
