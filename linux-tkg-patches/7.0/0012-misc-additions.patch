@@ -458,40 +458,6 @@ index 94b8ecb892bb17..5d687860445137 100644
  
  			if (++cur_pgcnt >= pgcnt)
 
-From 6e395c8838aacd4248a76d8ebb00cd0660ce0cfc Mon Sep 17 00:00:00 2001
-From: Pavel Begunkov <asml.silence@gmail.com>
-Date: Sat, 9 May 2026 21:36:54 +0200
-Subject: [PATCH] io_uring/zcrx: warn on freelist violations
-
-The freelist is appropriately sized to always be able to take a free
-niov, but let's be more defensive and check the invariant with a
-warning. That should help to catch any double-free issues.
-
-Suggested-by: Kai Aizen <kai@snailsploit.com>
-
-Link: https://patch.msgid.link/2f3cea363b04649755e3b6bb9ab66485a95936d5.1776760901.git.asml.silence@gmail.com
-Signed-off-by: Peter Jung <admin@ptr1337.dev>
-Cherry-picked-for: https://ze3tar.github.io/post-zcrx.html
----
- io_uring/zcrx.c | 4 ++++
- 1 file changed, 4 insertions(+)
-
-diff --git a/io_uring/zcrx.c b/io_uring/zcrx.c
-index af4b88e106abf4..ba509479fc1078 100644
---- a/io_uring/zcrx.c
-+++ b/io_uring/zcrx.c
-@@ -587,6 +587,10 @@ static void io_zcrx_return_niov_freelist(struct net_iov *niov)
- 	struct io_zcrx_area *area = io_zcrx_iov_to_area(niov);
- 
- 	spin_lock_bh(&area->freelist_lock);
-+	if (WARN_ON_ONCE(area->free_count >= area->nia.num_niovs)) {
-+		spin_unlock_bh(&area->freelist_lock);
-+		return;
-+	}
- 	area->freelist[area->free_count++] = net_iov_idx(niov);
- 	spin_unlock_bh(&area->freelist_lock);
- }
-
 From caaeb1ac78bb42df5fd9868f477fd6014937775f Mon Sep 17 00:00:00 2001
 From: Hyunwoo Kim <imv4bel@gmail.com>
 Date: Thu, 14 May 2026 20:57:48 +0900
