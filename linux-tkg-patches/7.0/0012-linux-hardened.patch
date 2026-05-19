@@ -102,13 +102,13 @@ index 6921d8594b84..3dcd0f39cf84 100644
  	If enabled, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index a0565b83ae40..cd27baa3a44b 100644
+index 9da9c1f3b238..c12369c6c143 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 7
  PATCHLEVEL = 0
- SUBLEVEL = 8
+ SUBLEVEL = 9
 -EXTRAVERSION =
 +EXTRAVERSION = -hardened1
  NAME = Baby Opossum Posse
@@ -1079,21 +1079,6 @@ index 97260bca67e7..4f4b7dbb563c 100644
  		.extra2		= SYSCTL_TWO,
  	},
  	{
-diff --git a/io_uring/zcrx.c b/io_uring/zcrx.c
-index af4b88e106ab..ba509479fc10 100644
---- a/io_uring/zcrx.c
-+++ b/io_uring/zcrx.c
-@@ -587,6 +587,10 @@ static void io_zcrx_return_niov_freelist(struct net_iov *niov)
- 	struct io_zcrx_area *area = io_zcrx_iov_to_area(niov);
- 
- 	spin_lock_bh(&area->freelist_lock);
-+	if (WARN_ON_ONCE(area->free_count >= area->nia.num_niovs)) {
-+		spin_unlock_bh(&area->freelist_lock);
-+		return;
-+	}
- 	area->freelist[area->free_count++] = net_iov_idx(niov);
- 	spin_unlock_bh(&area->freelist_lock);
- }
 diff --git a/kernel/audit.c b/kernel/audit.c
 index 5a0216056524..e52ec85dcb77 100644
 --- a/kernel/audit.c
@@ -2634,7 +2619,7 @@ index e423afa27d1a..56819ec51838 100644
  	s->align = args->align;
  	s->ctor = args->ctor;
 diff --git a/mm/util.c b/mm/util.c
-index e2a51e3cfb24..81597ad3ce7b 100644
+index a14de66c9458..e39fe7b338c9 100644
 --- a/mm/util.c
 +++ b/mm/util.c
 @@ -391,9 +391,9 @@ unsigned long __weak arch_randomize_brk(struct mm_struct *mm)
@@ -2697,7 +2682,7 @@ index 31d21de5b15a..9f8960789b2c 100644
  
  	return 0;
 diff --git a/net/core/skbuff.c b/net/core/skbuff.c
-index 43ee86dcf2ea..4cfb4886e1b2 100644
+index 43ee86dcf2ea..d0ad034c911f 100644
 --- a/net/core/skbuff.c
 +++ b/net/core/skbuff.c
 @@ -2258,6 +2258,7 @@ struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb, int headroom,
@@ -2717,7 +2702,27 @@ index 43ee86dcf2ea..4cfb4886e1b2 100644
  	skb_len_add(skb, -shiftlen);
  	skb_len_add(tgt, shiftlen);
  
-@@ -6226,6 +6229,8 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
+@@ -4983,7 +4986,8 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
+ 		skb_copy_from_linear_data_offset(head_skb, offset,
+ 						 skb_put(nskb, hsize), hsize);
+ 
+-		skb_shinfo(nskb)->flags |= skb_shinfo(head_skb)->flags &
++		skb_shinfo(nskb)->flags |= (skb_shinfo(head_skb)->flags |
++					    skb_shinfo(frag_skb)->flags) &
+ 					   SKBFL_SHARED_FRAG;
+ 
+ 		if (skb_zerocopy_clone(nskb, frag_skb, GFP_ATOMIC))
+@@ -5000,6 +5004,9 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
+ 				nfrags = skb_shinfo(list_skb)->nr_frags;
+ 				frag = skb_shinfo(list_skb)->frags;
+ 				frag_skb = list_skb;
++
++				skb_shinfo(nskb)->flags |= skb_shinfo(frag_skb)->flags & SKBFL_SHARED_FRAG;
++
+ 				if (!skb_headlen(list_skb)) {
+ 					BUG_ON(!nfrags);
+ 				} else {
+@@ -6226,6 +6233,8 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
  	       from_shinfo->frags,
  	       from_shinfo->nr_frags * sizeof(skb_frag_t));
  	to_shinfo->nr_frags += from_shinfo->nr_frags;
@@ -2806,6 +2811,18 @@ index cba89733d121..6ad61b77d0cb 100644
  		/* We see SYN without ACK. It is attempt of
  		 * simultaneous connect with crossed SYNs.
  		 * Particularly, it can be connect to self.
+diff --git a/net/ipv4/tcp_output.c b/net/ipv4/tcp_output.c
+index 326b58ff1118..691fc76c5508 100644
+--- a/net/ipv4/tcp_output.c
++++ b/net/ipv4/tcp_output.c
+@@ -2606,6 +2606,7 @@ static int tcp_clone_payload(struct sock *sk, struct sk_buff *to,
+ 			todo = min_t(int, skb_frag_size(fragfrom),
+ 				     probe_size - len);
+ 			len += todo;
++			skb_shinfo(to)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
+ 			if (lastfrag &&
+ 			    skb_frag_page(fragfrom) == skb_frag_page(lastfrag) &&
+ 			    skb_frag_off(fragfrom) == skb_frag_off(lastfrag) +
 diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
 index d7d45067d08b..b501130c534c 100644
 --- a/scripts/Makefile.modpost
