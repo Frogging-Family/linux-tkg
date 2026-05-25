@@ -37,22 +37,6 @@ plain() {
 
 ################### Config sourcing
 
-# We are either not using script or not within the script sub-command yet
-# we don't export the environment in the script sub-command so sourcing current_env will
-# get us the actual environment
-if [[ -z "$SCRIPT" ]]; then
-  declare -p -x > current_env
-fi
-
-source customization.cfg
-
-if [ -e "$_EXT_CONFIG_PATH" ]; then
-  msg2 "External configuration file $_EXT_CONFIG_PATH will be used and will override customization.cfg values."
-  source "$_EXT_CONFIG_PATH"
-fi
-
-. current_env
-
 if which script &> /dev/null && [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   # using script is enabled, but we are not within the script sub-command
   export SCRIPT=1
@@ -61,7 +45,8 @@ if which script &> /dev/null && [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && 
   exit
 fi
 
-source linux-tkg-config/prepare
+source linux-tkg-config/prepare && aggregate_user_config
+source "$_where/BIG_UGLY_FROGMINER"
 
 ####################################################################
 
