@@ -102,13 +102,13 @@ index 6921d8594b84..3dcd0f39cf84 100644
  	If enabled, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index 9da9c1f3b238..c12369c6c143 100644
+index a95f0b3d26bf..83746b79b2a3 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 7
  PATCHLEVEL = 0
- SUBLEVEL = 9
+ SUBLEVEL = 10
 -EXTRAVERSION =
 +EXTRAVERSION = -hardened1
  NAME = Baby Opossum Posse
@@ -988,7 +988,7 @@ index 9c3be157397e..bb05d4a07c46 100644
  {
  	return &init_user_ns;
 diff --git a/include/net/tcp.h b/include/net/tcp.h
-index 978eea2d5df0..607acd987a49 100644
+index ebc72dce4134..955c1b71c6b4 100644
 --- a/include/net/tcp.h
 +++ b/include/net/tcp.h
 @@ -287,6 +287,7 @@ static_assert((1 << ATO_BITS) > TCP_DELACK_MAX);
@@ -1080,10 +1080,10 @@ index 97260bca67e7..4f4b7dbb563c 100644
  	},
  	{
 diff --git a/kernel/audit.c b/kernel/audit.c
-index 5a0216056524..e52ec85dcb77 100644
+index d3a8268998d7..485d169d8dc4 100644
 --- a/kernel/audit.c
 +++ b/kernel/audit.c
-@@ -1782,6 +1782,9 @@ static int __init audit_enable(char *str)
+@@ -1786,6 +1786,9 @@ static int __init audit_enable(char *str)
  
  	if (audit_default == AUDIT_OFF)
  		audit_initialized = AUDIT_DISABLED;
@@ -1094,7 +1094,7 @@ index 5a0216056524..e52ec85dcb77 100644
  		pr_err("audit: error setting audit state (%d)\n",
  		       audit_default);
 diff --git a/kernel/bpf/core.c b/kernel/bpf/core.c
-index 7b675a451ec8..9e0a50883380 100644
+index 048d275accae..0a614753c68c 100644
 --- a/kernel/bpf/core.c
 +++ b/kernel/bpf/core.c
 @@ -547,7 +547,7 @@ void bpf_prog_kallsyms_del_all(struct bpf_prog *fp)
@@ -1151,7 +1151,7 @@ index 89b40e439717..b9205d90e6dd 100644
  		return err;
  
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 2383c25b9fd4..7b8b07cb14d5 100644
+index 73622ad0665a..18a0936e6a12 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -83,6 +83,7 @@
@@ -1162,7 +1162,7 @@ index 2383c25b9fd4..7b8b07cb14d5 100644
  #include <linux/oom.h>
  #include <linux/khugepaged.h>
  #include <linux/signalfd.h>
-@@ -1985,6 +1986,10 @@ __latent_entropy struct task_struct *copy_process(
+@@ -1987,6 +1988,10 @@ __latent_entropy struct task_struct *copy_process(
  	if ((clone_flags & (CLONE_NEWUSER|CLONE_FS)) == (CLONE_NEWUSER|CLONE_FS))
  		return ERR_PTR(-EINVAL);
  
@@ -1173,7 +1173,7 @@ index 2383c25b9fd4..7b8b07cb14d5 100644
  	/*
  	 * Thread groups must share signals as well, and detached threads
  	 * can only be started up within the thread group.
-@@ -3153,6 +3158,12 @@ int ksys_unshare(unsigned long unshare_flags)
+@@ -3151,6 +3156,12 @@ int ksys_unshare(unsigned long unshare_flags)
  	if (unshare_flags & CLONE_NEWNS)
  		unshare_flags |= CLONE_FS;
  
@@ -1445,7 +1445,7 @@ index 800b8ac49f53..e56d26c9f3ab 100644
  static noinline_for_stack
  char *restricted_pointer(char *buf, char *end, const void *ptr,
 diff --git a/mm/Kconfig b/mm/Kconfig
-index ebd8ea353687..c7a76c4905b5 100644
+index befa8909ae29..9830506ebb5b 100644
 --- a/mm/Kconfig
 +++ b/mm/Kconfig
 @@ -188,7 +188,6 @@ config SLUB_TINY
@@ -1513,7 +1513,7 @@ index ebd8ea353687..c7a76c4905b5 100644
  	help
  	  Randomizing heap placement makes heap exploits harder, but it
  	  also breaks ancient binaries (including anything libc5 based).
-@@ -703,7 +720,8 @@ config KSM
+@@ -704,7 +721,8 @@ config KSM
  config DEFAULT_MMAP_MIN_ADDR
  	int "Low address space to protect from user allocation"
  	depends on MMU
@@ -2655,82 +2655,6 @@ index 8134e1afca68..4e747ea55e52 100644
  	return 0;
  
  err:
-diff --git a/net/core/gro.c b/net/core/gro.c
-index 31d21de5b15a..9f8960789b2c 100644
---- a/net/core/gro.c
-+++ b/net/core/gro.c
-@@ -213,10 +213,12 @@ int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb)
- 	p->data_len += len;
- 	p->truesize += delta_truesize;
- 	p->len += len;
-+	skb_shinfo(p)->flags |= skbinfo->flags & SKBFL_SHARED_FRAG;
- 	if (lp != p) {
- 		lp->data_len += len;
- 		lp->truesize += delta_truesize;
- 		lp->len += len;
-+		skb_shinfo(lp)->flags |= skbinfo->flags & SKBFL_SHARED_FRAG;
- 	}
- 	NAPI_GRO_CB(skb)->same_flow = 1;
- 	return 0;
-@@ -244,6 +246,8 @@ int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb)
- 	p->truesize += skb->truesize;
- 	p->len += skb->len;
- 
-+	skb_shinfo(p)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
-+
- 	NAPI_GRO_CB(skb)->same_flow = 1;
- 
- 	return 0;
-diff --git a/net/core/skbuff.c b/net/core/skbuff.c
-index 43ee86dcf2ea..d0ad034c911f 100644
---- a/net/core/skbuff.c
-+++ b/net/core/skbuff.c
-@@ -2258,6 +2258,7 @@ struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb, int headroom,
- 			skb_frag_ref(skb, i);
- 		}
- 		skb_shinfo(n)->nr_frags = i;
-+		skb_shinfo(n)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
- 	}
- 
- 	if (skb_has_frag_list(skb)) {
-@@ -4373,6 +4374,8 @@ int skb_shift(struct sk_buff *tgt, struct sk_buff *skb, int shiftlen)
- 	tgt->ip_summed = CHECKSUM_PARTIAL;
- 	skb->ip_summed = CHECKSUM_PARTIAL;
- 
-+	skb_shinfo(tgt)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
-+
- 	skb_len_add(skb, -shiftlen);
- 	skb_len_add(tgt, shiftlen);
- 
-@@ -4983,7 +4986,8 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
- 		skb_copy_from_linear_data_offset(head_skb, offset,
- 						 skb_put(nskb, hsize), hsize);
- 
--		skb_shinfo(nskb)->flags |= skb_shinfo(head_skb)->flags &
-+		skb_shinfo(nskb)->flags |= (skb_shinfo(head_skb)->flags |
-+					    skb_shinfo(frag_skb)->flags) &
- 					   SKBFL_SHARED_FRAG;
- 
- 		if (skb_zerocopy_clone(nskb, frag_skb, GFP_ATOMIC))
-@@ -5000,6 +5004,9 @@ struct sk_buff *skb_segment(struct sk_buff *head_skb,
- 				nfrags = skb_shinfo(list_skb)->nr_frags;
- 				frag = skb_shinfo(list_skb)->frags;
- 				frag_skb = list_skb;
-+
-+				skb_shinfo(nskb)->flags |= skb_shinfo(frag_skb)->flags & SKBFL_SHARED_FRAG;
-+
- 				if (!skb_headlen(list_skb)) {
- 					BUG_ON(!nfrags);
- 				} else {
-@@ -6226,6 +6233,8 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
- 	       from_shinfo->frags,
- 	       from_shinfo->nr_frags * sizeof(skb_frag_t));
- 	to_shinfo->nr_frags += from_shinfo->nr_frags;
-+	if (from_shinfo->nr_frags)
-+		to_shinfo->flags |= from_shinfo->flags & SKBFL_SHARED_FRAG;
- 
- 	if (!skb_cloned(from))
- 		from_shinfo->nr_frags = 0;
 diff --git a/net/ipv4/Kconfig b/net/ipv4/Kconfig
 index df922f9f5289..845b67882e64 100644
 --- a/net/ipv4/Kconfig
@@ -2791,7 +2715,7 @@ index 5654cc9c8a0b..687dc0058b43 100644
  
  static struct ctl_table ipv4_net_table[] = {
 diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
-index cba89733d121..6ad61b77d0cb 100644
+index cb4bcc5a8578..2c9875ef79f3 100644
 --- a/net/ipv4/tcp_input.c
 +++ b/net/ipv4/tcp_input.c
 @@ -85,6 +85,7 @@
@@ -2802,7 +2726,7 @@ index cba89733d121..6ad61b77d0cb 100644
  
  #define FLAG_DATA		0x01 /* Incoming frame contained data.		*/
  #define FLAG_WIN_UPDATE		0x02 /* Incoming ACK was a window update.	*/
-@@ -7040,7 +7041,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
+@@ -7046,7 +7047,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
  		SKB_DR_SET(reason, TCP_RFC7323_PAWS);
  		goto discard_and_undo;
  	}
@@ -2811,18 +2735,6 @@ index cba89733d121..6ad61b77d0cb 100644
  		/* We see SYN without ACK. It is attempt of
  		 * simultaneous connect with crossed SYNs.
  		 * Particularly, it can be connect to self.
-diff --git a/net/ipv4/tcp_output.c b/net/ipv4/tcp_output.c
-index 326b58ff1118..691fc76c5508 100644
---- a/net/ipv4/tcp_output.c
-+++ b/net/ipv4/tcp_output.c
-@@ -2606,6 +2606,7 @@ static int tcp_clone_payload(struct sock *sk, struct sk_buff *to,
- 			todo = min_t(int, skb_frag_size(fragfrom),
- 				     probe_size - len);
- 			len += todo;
-+			skb_shinfo(to)->flags |= skb_shinfo(skb)->flags & SKBFL_SHARED_FRAG;
- 			if (lastfrag &&
- 			    skb_frag_page(fragfrom) == skb_frag_page(lastfrag) &&
- 			    skb_frag_off(fragfrom) == skb_frag_off(lastfrag) +
 diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
 index d7d45067d08b..b501130c534c 100644
 --- a/scripts/Makefile.modpost
