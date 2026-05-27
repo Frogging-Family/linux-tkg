@@ -96,7 +96,7 @@ prepare() {
 
   rm -rf $pkgdir # Nuke the entire pkg folder so it'll get regenerated clean on next build
 
-  ln -s "${_kernel_work_folder_abs}" "${srcdir}"
+  ln -sf "${_kernel_work_folder_abs}" "${srcdir}"
 
   _tkg_srcprep
 }
