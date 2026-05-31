@@ -5,8 +5,10 @@ set -e
 
 ###################### Definition of helper variables and functions
 
-_where=`pwd`
+_where=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 srcdir="$_where"
+
+cd "$_where"
 
 # Command used for superuser privileges (`sudo`, `doas`, `su`)
 if [ ! -x "$(command -v sudo)" ]; then
