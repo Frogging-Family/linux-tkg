@@ -140,6 +140,10 @@ _module() {
   done
 }
 
+_vanilla_mode() {
+  [[ "$_vanilla" =~ ^(Y|y|Yes|yes|true|1)$ ]];
+}
+
 _prompt_from_array() {
   # Prompts from array, selects default index on empty user input
   # Set the _default_index variable to enable default index selection
@@ -367,8 +371,9 @@ _set_cpu_scheduler() {
     _avail_cpu_scheds+=("muqss")
   fi
 
-  if [ "${_preempt_rt}" = "1" ]; then
-    warning "! Since you have enabled _preempt_rt, incompatible cpu schedulers will not be available !"
+  if [[ "${_preempt_rt}" == "1" ]] || _vanilla_mode; then
+    [[ "${_preempt_rt}" == "1" ]] && warning "! Since you have enabled _preempt_rt, incompatible cpu schedulers will not be available !"
+    _vanilla_mode && warning "_vanilla toggle active, only default scheduler available"
     _avail_cpu_scheds=("$_default_cpu_sched")
   fi
 
@@ -672,6 +677,7 @@ user_patcher() {
 	# To patch the user because all your base are belong to us
 	local _patches=("$_where"/linux"$_basever"-tkg-userpatches/*."${_userpatch_ext}revert")
 	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
+    _vanilla_mode && warning "Vanilla mode is enabled, you may not want to apply some of these user revert patches."
 	  if [ "$_user_patches_no_confirm" != "true" ]; then
 	    msg2 "Found ${#_patches[@]} 'to revert' userpatches for ${_userpatch_target}:"
 	    printf '%s\n' "${_patches[@]}"
@@ -694,6 +700,7 @@ user_patcher() {
 
 	_patches=("$_where"/linux"$_basever"-tkg-userpatches/*."${_userpatch_ext}patch")
 	if [ ${#_patches[@]} -ge 2 ] || [ -e "${_patches}" ]; then
+    _vanilla_mode && warning "Vanilla mode is enabled, you may not want to apply some of these user patches."
 	  if [ "$_user_patches_no_confirm" != "true" ]; then
 	    msg2 "Found ${#_patches[@]} userpatches for ${_userpatch_target}:"
 	    printf '%s\n' "${_patches[@]}"
@@ -716,6 +723,10 @@ user_patcher() {
 }
 
 _tkg_patcher() {
+  if _vanilla_mode && [[ "$1" != "--vanilla-friendly" ]]; then
+    warning "_vanilla toggle active: not applying ${tkgpatch##*/}"
+    return 0
+  fi
   if [ -e "$tkgpatch" ] && [[ $(wc -l <"$tkgpatch") -ge 7 ]]; then
     msg2 "$_msg"
     echo -e "### Applying ${tkgpatch##*/}... ###" >> "$_where"/logs/prepare.log.txt
@@ -736,16 +747,15 @@ _tkg_srcprep() {
   fi
 
   if [ "${_distro}" = "Arch" ]; then
+    local _vanilla_tag=""
+    _vanilla_mode && _vanilla_tag="vanilla-"
     if [ -n "$_custom_pkgbase" ]; then
-      if [[ "$_custom_pkgbase" != *tkg* ]]; then
-        _localversion_tag="-tkg-"
-      else
-        _localversion_tag="-"
-      fi
-      echo "-${pkgrel}${_localversion_tag}${_custom_pkgbase}" > localversion.10-pkgrel
+      local _tkg_watermark=""
+      [[ "$_custom_pkgbase" != *tkg* ]] && _tkg_watermark="tkg-"
+      echo "-${pkgrel}-${_tkg_watermark}${_vanilla_tag}${_custom_pkgbase}" > localversion.10-pkgrel
       echo -e "Version tail set to \"-${pkgrel}${_localversion_tag}${_custom_pkgbase}\"\n" > "$_where"/logs/prepare.log.txt
     else
-      echo "-$pkgrel-tkg-${_cpusched}${_compiler_name}" > localversion.10-pkgrel
+      echo "-$pkgrel-tkg-${_vanilla_tag}${_cpusched}${_compiler_name}" > localversion.10-pkgrel
       echo -e "Version tail set to \"-$pkgrel-tkg-${_cpusched}${_compiler_name}\"\n" > "$_where"/logs/prepare.log.txt
     fi
     echo "" > localversion.20-pkgname
@@ -811,16 +821,16 @@ _tkg_srcprep() {
   fi
 
   tkgpatch="$srcdir/0013-fedora-rpm.patch"
-  _msg="RPM: fixing spec generator" && _tkg_patcher
+  _msg="RPM: fixing spec generator" && _tkg_patcher --vanilla-friendly
 
   if [[ "$_STRIP" == "true" ]]; then
     tkgpatch="$srcdir/0013-fedora-strip-modules.patch"
-    _msg="RPM: strip modules" && _tkg_patcher
+    _msg="RPM: strip modules" && _tkg_patcher --vanilla-friendly
   fi
 
   if [ "$_distro" = "Suse" ]; then
     tkgpatch="$srcdir/0013-suse-additions.patch"
-    _msg="Import Suse-specific patches" && _tkg_patcher
+    _msg="Import Suse-specific patches" && _tkg_patcher --vanilla-friendly
   fi
 
   if [ "$_distro" = "Gentoo" ]; then
