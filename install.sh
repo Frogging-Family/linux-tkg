@@ -47,7 +47,9 @@ if which script &> /dev/null && [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && 
   exit
 fi
 
-source linux-tkg-config/prepare && aggregate_user_config
+source linux-tkg-config/prepare
+_frog_banner
+aggregate_user_config
 source "$_where/BIG_UGLY_FROGMINER"
 
 ####################################################################
