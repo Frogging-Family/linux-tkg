@@ -1,0 +1,193 @@
+From cdeab384f48dd9c88e2dff2e9ad8d57dca1a1b1c Mon Sep 17 00:00:00 2001
+From: Mark Weiman <mark.weiman@markzz.com>
+Date: Sun, 12 Aug 2018 11:36:21 -0400
+Subject: [PATCH] pci: Enable overrides for missing ACS capabilities
+
+This an updated version of Alex Williamson's patch from:
+https://lkml.org/lkml/2013/5/30/513
+
+Original commit message follows:
+
+PCIe ACS (Access Control Services) is the PCIe 2.0+ feature that
+allows us to control whether transactions are allowed to be redirected
+in various subnodes of a PCIe topology.  For instance, if two
+endpoints are below a root port or downsteam switch port, the
+downstream port may optionally redirect transactions between the
+devices, bypassing upstream devices.  The same can happen internally
+on multifunction devices.  The transaction may never be visible to the
+upstream devices.
+
+One upstream device that we particularly care about is the IOMMU.  If
+a redirection occurs in the topology below the IOMMU, then the IOMMU
+cannot provide isolation between devices.  This is why the PCIe spec
+encourages topologies to include ACS support.  Without it, we have to
+assume peer-to-peer DMA within a hierarchy can bypass IOMMU isolation.
+
+Unfortunately, far too many topologies do not support ACS to make this
+a steadfast requirement.  Even the latest chipsets from Intel are only
+sporadically supporting ACS.  We have trouble getting interconnect
+vendors to include the PCIe spec required PCIe capability, let alone
+suggested features.
+
+Therefore, we need to add some flexibility.  The pcie_acs_override=
+boot option lets users opt-in specific devices or sets of devices to
+assume ACS support.  The "downstream" option assumes full ACS support
+on root ports and downstream switch ports.  The "multifunction"
+option assumes the subset of ACS features available on multifunction
+endpoints and upstream switch ports are supported.  The "id:nnnn:nnnn"
+option enables ACS support on devices matching the provided vendor
+and device IDs, allowing more strategic ACS overrides.  These options
+may be combined in any order.  A maximum of 16 id specific overrides
+are available.  It's suggested to use the most limited set of options
+necessary to avoid completely disabling ACS across the topology.
+Note to hardware vendors, we have facilities to permanently quirk
+specific devices which enforce isolation but not provide an ACS
+capability.  Please contact me to have your devices added and save
+your customers the hassle of this boot option.
+
+Signed-off-by: Mark Weiman <mark.weiman@markzz.com>
+---
+ .../admin-guide/kernel-parameters.txt         |   9 ++
+ drivers/pci/quirks.c                          | 101 ++++++++++++++++++
+ 2 files changed, 110 insertions(+)
+
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index aefd358a5ca3..173b3596fd9e 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -3190,6 +3190,15 @@
+ 		nomsi		[MSI] If the PCI_MSI kernel config parameter is
+ 				enabled, this kernel boot option can be used to
+ 				disable the use of MSI interrupts system-wide.
++		pcie_acs_override =
++					[PCIE] Override missing PCIe ACS support for:
++				downstream
++					All downstream ports - full ACS capabilities
++				multifunction
++					All multifunction devices - multifunction ACS subset
++				id:nnnn:nnnn
++					Specific device - full ACS capabilities
++					Specified as vid:did (vendor/device ID) in hex
+ 		noioapicquirk	[APIC] Disable all boot interrupt quirks.
+ 				Safety option to keep boot IRQs enabled. This
+ 				should never be necessary.
+diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
+index 4700d24e5d55..8f7a3d7fd9c1 100644
+--- a/drivers/pci/quirks.c
++++ b/drivers/pci/quirks.c
+@@ -3372,6 +3372,106 @@ static void quirk_no_bus_reset(struct pci_dev *dev)
+ 	dev->dev_flags |= PCI_DEV_FLAGS_NO_BUS_RESET;
+ }
+ 
++static bool acs_on_downstream;
++static bool acs_on_multifunction;
++
++#define NUM_ACS_IDS 16
++struct acs_on_id {
++	unsigned short vendor;
++	unsigned short device;
++};
++static struct acs_on_id acs_on_ids[NUM_ACS_IDS];
++static u8 max_acs_id;
++
++static __init int pcie_acs_override_setup(char *p)
++{
++	if (!p)
++		return -EINVAL;
++
++	while (*p) {
++		if (!strncmp(p, "downstream", 10))
++			acs_on_downstream = true;
++		if (!strncmp(p, "multifunction", 13))
++			acs_on_multifunction = true;
++		if (!strncmp(p, "id:", 3)) {
++			char opt[5];
++			int ret;
++			long val;
++
++			if (max_acs_id >= NUM_ACS_IDS - 1) {
++				pr_warn("Out of PCIe ACS override slots (%d)\n",
++						NUM_ACS_IDS);
++				goto next;
++			}
++
++			p += 3;
++			snprintf(opt, 5, "%s", p);
++			ret = kstrtol(opt, 16, &val);
++			if (ret) {
++				pr_warn("PCIe ACS ID parse error %d\n", ret);
++				goto next;
++			}
++			acs_on_ids[max_acs_id].vendor = val;
++
++			p += strcspn(p, ":");
++			if (*p != ':') {
++				pr_warn("PCIe ACS invalid ID\n");
++				goto next;
++			}
++
++			p++;
++			snprintf(opt, 5, "%s", p);
++			ret = kstrtol(opt, 16, &val);
++			if (ret) {
++				pr_warn("PCIe ACS ID parse error %d\n", ret);
++				goto next;
++			}
++			acs_on_ids[max_acs_id].device = val;
++			max_acs_id++;
++		}
++next:
++		p += strcspn(p, ",");
++		if (*p == ',')
++			p++;
++	}
++
++	if (acs_on_downstream || acs_on_multifunction || max_acs_id)
++		pr_warn("Warning: PCIe ACS overrides enabled; This may allow non-IOMMU protected peer-to-peer DMA\n");
++
++	return 0;
++}
++early_param("pcie_acs_override", pcie_acs_override_setup);
++
++static int pcie_acs_overrides(struct pci_dev *dev, u16 acs_flags)
++{
++	int i;
++
++	/* Never override ACS for legacy devices or devices with ACS caps */
++	if (!pci_is_pcie(dev) ||
++		pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ACS))
++			return -ENOTTY;
++
++	for (i = 0; i < max_acs_id; i++)
++		if (acs_on_ids[i].vendor == dev->vendor &&
++			acs_on_ids[i].device == dev->device)
++				return 1;
++
++	switch (pci_pcie_type(dev)) {
++	case PCI_EXP_TYPE_DOWNSTREAM:
++	case PCI_EXP_TYPE_ROOT_PORT:
++		if (acs_on_downstream)
++			return 1;
++		break;
++	case PCI_EXP_TYPE_ENDPOINT:
++	case PCI_EXP_TYPE_UPSTREAM:
++	case PCI_EXP_TYPE_LEG_END:
++	case PCI_EXP_TYPE_RC_END:
++		if (acs_on_multifunction && dev->multifunction)
++			return 1;
++	}
++
++	return -ENOTTY;
++}
+ /*
+  * Some Atheros AR9xxx and QCA988x chips do not behave after a bus reset.
+  * The device will throw a Link Down error on AER-capable systems and
+@@ -5102,6 +5102,7 @@
+ 	{ PCI_VENDOR_ID_ZHAOXIN, PCI_ANY_ID, pci_quirk_zhaoxin_pcie_ports_acs },
+ 	/* Wangxun nics */
+ 	{ PCI_VENDOR_ID_WANGXUN, PCI_ANY_ID, pci_quirk_wangxun_nic_acs },
++	{ PCI_ANY_ID, PCI_ANY_ID, pcie_acs_overrides },
+ 	{ 0 }
+ };
+ 
+
