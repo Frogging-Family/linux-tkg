@@ -1,0 +1,347 @@
+From d58f8a37572e4002a8910d5681543846d70d660f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Felix=20H=C3=A4dicke?= <felixhaedicke@web.de>
+Date: Thu, 19 Nov 2020 09:22:32 +0100
+Subject: [PATCH 1/5] HID: quirks: Add Apple Magic Trackpad 2 to
+ hid_have_special_driver list
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Apple Magic Trackpad 2 is handled by the magicmouse driver. And
+there were severe stability issues when both drivers (hid-generic and
+hid-magicmouse) were loaded for this device.
+
+Fixes: https://bugzilla.kernel.org/show_bug.cgi?id=210241
+
+Signed-off-by: Felix Hädicke <felixhaedicke@web.de>
+---
+ drivers/hid/hid-quirks.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
+index 57d8efdd9..e97bed467 100644
+--- a/drivers/hid/hid-quirks.c
++++ b/drivers/hid/hid-quirks.c
+@@ -541,6 +541,8 @@ static const struct hid_device_id hid_have_special_driver[] = {
+ #if IS_ENABLED(CONFIG_HID_MAGICMOUSE)
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICMOUSE) },
+ 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD) },
++	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGICTRACKPAD2) },
+ #endif
+ #if IS_ENABLED(CONFIG_HID_MAYFLASH)
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_DRAGONRISE, USB_DEVICE_ID_DRAGONRISE_PS3) },
+-- 
+2.54.0
+
+
+From d3be3af62518cb64660beeeb3795ac2af872c527 Mon Sep 17 00:00:00 2001
+From: Tk-Glitch <ti3nou@gmail.com>
+Date: Wed, 3 Feb 2021 11:20:12 +0200
+Subject: [PATCH 2/5] Revert "cpufreq: Avoid configuring old governors as
+ default with intel_pstate"
+
+This is an undesirable behavior for us since our aggressive ondemand performs
+better than schedutil for gaming when using intel_pstate in passive mode.
+Also it interferes with the option to select the desired default governor we have.
+---
+ drivers/cpufreq/Kconfig | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/drivers/cpufreq/Kconfig b/drivers/cpufreq/Kconfig
+index db83f3365..a9135d76d 100644
+--- a/drivers/cpufreq/Kconfig
++++ b/drivers/cpufreq/Kconfig
+@@ -71,7 +71,6 @@ config CPU_FREQ_DEFAULT_GOV_USERSPACE
+ 
+ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
+ 	bool "ondemand"
+-	depends on !(X86_INTEL_PSTATE && SMP)
+ 	select CPU_FREQ_GOV_ONDEMAND
+ 	select CPU_FREQ_GOV_PERFORMANCE
+ 	help
+@@ -84,7 +83,6 @@ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
+ 
+ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
+ 	bool "conservative"
+-	depends on !(X86_INTEL_PSTATE && SMP)
+ 	select CPU_FREQ_GOV_CONSERVATIVE
+ 	select CPU_FREQ_GOV_PERFORMANCE
+ 	help
+-- 
+2.54.0
+
+
+From be63421964cf678bedbd43ae6601203d0b1849e9 Mon Sep 17 00:00:00 2001
+From: "Jan Alexander Steffens (heftig)" <heftig@archlinux.org>
+Date: Sat, 13 Jan 2024 15:29:25 +0100
+Subject: [PATCH 3/5] arch/Kconfig: Default to maximum amount of ASLR bits
+
+To mitigate https://zolutal.github.io/aslrnt/; do this with a patch to
+avoid having to enable `CONFIG_EXPERT`.
+---
+ arch/Kconfig | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/Kconfig b/arch/Kconfig
+index fa7507ac8..bf9b5af39 100644
+--- a/arch/Kconfig
++++ b/arch/Kconfig
+@@ -1228,7 +1228,7 @@ config ARCH_MMAP_RND_BITS
+ 	int "Number of bits to use for ASLR of mmap base address" if EXPERT
+ 	range ARCH_MMAP_RND_BITS_MIN ARCH_MMAP_RND_BITS_MAX
+ 	default ARCH_MMAP_RND_BITS_DEFAULT if ARCH_MMAP_RND_BITS_DEFAULT
+-	default ARCH_MMAP_RND_BITS_MIN
++	default ARCH_MMAP_RND_BITS_MAX
+ 	depends on HAVE_ARCH_MMAP_RND_BITS
+ 	help
+ 	  This value can be used to select the number of bits to use to
+@@ -1262,7 +1262,7 @@ config ARCH_MMAP_RND_COMPAT_BITS
+ 	int "Number of bits to use for ASLR of mmap base address for compatible applications" if EXPERT
+ 	range ARCH_MMAP_RND_COMPAT_BITS_MIN ARCH_MMAP_RND_COMPAT_BITS_MAX
+ 	default ARCH_MMAP_RND_COMPAT_BITS_DEFAULT if ARCH_MMAP_RND_COMPAT_BITS_DEFAULT
+-	default ARCH_MMAP_RND_COMPAT_BITS_MIN
++	default ARCH_MMAP_RND_COMPAT_BITS_MAX
+ 	depends on HAVE_ARCH_MMAP_RND_COMPAT_BITS
+ 	help
+ 	  This value can be used to select the number of bits to use to
+-- 
+2.54.0
+
+
+From cf07f40ee2e3b0741bd63fc3cb376d6b69b4192e Mon Sep 17 00:00:00 2001
+From: Peter Jung <admin@ptr1337.dev>
+Date: Thu, 21 Mar 2024 19:00:50 +0100
+Subject: [PATCH 4/5] cachy: move AMD_PRIVATE_COLOR to Kconfig
+
+Co-authored-by: PedroHLC <root@pedrohlc.com>
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
+---
+ drivers/gpu/drm/amd/display/Kconfig                     | 6 ++++++
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c       | 2 +-
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c | 2 +-
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_crtc.c  | 7 +++----
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c | 7 +++----
+ 5 files changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/Kconfig b/drivers/gpu/drm/amd/display/Kconfig
+index 1727d2564..35320a297 100644
+--- a/drivers/gpu/drm/amd/display/Kconfig
++++ b/drivers/gpu/drm/amd/display/Kconfig
+@@ -56,6 +56,12 @@ config DRM_AMD_SECURE_DISPLAY
+ 	  This option enables the calculation of crc of specific region via
+ 	  debugfs. Cooperate with specific DMCU FW.
+ 
++config AMD_PRIVATE_COLOR
++	bool "Enable KMS color management by AMD for AMD"
++	default n
++	help
++	  This option extends the KMS color management API with AMD driver-specific properties to enhance the color management support on AMD Steam Deck.
++
+ config DRM_AMD_DC_KUNIT_TEST
+ 	tristate "KUnit tests for the AMD DC display driver" if !KUNIT_ALL_TESTS
+ 	depends on DRM_AMD_DC && KUNIT && DEBUG_FS && DRM_KUNIT_TEST_HELPERS
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index d3a8d6812..b2de2ead6 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -5183,7 +5183,7 @@ static int amdgpu_dm_mode_config_init(struct amdgpu_device *adev)
+ 	if (r)
+ 		return r;
+ 
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ 	if (amdgpu_dm_create_color_properties(adev))
+ 		return -ENOMEM;
+ #endif
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c
+index 86086d10c..4f99f6a01 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c
+@@ -187,7 +187,7 @@ struct fixed31_32 amdgpu_dm_fixpt_from_s3132(__u64 x)
+ }
+ EXPORT_IF_KUNIT(amdgpu_dm_fixpt_from_s3132);
+ 
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ /* Pre-defined Transfer Functions (TF)
+  *
+  * AMD driver supports pre-defined mathematical functions for transferring
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_crtc.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_crtc.c
+index 3dcedaa67..97a1eabf6 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_crtc.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_crtc.c
+@@ -456,7 +456,7 @@ static int amdgpu_dm_crtc_late_register(struct drm_crtc *crtc)
+ }
+ #endif
+ 
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ /**
+  * dm_crtc_additional_color_mgmt - enable additional color properties
+  * @crtc: DRM CRTC
+@@ -538,7 +538,7 @@ static const struct drm_crtc_funcs amdgpu_dm_crtc_funcs = {
+ #if defined(CONFIG_DEBUG_FS)
+ 	.late_register = amdgpu_dm_crtc_late_register,
+ #endif
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ 	.atomic_set_property = amdgpu_dm_atomic_crtc_set_property,
+ 	.atomic_get_property = amdgpu_dm_atomic_crtc_get_property,
+ #endif
+@@ -764,7 +764,7 @@ int amdgpu_dm_crtc_init(struct amdgpu_display_manager *dm,
+ 
+ 	drm_mode_crtc_set_gamma_size(&acrtc->base, MAX_COLOR_LEGACY_LUT_ENTRIES);
+ 
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ 	dm_crtc_additional_color_mgmt(&acrtc->base);
+ #endif
+ 	return 0;
+@@ -774,4 +774,3 @@ int amdgpu_dm_crtc_init(struct amdgpu_display_manager *dm,
+ 	kfree(cursor_plane);
+ 	return res;
+ }
+-
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
+index c7f8e08fe..66341a161 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
+@@ -1630,7 +1630,7 @@ static void amdgpu_dm_plane_drm_plane_destroy_state(struct drm_plane *plane,
+ 	drm_atomic_helper_plane_destroy_state(plane, state);
+ }
+ 
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ static void
+ dm_atomic_plane_attach_color_mgmt_properties(struct amdgpu_display_manager *dm,
+ 					     struct drm_plane *plane)
+@@ -1860,7 +1860,7 @@ static const struct drm_plane_funcs dm_plane_funcs = {
+ 	.atomic_destroy_state = amdgpu_dm_plane_drm_plane_destroy_state,
+ 	.format_mod_supported = amdgpu_dm_plane_format_mod_supported,
+ 	.format_mod_supported_async = amdgpu_dm_plane_format_mod_supported,
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ 	.atomic_set_property = dm_atomic_plane_set_property,
+ 	.atomic_get_property = dm_atomic_plane_get_property,
+ #endif
+@@ -1957,7 +1957,7 @@ int amdgpu_dm_plane_init(struct amdgpu_display_manager *dm,
+ 	else
+ 		drm_plane_helper_add(plane, &dm_plane_helper_funcs);
+ 
+-#ifdef AMD_PRIVATE_COLOR
++#ifdef CONFIG_AMD_PRIVATE_COLOR
+ 	dm_atomic_plane_attach_color_mgmt_properties(dm, plane);
+ #else
+ 	res = dm_plane_init_colorops(plane);
+@@ -1982,4 +1982,3 @@ bool amdgpu_dm_plane_is_video_format(uint32_t format)
+ 
+ 	return false;
+ }
+-
+-- 
+2.54.0
+
+
+From dff8b7fcf6b0b18ae5697757b88c58fea6dc54b9 Mon Sep 17 00:00:00 2001
+From: Steven Barrett <steven@liquorix.net>
+Date: Fri, 15 Mar 2024 12:36:51 -0500
+Subject: [PATCH 5/5] ZEN: drm/amdgpu/pm: Allow override of min_power_limit
+ with ignore_min_pcap
+
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu.h       |  1 +
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c   | 10 ++++++++++
+ drivers/gpu/drm/amd/pm/amdgpu_pm.c        |  3 +++
+ drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c | 14 ++++++++++++--
+ 4 files changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu.h b/drivers/gpu/drm/amd/amdgpu/amdgpu.h
+index 7b09410d6..0dd8e2375 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu.h
+@@ -161,6 +161,7 @@ struct amdgpu_watchdog_timer {
+  */
+ extern int amdgpu_modeset;
+ extern unsigned int amdgpu_vram_limit;
++extern int amdgpu_ignore_min_pcap;
+ extern int amdgpu_vis_vram_limit;
+ extern int amdgpu_gart_size;
+ extern int amdgpu_gtt_size;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index bf4260269..0849650f9 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -150,6 +150,7 @@ enum AMDGPU_DEBUG_MASK {
+ };
+ 
+ unsigned int amdgpu_vram_limit = UINT_MAX;
++int amdgpu_ignore_min_pcap = 0; /* do not ignore by default */
+ int amdgpu_vis_vram_limit;
+ int amdgpu_gart_size = -1; /* auto */
+ int amdgpu_gtt_size = -1; /* auto */
+@@ -271,6 +272,15 @@ struct amdgpu_watchdog_timer amdgpu_watchdog_timer = {
+ 	.period = 0x0, /* default to 0x0 (timeout disable) */
+ };
+ 
++/**
++ * DOC: ignore_min_pcap (int)
++ * Ignore the minimum power cap.
++ * Useful on graphics cards where the minimum power cap is very high.
++ * The default is 0 (Do not ignore).
++ */
++MODULE_PARM_DESC(ignore_min_pcap, "Ignore the minimum power cap");
++module_param_named(ignore_min_pcap, amdgpu_ignore_min_pcap, int, 0600);
++
+ /**
+  * DOC: vramlimit (int)
+  * Restrict the total amount of VRAM in MiB for testing.  The default is 0 (Use full VRAM).
+diff --git a/drivers/gpu/drm/amd/pm/amdgpu_pm.c b/drivers/gpu/drm/amd/pm/amdgpu_pm.c
+index f43d09769..f26478941 100644
+--- a/drivers/gpu/drm/amd/pm/amdgpu_pm.c
++++ b/drivers/gpu/drm/amd/pm/amdgpu_pm.c
+@@ -3421,6 +3421,9 @@ static ssize_t amdgpu_hwmon_show_power_cap_min(struct device *dev,
+ 					 struct device_attribute *attr,
+ 					 char *buf)
+ {
++	if (amdgpu_ignore_min_pcap)
++		return sysfs_emit(buf, "%i\n", 0);
++
+ 	return amdgpu_hwmon_show_power_cap_generic(dev, attr, buf, PP_PWR_LIMIT_MIN);
+ }
+ 
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c b/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
+index 208a2fba6..b7e3365c7 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
+@@ -2988,7 +2988,10 @@ int smu_get_power_limit(void *handle,
+ 			*limit = smu->max_power_limit;
+ 			break;
+ 		case SMU_PPT_LIMIT_MIN:
+-			*limit = smu->min_power_limit;
++			if (amdgpu_ignore_min_pcap)
++				*limit = 0;
++			else
++				*limit = smu->min_power_limit;
+ 			break;
+ 		default:
+ 			return -EINVAL;
+@@ -3009,7 +3012,14 @@ static int smu_set_power_limit(void *handle, uint32_t limit_type, uint32_t limit
+ 	if (limit_type == SMU_DEFAULT_PPT_LIMIT) {
+ 		if (!limit)
+ 			limit = smu->current_power_limit;
+-		if ((limit > smu->max_power_limit) || (limit < smu->min_power_limit)) {
++		if (amdgpu_ignore_min_pcap) {
++			if ((limit > smu->max_power_limit)) {
++			dev_err(smu->adev->dev,
++				"New power limit (%d) is over the max allowed %d\n",
++				limit, smu->max_power_limit);
++			return -EINVAL;
++			}
++		} else if ((limit > smu->max_power_limit) || (limit < smu->min_power_limit)) {
+ 			dev_err(smu->adev->dev,
+ 				"New power limit (%d) is out of range [%d,%d]\n",
+ 				limit, smu->min_power_limit, smu->max_power_limit);
+-- 
+2.54.0
+
