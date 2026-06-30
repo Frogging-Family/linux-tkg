@@ -153,14 +153,16 @@ if [ "$1" = "install" ]; then
     msg2 'Enabled ccache'
   fi
 
+  _vanilla_tag=""
+  _vanilla_mode && _vanilla_tag="vanilla-"
   if [ -z "$_kernel_localversion" ]; then
     if [ "$_preempt_rt" = "1" ]; then
-      _kernel_flavor="tkg-${_cpusched}-rt${_compiler_name}"
+      _kernel_flavor="tkg-${_vanilla_tag}${_cpusched}-rt${_compiler_name}"
     else
-      _kernel_flavor="tkg-${_cpusched}${_compiler_name}"
+      _kernel_flavor="tkg-${_vanilla_tag}${_cpusched}${_compiler_name}"
     fi
   else
-    _kernel_flavor="tkg-${_kernel_localversion}"
+    _kernel_flavor="tkg-${_vanilla_tag}${_kernel_localversion}"
   fi
 
   # Setup kernel_subver variable
