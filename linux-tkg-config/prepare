@@ -112,6 +112,32 @@ _rt_rev_map=(
   ["6.10"]="11"
 )
 
+_die() {
+  error "$@"
+  exit 1
+}
+
+_frog_banner() {
+  plain '       .---.`               `.---.'
+  plain '    `/syhhhyso-           -osyhhhys/`'
+  plain '   .syNMdhNNhss/``.---.``/sshNNhdMNys.'
+  plain '   +sdMh.`+MNsssssssssssssssNM+`.hMds+'
+  plain '   :syNNdhNNhssssssssssssssshNNhdNNys:'
+  plain '    /ssyhhhysssssssssssssssssyhhhyss/'
+  plain '    .ossssssssssssssssssssssssssssso.'
+  plain '   :sssssssssssssssssssssssssssssssss:'
+  plain '  /sssssssssssssssssssssssssssssssssss/   Linux-tkg'
+  plain ' :sssssssssssssoosssssssoosssssssssssss:        kernels'
+  plain ' osssssssssssssoosssssssoossssssssssssso'
+  plain ' osssssssssssyyyyhhhhhhhyyyyssssssssssso'
+  plain ' /yyyyyyhhdmmmmNNNNNNNNNNNmmmmdhhyyyyyy/'
+  plain '  smmmNNNNNNNNNNNNNNNNNNNNNNNNNNNNNmmms'
+  plain '   /dNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNd/'
+  plain '    `:sdNNNNNNNNNNNNNNNNNNNNNNNNNds:`'
+  plain '       `-+shdNNNNNNNNNNNNNNNdhs+-`'
+  plain '             `.-:///////:-.`'
+}
+
 _undefine() {
   for _config_name in "$@"; do
     scripts/config -k --undefine "${_config_name}"
@@ -145,8 +171,7 @@ _prompt_from_array() {
   # Set the _default_index variable to enable default index selection
 
   if [ $# = "0" ]; then
-    warning "Prompting on an empty array, please report this issue."
-    exit 1
+    _die "Prompting on an empty array, please report this issue."
   fi
 
   unset _selected_index
@@ -184,8 +209,7 @@ _prompt_from_dict() {
   # Set the _default_key variable to enable default index selection
 
   if [ $# != "1" ]; then
-    warning "Prompting on an empty dict, please report this issue."
-    exit 1
+    _die "Prompting on an empty dict, please report this issue."
   fi
 
   unset _selected_key
@@ -233,7 +257,7 @@ _set_kver_internal_vars() {
 
   # examples: "5", "rc2", "122"
   if [ -n "$EXTRAVERSION" ]; then
-    [[ ! "$EXTRAVERSION" == "-rc"* ]] && error "$EXTRAVERSION does not start with '-rc'" && exit 1
+    [[ ! "$EXTRAVERSION" == "-rc"* ]] && _die "$EXTRAVERSION does not start with '-rc'"
     _sub="${EXTRAVERSION:1}"
   else
     _sub="$SUBLEVEL"
@@ -272,15 +296,13 @@ _set_kernel_version() {
       msg2 "Checking out latest kernel version of $kernel_ver"
       _kernel_git_tag="${_kver_latest_tags_map[$kernel_ver]}"
     else
-      error "non-existing kernel version associated with $_version"
-      exit 1
+      _die "non-existing kernel version associated with $_version"
     fi
   elif [[ -n "$_version" ]]; then
     if echo "$_kernel_tags" | grep -E "^$_version$" &> /dev/null; then
       _kernel_git_tag="$_version"
     else
-      error "tag \"$_version\" not found in remote git repository"
-      exit 1
+      _die "tag \"$_version\" not found in remote git repository"
     fi
   else
     msg2 "Which kernel version do you want to install?"
@@ -330,7 +352,7 @@ _set_kernel_version() {
 
 _set_cpu_scheduler() {
 
-  [[ -z "$_kver" ]] && error "bug: _kver variable not defined but needed" && exit 1
+  [[ -z "$_kver" ]] && _die "bug: _kver variable not defined but needed"
 
   _avail_cpu_scheds=("$_default_cpu_sched")
   _recommended_sched="$_default_cpu_sched"
@@ -382,8 +404,7 @@ _set_cpu_scheduler() {
   if ! [[ ${_avail_cpu_scheds[*]} =~ "$_cpusched" ]]; then
     warning "Your cpusched selection ( $_cpusched ) is not available for the selected kernel version."
     if [ "$_nofallback" = "true" ]; then
-      warning "Since _nofallback is enabled, let's exit..."
-      exit 1
+      _die "Since _nofallback is enabled, let's exit..."
     else
       warning "Please select another"
       _cpusched=""
@@ -407,8 +428,7 @@ _set_cpu_scheduler() {
 _set_compiler(){
   if ! [[ "$_compiler" =~ ^(gcc|llvm)$ ]]; then
     if [ -n "$_compiler" ] && [ "$_nofallback" = "true" ]; then
-      msg2 "Compiler \" $_compiler \" not recognized, exiting..."
-      exit 1
+      _die "Compiler \" $_compiler \" not recognized, exiting..."
     else
       plain "Which compiler do you want to use?"
       _compiler_array_text=("GCC (recommended)" "Clang/LLVM")
@@ -491,8 +511,7 @@ _define_kernel_tags() {
 
     if $( ! timeout 10 git ls-remote $_git_mirror >/dev/null ) || \
       [[ "$( git ls-remote $_git_mirror | head -n 1 )" == *"= 502"* ]]; then
-      error "Remote unreachable or took too long to respond"
-      exit 1
+      _die "Remote unreachable or took too long to respond"
     fi
 
   else
@@ -528,8 +547,7 @@ _setup_kernel_work_folder() {
   _define_kernel_abs_paths
 
   if [ -z "$_kernel_git_tag" ]; then
-    warning "internal error: kernel version should be chosen before cloning kernel sources"
-    exit 1
+    _die "internal error: kernel version should be chosen before cloning kernel sources"
   fi
 
   cd "$_where"
@@ -610,22 +628,16 @@ aggregate_user_config() {
 _tkg_initscript() {
 
   if ! whereis git > /dev/null 2>&1; then
-    warning "the 'git' command is not installed. Please install it then re-run the install script of linux-tkg."
-    exit 1
+    _die "the 'git' command is not installed. Please install it then re-run the install script of linux-tkg."
   fi
 
   if ! git status > /dev/null 2>&1; then
-    warning "linux-tkg needs to be git cloned"
-    msg2 "please delete the current linux-tkg folder and re-created it with"
-    msg2 "git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git"
-    exit 1
+    _die "linux-tkg needs to be git cloned. Please delete the current linux-tkg folder and re-create it with: git clone --depth=1 https://github.com/Frogging-Family/linux-tkg.git"
   fi
 
   for _deprecated_var in "${_deprecated_config_vars[@]}"; do
     if [ -n "${!_deprecated_var}" ]; then
-      warning "The deprecated config var $_deprecated_var has been set"
-      warning "Please check the latest customization.cfg file to see what replaces it"
-      exit 1
+      _die "The deprecated config var $_deprecated_var has been set. Please check the latest customization.cfg file to see what replaces it"
     fi
   done
 
@@ -944,8 +956,7 @@ _tkg_srcprep() {
       msg2 "Using /proc/config.gz as config file"
       zcat --verbose /proc/config.gz > .config
     else
-      warning "Cannot get config file of running kernel"
-      exit 1
+      _die "Cannot get config file of running kernel"
     fi
   else
     msg2 "Using user-provided config file in ${_where}/${_configfile}"
@@ -1075,8 +1086,7 @@ _tkg_srcprep() {
 
   _is_march_supported() {
     if [[ -z "$1" ]]; then
-      error "Internal linux-tkg bug: checking empty march string"
-      exit 1
+      _die "Internal linux-tkg bug: checking empty march string"
     fi
 
     # native is supported
@@ -1109,8 +1119,7 @@ _tkg_srcprep() {
   if [ -n "$_processor_opt" ] && ! _is_march_supported "$_processor_opt" ; then
     warning "Processor micro architecture '$_processor_opt' doesn't exist or is unsupported by current $_compiler compiler"
     if [ "$_nofallback" = "true" ]; then
-      warning "Since _nofallback is enabled, exiting..."
-      exit 1
+      _die "Since _nofallback is enabled, exiting..."
     else
       warning "Please select another"
       _processor_opt=""
@@ -1783,13 +1792,11 @@ fi
   # modprobed-db
 
   if [[ "$_modprobeddb" = "true" && "$_kernel_on_diet" == "true" ]]; then
-    msg2 "_modprobeddb and _kernel_on_diet cannot be used together: it doesn't make sense, _kernel_on_diet uses our own modprobed list ;)"
-    exit 1
+    _die "_modprobeddb and _kernel_on_diet cannot be used together: it doesn't make sense, _kernel_on_diet uses our own modprobed list ;)"
   fi
 
   if [[ "$_kernel_on_diet" == "true" && "$_kver" -lt 605 ]]; then
-    msg2 "_kernel_on_diet not implemented for kernels older than 6.5"
-    exit 1
+    _die "_kernel_on_diet not implemented for kernels older than 6.5"
   fi
 
   if [[ "$_modprobeddb" = "true" || "$_kernel_on_diet" == "true" ]]; then
@@ -1802,8 +1809,7 @@ fi
       _modprobeddb_db_path="$_where/minimal-modprobed.db"
     fi
     if [ ! -f $_modprobeddb_db_path ]; then
-      msg2 "modprobed-db database not found"
-      exit 1
+      _die "modprobed-db database not found"
     fi
 
     yes "" | make LSMOD=$_modprobeddb_db_path localmodconfig ${llvm_opt}
@@ -1925,7 +1931,7 @@ fi
     sed -i "${cflags_source_line_number}i # The following two lines are added by linux-tkg script" Makefile
   else
     warning "Couldn't set -march and -mtune for C files in Makefile. Please open a bug report on this"
-    [[ "$_nofallback" = "true" ]] && exit 1
+    [[ "$_nofallback" = "true" ]] && _die "Since _nofallback is enabled, exiting..."
   fi
 
   local cppflags_source_line_number=$(grep -E -n '^KBUILD_CPPFLAGS[[:space:]]+\+=[[:space:]]+\$\(KCPPFLAGS\)' Makefile 2> /dev/null | head -n1 | cut -d":" -f1)
@@ -1935,7 +1941,7 @@ fi
     sed -i "${cppflags_source_line_number}i # The following two lines are added by linux-tkg script" Makefile
   else
     warning "Couldn't set -march and -mtune for C++ files in Makefile. Please open a bug report on this"
-    [[ "$_nofallback" = "true" ]] && exit 1
+    [[ "$_nofallback" = "true" ]] && _die "Since _nofallback is enabled, exiting..."
   fi
 
   if (( "$_kver" >= 601 )); then
@@ -1946,7 +1952,7 @@ fi
       sed -i "${rustflags_source_line_number}i # The following two lines are added by linux-tkg script" Makefile
     else
       warning "Couldn't set -march and -mtune for Rust files in Makefile. Please open a bug report on this"
-      [[ "$_nofallback" = "true" ]] && exit 1
+      [[ "$_nofallback" = "true" ]] && _die "Since _nofallback is enabled, exiting..."
     fi
   fi
 
