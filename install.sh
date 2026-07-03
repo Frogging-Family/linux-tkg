@@ -162,7 +162,12 @@ if [ "$1" = "install" ]; then
       _kernel_flavor="tkg-${_cpusched}${_compiler_name}"
     fi
   else
-    _kernel_flavor="tkg-${_kernel_localversion}"
+    if [[ "$_kernel_localversion" != *tkg* ]]; then
+      _localversion_tag="tkg-"
+    else
+      _localversion_tag=""
+    fi
+    _kernel_flavor="${_localversion_tag}${_kernel_localversion}"
   fi
 
   # Setup kernel_subver variable
