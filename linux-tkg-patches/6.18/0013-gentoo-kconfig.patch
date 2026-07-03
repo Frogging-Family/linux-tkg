@@ -1,14 +1,16 @@
---- a/Kconfig	2025-05-11 15:08:39.749096585 -0400
-+++ b/Kconfig	2025-05-11 15:09:02.490873859 -0400
+diff --git a/Kconfig b/Kconfig
+index 307e58114..91aa4be3d 100644
+--- a/Kconfig
++++ b/Kconfig
 @@ -32,3 +32,5 @@ source "lib/Kconfig.debug"
  source "Documentation/Kconfig"
  
  source "io_uring/Kconfig"
 +
 +source "distro/Kconfig"
---- /dev/null	2024-05-05 10:40:37.103999988 -0400
-+++ b/distro/Kconfig	2024-05-05 13:37:37.699554927 -0400
-@@ -0,0 +1,310 @@
+--- /dev/null	2026-05-07 13:22:28.820727378 -0400
++++ b/distro/Kconfig	2026-05-07 14:40:00.105078860 -0400
+@@ -0,0 +1,307 @@
 +menu "Gentoo Linux"
 +
 +config GENTOO_LINUX
@@ -126,9 +128,6 @@
 +	select BPF_SYSCALL
 +	select CGROUP_BPF
 +	select CGROUPS
-+	select CRYPTO_HMAC 
-+	select CRYPTO_SHA256
-+	select CRYPTO_USER_API_HASH
 +	select DEVPTS_MULTIPLE_INSTANCES
 +	select DMIID if X86_32 || X86_64 || X86
 +	select EPOLL
@@ -185,10 +184,11 @@
 +config GENTOO_KERNEL_SELF_PROTECTION_COMMON
 +	bool "Enable Kernel Self Protection Project Recommendations"
 +
-+	depends on GENTOO_LINUX && !ACPI_CUSTOM_METHOD && !COMPAT_BRK && !PROC_KCORE && !COMPAT_VDSO && !KEXEC && !HIBERNATION && !LEGACY_PTYS && !X86_X32_ABI && !MODIFY_LDT_SYSCALL && GCC_PLUGINS && !IOMMU_DEFAULT_DMA_LAZY && !IOMMU_DEFAULT_PASSTHROUGH && IOMMU_DEFAULT_DMA_STRICT && SECURITY && !ARCH_EPHEMERAL_INODES  && RANDSTRUCT_PERFORMANCE
++	depends on GENTOO_LINUX && !SLAB_MERGE_DEFAULT && !SLUB_TINY && !COMPAT_BRK && !PROC_KCORE && !COMPAT_VDSO && !KEXEC && !HIBERNATION && !LEGACY_PTYS && !X86_X32_ABI && !MODIFY_LDT_SYSCALL && GCC_PLUGINS && !IOMMU_DEFAULT_DMA_LAZY && !IOMMU_DEFAULT_PASSTHROUGH && IOMMU_DEFAULT_DMA_STRICT && SECURITY
 +
 +	select BUG
 +	select STRICT_KERNEL_RWX
++	select DEBUG_VIRTUAL
 +	select DEBUG_WX
 +	select STACKPROTECTOR
 +	select STACKPROTECTOR_STRONG
@@ -199,7 +199,7 @@
 +	select DEBUG_NOTIFIERS
 +	select DEBUG_LIST
 +	select DEBUG_SG
-+	select HARDENED_USERCOPY if HAVE_HARDENED_USERCOPY_ALLOCATOR=y
++	select HARDENED_USERCOPY
 +	select KFENCE if HAVE_ARCH_KFENCE && (!SLAB || SLUB)
 +	select PAGE_TABLE_CHECK if ARCH_SUPPORTS_PAGE_TABLE_CHECK=y && EXCLUSIVE_SYSTEM_RAM=y  
 +	select PAGE_TABLE_CHECK_ENFORCED if PAGE_TABLE_CHECK=y
@@ -214,6 +214,7 @@
 +	select SECURITY_YAMA
 +	select SLAB_FREELIST_RANDOM
 +	select SLAB_FREELIST_HARDENED
++	select SLAB_BUCKETS
 +	select SHUFFLE_PAGE_ALLOCATOR
 +	select SLUB_DEBUG
 +	select UBSAN
@@ -230,10 +231,8 @@
 +	select SECURITY_DMESG_RESTRICT
 +	select PANIC_ON_OOPS
 +	select GCC_PLUGIN_LATENT_ENTROPY
-+	select GCC_PLUGIN_STRUCTLEAK
-+	select GCC_PLUGIN_STRUCTLEAK_BYREF_ALL
-+	select GCC_PLUGIN_RANDSTRUCT 
-+	select GCC_PLUGIN_RANDSTRUCT_PERFORMANCE
++	select GCC_PLUGIN_RANDSTRUCT
++	select RANDSTRUCT_FULL
 +	select ZERO_CALL_USED_REGS if CC_HAS_ZERO_CALL_USED_REGS
 +
 +	help
@@ -247,7 +246,7 @@
 +	depends on !X86_MSR && X86_64 && GENTOO_KERNEL_SELF_PROTECTION
 +	default n
 +	
-+	select GCC_PLUGIN_STACKLEAK
++	select KSTACK_ERASE if HAVE_ARCH_KSTACK_ERASE
 +	select X86_KERNEL_IBT if CC_HAS_IBT=y && HAVE_OBJTOOL=y && (!LD_IS_LLD=n || LLD_VERSION>=140000) 
 +	select LEGACY_VSYSCALL_NONE
 + 	select PAGE_TABLE_ISOLATION
@@ -273,7 +272,7 @@
 +	select ARM64_BTI_KERNEL if ( ARM64_BTI=y ) && ( ARM64_PTR_AUTH_KERNEL=y ) && ( CC_HAS_BRANCH_PROT_PAC_RET_BTI=y ) && (CC_IS_GCC=n || GCC_VERSION >= 100100 ) && (CC_IS_GCC=n ) && ((FUNCTION_GRAPH_TRACE=n || DYNAMIC_FTRACE_WITH_ARG=y ))
 +	select ARM64_SW_TTBR0_PAN
 +	select CONFIG_UNMAP_KERNEL_AT_EL0
-+	select GCC_PLUGIN_STACKLEAK
++	select KSTACK_ERASE if HAVE_ARCH_KSTACK_ERASE
 +	select KASAN_HW_TAGS if HAVE_ARCH_KASAN_HW_TAGS=y
 +	select RANDOMIZE_BASE
 +	select RELOCATABLE
@@ -319,14 +318,11 @@
 +		See the settings that become available for more details and fine-tuning.
 +
 +endmenu
- mm/Kconfig | 2 ++
- 1 file changed, 2 insertions(+)
-
 diff --git a/mm/Kconfig b/mm/Kconfig
-index 24c045b24..e13fc740c 100644
+index e443fe8cd..cefe9f0cf 100644
 --- a/mm/Kconfig
 +++ b/mm/Kconfig
-@@ -321,6 +321,8 @@ config KSM
+@@ -753,6 +753,8 @@ config KSM
  config DEFAULT_MMAP_MIN_ADDR
  	int "Low address space to protect from user allocation"
  	depends on MMU
@@ -336,4 +332,5 @@ index 24c045b24..e13fc740c 100644
  	help
  	  This is the portion of low virtual memory which should be protected
 -- 
-2.31.1
+2.51.0
+
