@@ -1,0 +1,45 @@
+#!/bin/bash
+
+script_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+_print_unknown_kmods()
+{
+  _kernel_ver="$1"
+
+  if [[ -z "$_kernel_ver" || ! -d "$script_dir/$_kernel_ver" ]]; then
+    echo "Kernel version '$_kernel_ver' doesn't exist" 1>&2
+    return 1
+  fi
+
+  yes "" | _kernel_on_diet=true _version="${_kernel_ver}-latest" "$script_dir"/../install.sh config 2>&1 | grep -F 'config not found!' | awk '{print $1}'
+}
+
+_cleanup_unknown_diet_kmodules()
+{
+  _kernel_ver="$1"
+
+  if [[ -z "$_kernel_ver" || ! -d "$script_dir/$_kernel_ver" ]]; then
+    echo "Kernel version '$_kernel_ver' doesn't exist" 1>&2
+    return 1
+  fi
+
+  _db="${script_dir}/${_kernel_ver}/minimal-modprobed.db"
+
+  if [[ ! -f "$_db" ]]; then
+    echo "Kernel version '$_kernel_ver' doesn't have a diet db"
+    return 1
+  fi
+
+  if _unknown_kmods=$(_print_unknown_kmods "$_kernel_ver") && [[ -n "$_unknown_kmods" ]]; then
+    grep -vFxf <(printf '%s\n' "$_unknown_kmods") "$_db" > "$_db.tmp" && mv "$_db.tmp" "$_db"
+  fi
+
+}
+
+if [[ -z "$1" || "$1" == "-h" || "$1" == "--help" ]]; then
+  echo "Usage: $(basename "$0") <kernel_version>" 1>&2
+  echo "  Removes unknown modules in <kernel_version>'s diet db" 1>&2
+  exit 1
+fi
+
+_cleanup_unknown_diet_kmodules "$1"
