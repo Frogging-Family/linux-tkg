@@ -132,7 +132,7 @@ index 000000000000..05c84eec0f31
 +priority boost from unblocking while background threads that do most of the
 +processing receive the priority penalty for using their entire timeslice.
 diff --git a/fs/f2fs/checkpoint.c b/fs/f2fs/checkpoint.c
-index c00a6b6ebcbd..0fa976ca0ef2 100644
+index 064f5b537423..a81cbd7b8bdd 100644
 --- a/fs/f2fs/checkpoint.c
 +++ b/fs/f2fs/checkpoint.c
 @@ -28,7 +28,7 @@ static inline void get_lock_elapsed_time(struct f2fs_time_stat *ts)
@@ -808,10 +808,10 @@ index b1f1a367034f..b7f5f9931da3 100644
  obj-y += build_utility.o
 diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
-index 000000000000..1f124a173b24
+index 000000000000..37566328bbcb
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7655 @@
+@@ -0,0 +1,7670 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -893,7 +893,7 @@ index 000000000000..1f124a173b24
 +__read_mostly int sysctl_resched_latency_warn_ms = 100;
 +__read_mostly int sysctl_resched_latency_warn_once = 1;
 +
-+#define ALT_SCHED_VERSION "v7.1-r0"
++#define ALT_SCHED_VERSION "v7.1-r1"
 +
 +#define STOP_PRIO		(MAX_RT_PRIO - 1)
 +
@@ -4429,6 +4429,12 @@ index 000000000000..1f124a173b24
 +	 */
 +	kmap_local_sched_in();
 +
++	/*
++	 * Any cached block-layer timestamp (plug->cur_ktime) is stale now,
++	 * invalidate it.
++	 */
++	blk_plug_invalidate_ts();
++
 +	fire_sched_in_preempt_notifiers(current);
 +	/*
 +	 * When switching through a kernel thread, the loop in
@@ -5615,12 +5621,10 @@ index 000000000000..1f124a173b24
 +
 +static void sched_update_worker(struct task_struct *tsk)
 +{
-+	if (tsk->flags & (PF_WQ_WORKER | PF_IO_WORKER | PF_BLOCK_TS)) {
-+		if (tsk->flags & PF_BLOCK_TS)
-+			blk_plug_invalidate_ts(tsk);
++	if (tsk->flags & (PF_WQ_WORKER | PF_IO_WORKER)) {
 +		if (tsk->flags & PF_WQ_WORKER)
 +			wq_worker_running(tsk);
-+		else if (tsk->flags & PF_IO_WORKER)
++		else
 +			io_wq_worker_running(tsk);
 +	}
 +}
@@ -8171,8 +8175,19 @@ index 000000000000..1f124a173b24
 +		} else if (rq->curr->mm == mm && rq->curr->mm_cid.active) {
 +			unsigned int cid = rq->curr->mm_cid.cid;
 +
-+			/* Ensure it has the transition bit set */
-+			if (!cid_in_transit(cid)) {
++			/*
++			 * Set the transition bit only on a genuine task-owned
++			 * CID. A running active task can legitimately have
++			 * MM_CID_UNSET here: in per-CPU mode CIDs are assigned
++			 * lazily on schedule-in, so the fork()/execve() window
++			 * leaves the task active with no owned CID. Setting the
++			 * transition bit on MM_CID_UNSET would later feed
++			 * clear_bit() an out-of-bounds bit number via
++			 * mm_cid_schedout(), so exclude it. A CPU-owned
++			 * (MM_CID_ONCPU) CID is handled by the cid_on_cpu()
++			 * branch above and never reaches here.
++			 */
++			if (cid != MM_CID_UNSET && !cid_in_transit(cid)) {
 +				cid = cid_to_transit_cid(cid);
 +				rq->curr->mm_cid.cid = cid;
 +				pcp->cid = cid;
