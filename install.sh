@@ -244,7 +244,8 @@ if [ "$1" = "install" ]; then
     _fedora_work_dir="$_kernel_work_folder_abs/rpmbuild"
 
     msg2 "Building kernel RPM packages"
-    RPMOPTS="--define '_topdir ${_fedora_work_dir}'" make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"
+    export RPMOPTS="--define '_topdir ${_fedora_work_dir}' --define 'install_mod_strip 1'"
+    make ${llvm_opt} -j ${_thread_num} binrpm-pkg EXTRAVERSION="${_extra_ver_str}"
     msg2 "Building successfully finished!"
 
     # Create RPMS folder if it doesn't exist
