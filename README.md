@@ -146,8 +146,10 @@ The interactive `install.sh` script supports Gentoo by following the same proced
 1. Applies few Gentoo patches
    - `https://dev.gentoo.org/~mpagano/genpatches/trunk/$kver/4567_distro-Gentoo-Kconfig.patch`
    - `https://dev.gentoo.org/~mpagano/genpatches/trunk/$kver/3000_Support-printing-firmware-info.patch`
-2. Symlinks the newly installed `/usr/src/linux-tkg-${kernel_flavor}` src folder to `/usr/src/linux`
-3. Offers to do a `emerge @module-rebuild` for convenience
+2. If using an init other than `systemd`, set `_gentoo_init='script'` in `customization.cfg`
+   - Note: for a minimal defconfig, it is then advised to provide your own defconfig through `_configfile=` in `customization.cfg`: the default Arch defconfig is otherwise used with `systemd` related config options enabled regardless.
+3. Symlinks the newly installed `/usr/src/linux-tkg-${kernel_flavor}` src folder to `/usr/src/linux`
+4. Offers to do a `emerge @module-rebuild` for convenience
 
 ```shell
 git clone https://github.com/Frogging-Family/linux-tkg.git
@@ -156,7 +158,3 @@ cd linux-tkg
 ./install.sh install
 ```
 
-**Notes:**
-
-- On OpenRC, in case of boot issues, try setting `_configfile="running-kernel"` in `customization.cfg`.
-  - This will use the running kernel's `.config` file instead of Arch's.
