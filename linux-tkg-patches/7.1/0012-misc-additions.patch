@@ -337,3 +337,548 @@ index b05c8bbdf2..2c1d03cf38 100644
  				limit, smu->min_power_limit, smu->max_power_limit);
 -- 
 2.54.0
+
+From b1a5d8c449d38a9cf689c6ee0808e2d3869dfa9e Mon Sep 17 00:00:00 2001
+From: Jason Gunthorpe <jgg@nvidia.com>
+Date: Fri, 13 Mar 2026 14:41:05 -0300
+Subject: [PATCH] udmabuf: Do not create malformed scatterlists
+
+Using a sg_set_folio() loop for every 4K results in a malformed scatterlist
+because sg_set_folio() has an issue with offsets > PAGE_SIZE and because
+scatterlist expects the creator to build a list which consolidates any
+physical contiguity.
+
+sg_alloc_table_from_pages() creates a valid scatterlist directly from a
+struct page array, so go back to that.
+
+Remove the offsets allocation and just store an array of tail pages as it
+did before the below commit. Everything wants that anyhow.
+
+Fixes: 0c8b91ef5100 ("udmabuf: add back support for mapping hugetlb pages")
+Reported-by: Julian Orth <ju.orth@gmail.com>
+Closes: https://lore.kernel.org/all/20260308-scatterlist-v1-1-39c4566b0bba@gmail.com/
+Signed-off-by: Jason Gunthorpe <jgg@nvidia.com>
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/issues/183
+---
+ drivers/dma-buf/udmabuf.c | 49 +++++++++++----------------------------
+ 1 file changed, 13 insertions(+), 36 deletions(-)
+
+diff --git a/drivers/dma-buf/udmabuf.c b/drivers/dma-buf/udmabuf.c
+index 2f94be1df525aa..bced421c0d6589 100644
+--- a/drivers/dma-buf/udmabuf.c
++++ b/drivers/dma-buf/udmabuf.c
+@@ -26,10 +26,10 @@ MODULE_PARM_DESC(size_limit_mb, "Max size of a dmabuf, in megabytes. Default is
+ 
+ struct udmabuf {
+ 	pgoff_t pagecount;
+-	struct folio **folios;
++	struct page **pages;
+ 
+ 	/**
+-	 * Unlike folios, pinned_folios is only used for unpin.
++	 * Unlike pages, pinned_folios is only used for unpin.
+ 	 * So, nr_pinned is not the same to pagecount, the pinned_folios
+ 	 * only set each folio which already pinned when udmabuf_create.
+ 	 * Note that, since a folio may be pinned multiple times, each folio
+@@ -42,7 +42,6 @@ struct udmabuf {
+ 	struct sg_table *sg;
+ 	enum dma_data_direction sg_dir;
+ 	struct miscdevice *device;
+-	pgoff_t *offsets;
+ };
+ 
+ static vm_fault_t udmabuf_vm_fault(struct vm_fault *vmf)
+@@ -56,8 +55,7 @@ static vm_fault_t udmabuf_vm_fault(struct vm_fault *vmf)
+ 	if (pgoff >= ubuf->pagecount)
+ 		return VM_FAULT_SIGBUS;
+ 
+-	pfn = folio_pfn(ubuf->folios[pgoff]);
+-	pfn += ubuf->offsets[pgoff] >> PAGE_SHIFT;
++	pfn = page_to_pfn(ubuf->pages[pgoff]);
+ 
+ 	ret = vmf_insert_pfn(vma, vmf->address, pfn);
+ 	if (ret & VM_FAULT_ERROR)
+@@ -74,8 +72,7 @@ static vm_fault_t udmabuf_vm_fault(struct vm_fault *vmf)
+ 		if (WARN_ON(pgoff >= ubuf->pagecount))
+ 			break;
+ 
+-		pfn = folio_pfn(ubuf->folios[pgoff]);
+-		pfn += ubuf->offsets[pgoff] >> PAGE_SHIFT;
++		pfn = page_to_pfn(ubuf->pages[pgoff]);
+ 
+ 		/**
+ 		 * If the below vmf_insert_pfn() fails, we do not return an
+@@ -110,22 +107,11 @@ static int mmap_udmabuf(struct dma_buf *buf, struct vm_area_struct *vma)
+ static int vmap_udmabuf(struct dma_buf *buf, struct iosys_map *map)
+ {
+ 	struct udmabuf *ubuf = buf->priv;
+-	struct page **pages;
+ 	void *vaddr;
+-	pgoff_t pg;
+ 
+ 	dma_resv_assert_held(buf->resv);
+ 
+-	pages = kvmalloc_objs(*pages, ubuf->pagecount);
+-	if (!pages)
+-		return -ENOMEM;
+-
+-	for (pg = 0; pg < ubuf->pagecount; pg++)
+-		pages[pg] = folio_page(ubuf->folios[pg],
+-				       ubuf->offsets[pg] >> PAGE_SHIFT);
+-
+-	vaddr = vm_map_ram(pages, ubuf->pagecount, -1);
+-	kvfree(pages);
++	vaddr = vm_map_ram(ubuf->pages, ubuf->pagecount, -1);
+ 	if (!vaddr)
+ 		return -EINVAL;
+ 
+@@ -147,22 +133,18 @@ static struct sg_table *get_sg_table(struct device *dev, struct dma_buf *buf,
+ {
+ 	struct udmabuf *ubuf = buf->priv;
+ 	struct sg_table *sg;
+-	struct scatterlist *sgl;
+-	unsigned int i = 0;
+ 	int ret;
+ 
+ 	sg = kzalloc_obj(*sg);
+ 	if (!sg)
+ 		return ERR_PTR(-ENOMEM);
+ 
+-	ret = sg_alloc_table(sg, ubuf->pagecount, GFP_KERNEL);
++	ret = sg_alloc_table_from_pages(sg, ubuf->pages, ubuf->pagecount, 0,
++					ubuf->pagecount << PAGE_SHIFT,
++					GFP_KERNEL);
+ 	if (ret < 0)
+ 		goto err_alloc;
+ 
+-	for_each_sg(sg->sgl, sgl, ubuf->pagecount, i)
+-		sg_set_folio(sgl, ubuf->folios[i], PAGE_SIZE,
+-			     ubuf->offsets[i]);
+-
+ 	ret = dma_map_sgtable(dev, sg, direction, DMA_ATTR_SKIP_CPU_SYNC);
+ 	if (ret < 0)
+ 		goto err_map;
+@@ -208,12 +190,8 @@ static void unpin_all_folios(struct udmabuf *ubuf)
+ 
+ static __always_inline int init_udmabuf(struct udmabuf *ubuf, pgoff_t pgcnt)
+ {
+-	ubuf->folios = kvmalloc_objs(*ubuf->folios, pgcnt);
+-	if (!ubuf->folios)
+-		return -ENOMEM;
+-
+-	ubuf->offsets = kvzalloc_objs(*ubuf->offsets, pgcnt);
+-	if (!ubuf->offsets)
++	ubuf->pages = kvmalloc_objs(*ubuf->pages, pgcnt);
++	if (!ubuf->pages)
+ 		return -ENOMEM;
+ 
+ 	ubuf->pinned_folios = kvmalloc_objs(*ubuf->pinned_folios, pgcnt);
+@@ -226,8 +204,7 @@ static __always_inline int init_udmabuf(struct udmabuf *ubuf, pgoff_t pgcnt)
+ static __always_inline void deinit_udmabuf(struct udmabuf *ubuf)
+ {
+ 	unpin_all_folios(ubuf);
+-	kvfree(ubuf->offsets);
+-	kvfree(ubuf->folios);
++	kvfree(ubuf->pages);
+ }
+ 
+ static void release_udmabuf(struct dma_buf *buf)
+@@ -347,8 +324,8 @@ static long udmabuf_pin_folios(struct udmabuf *ubuf, struct file *memfd,
+ 		ubuf->pinned_folios[nr_pinned++] = folios[cur_folio];
+ 
+ 		for (; subpgoff < fsize; subpgoff += PAGE_SIZE) {
+-			ubuf->folios[upgcnt] = folios[cur_folio];
+-			ubuf->offsets[upgcnt] = subpgoff;
++			ubuf->pages[upgcnt] = folio_page(folios[cur_folio],
++						subpgoff >> PAGE_SHIFT);
+ 			++upgcnt;
+ 
+ 			if (++cur_pgcnt >= pgcnt)
+
+From 9a56327a504e4738fcb94a1b8968fd51054bbd3d Mon Sep 17 00:00:00 2001
+From: Ray Wu <ray.wu@amd.com>
+Date: Sun, 28 Jun 2026 16:01:48 +0200
+Subject: [PATCH] drm/amd/display: Fix ISM dc_lock deadlock during suspend
+
+[ Upstream commit 3714fe242592e3699ac5e2c19d68b275a210be7d ]
+
+CachyOS users reported a regression in shutdown/reboot behavior on 7.1
+kernels: the display turns off, but the machine does not power down.
+Reverting ISM fixes the regression, and this upstream fix addresses the
+same ISM dc_lock/workqueue deadlock in the suspend/shutdown paths.
+
+[Why]
+System hang observed during suspend/resume while video is playing.
+amdgpu_dm_ism_disable() is called under dc_lock and waits for ISM
+delayed work via disable_delayed_work_sync(). The work handlers
+themselves take dc_lock, producing an ABBA deadlock when a worker is
+in flight at suspend time.
+
+[How]
+Split the disable path into two phases with opposite locking
+contracts:
+  1. amdgpu_dm_ism_disable() -- quiesces workers, must NOT hold
+     dc_lock.
+  2. amdgpu_dm_ism_force_full_power() (new) -- drives the ISM FSM
+     back to FULL_POWER_RUNNING, must hold dc_lock.
+
+Fixes: 754003486c3c ("drm/amd/display: Add Idle state manager(ISM)")
+Link: https://github.com/CachyOS/linux-cachyos/issues/900
+Cc: stable@vger.kernel.org # 7.1.y
+Reviewed-by: Sun peng (Leo) Li <sunpeng.li@amd.com>
+Signed-off-by: Ray Wu <ray.wu@amd.com>
+Signed-off-by: Ivan Lipski <ivan.lipski@amd.com>
+Tested-by: Dan Wheeler <daniel.wheeler@amd.com>
+Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
+---
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 25 +++++++--
+ .../drm/amd/display/amdgpu_dm/amdgpu_dm_ism.c | 56 ++++++++++++++++---
+ .../drm/amd/display/amdgpu_dm/amdgpu_dm_ism.h |  1 +
+ 3 files changed, 70 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index f8c13bad4ac237..560ab329891146 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -2260,9 +2260,16 @@ static void amdgpu_dm_fini(struct amdgpu_device *adev)
+ 		adev->dm.idle_workqueue = NULL;
+ 	}
+ 
+-	/* Disable ISM before dc_destroy() invalidates dm->dc */
++	/*
++	 * Disable ISM before dc_destroy() invalidates dm->dc.
++	 *
++	 * Quiesce workers first without dc_lock (they take dc_lock
++	 * themselves, so syncing under it would deadlock), then drive the
++	 * FSM back to FULL_POWER_RUNNING under dc_lock.
++	 */
++	amdgpu_dm_ism_disable(&adev->dm);
+ 	scoped_guard(mutex, &adev->dm.dc_lock)
+-		amdgpu_dm_ism_disable(&adev->dm);
++		amdgpu_dm_ism_force_full_power(&adev->dm);
+ 
+ 	amdgpu_dm_destroy_drm_device(&adev->dm);
+ 
+@@ -3290,9 +3297,14 @@ static int dm_suspend(struct amdgpu_ip_block *ip_block)
+ 	if (amdgpu_in_reset(adev)) {
+ 		enum dc_status res;
+ 
++		/* Quiesce ISM workers before taking dc_lock (workers take
++		 * dc_lock themselves; syncing under it would deadlock).
++		 */
++		amdgpu_dm_ism_disable(dm);
++
+ 		mutex_lock(&dm->dc_lock);
+ 
+-		amdgpu_dm_ism_disable(dm);
++		amdgpu_dm_ism_force_full_power(dm);
+ 		dc_allow_idle_optimizations(adev->dm.dc, false);
+ 
+ 		dm->cached_dc_state = dc_state_create_copy(dm->dc->current_state);
+@@ -3326,8 +3338,13 @@ static int dm_suspend(struct amdgpu_ip_block *ip_block)
+ 
+ 	amdgpu_dm_irq_suspend(adev);
+ 
++	/*
++	 * Quiesce ISM workers before taking dc_lock (workers take dc_lock
++	 * themselves; syncing under it would deadlock).
++	 */
++	amdgpu_dm_ism_disable(dm);
+ 	scoped_guard(mutex, &dm->dc_lock)
+-		amdgpu_dm_ism_disable(dm);
++		amdgpu_dm_ism_force_full_power(dm);
+ 
+ 	hpd_rx_irq_work_suspend(dm);
+ 
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.c
+index a64e95860e99b3..b32c8d3ac15234 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.c
+@@ -524,13 +524,20 @@ static void dm_ism_sso_delayed_work_func(struct work_struct *work)
+ }
+ 
+ /**
+- * amdgpu_dm_ism_disable - Disable the ISM
++ * amdgpu_dm_ism_disable - Quiesce ISM workers
+  *
+  * @dm: The amdgpu display manager
+  *
+- * Disable the idle state manager by disabling any ISM work, canceling pending
+- * work, and waiting for in-progress work to finish. After disabling, the system
+- * is left in DM_ISM_STATE_FULL_POWER_RUNNING state.
++ * Cancels and disables any pending or in-flight ISM delayed work and waits
++ * for in-progress work to finish. After this returns, no ISM worker can run
++ * and subsequent mod_delayed_work() calls become no-ops via
++ * clear_pending_if_disabled().
++ *
++ * Must NOT be called with dc_lock held: the workers themselves take dc_lock,
++ * so a synchronous wait under dc_lock would deadlock.
++ *
++ * The caller is responsible for driving the FSM back to FULL_POWER_RUNNING
++ * (under dc_lock) by calling amdgpu_dm_ism_force_full_power().
+  */
+ void amdgpu_dm_ism_disable(struct amdgpu_display_manager *dm)
+ {
+@@ -538,21 +545,54 @@ void amdgpu_dm_ism_disable(struct amdgpu_display_manager *dm)
+ 	struct amdgpu_crtc *acrtc;
+ 	struct amdgpu_dm_ism *ism;
+ 
+-	ASSERT(mutex_is_locked(&dm->dc_lock));
++	/*
++	 * Caller must NOT hold dc_lock: the ISM delayed work handlers
++	 * acquire dc_lock themselves, so waiting for them via
++	 * disable_delayed_work_sync() while holding dc_lock would
++	 * self-deadlock against an in-flight worker.
++	 */
++	lockdep_assert_not_held(&dm->dc_lock);
+ 
+ 	drm_for_each_crtc(crtc, dm->ddev) {
+ 		acrtc = to_amdgpu_crtc(crtc);
+ 		ism = &acrtc->ism;
+ 
+-		/* Cancel and disable any pending work */
+ 		disable_delayed_work_sync(&ism->delayed_work);
+ 		disable_delayed_work_sync(&ism->sso_delayed_work);
++	}
++}
++
++/**
++ * amdgpu_dm_ism_force_full_power - Force every CRTC's ISM FSM to FULL_POWER
++ *
++ * @dm: The amdgpu display manager
++ *
++ * Sends DM_ISM_EVENT_EXIT_IDLE_REQUESTED to every CRTC's ISM, leaving each
++ * FSM in FULL_POWER_RUNNING. Intended to be paired with
++ * amdgpu_dm_ism_disable(): callers should first quiesce workers (without
++ * dc_lock), then take dc_lock and call this helper.
++ *
++ * Must be called with dc_lock held.
++ */
++void amdgpu_dm_ism_force_full_power(struct amdgpu_display_manager *dm)
++{
++	struct drm_crtc *crtc;
++	struct amdgpu_crtc *acrtc;
++
++	/*
++	 * Caller must hold dc_lock: commit_event() drives the FSM and
++	 * may touch dc state via dc_allow_idle_optimizations() etc.
++	 */
++	lockdep_assert_held(&dm->dc_lock);
++
++	drm_for_each_crtc(crtc, dm->ddev) {
++		acrtc = to_amdgpu_crtc(crtc);
+ 
+ 		/*
+ 		 * When disabled, leave in FULL_POWER_RUNNING state.
+-		 * EXIT_IDLE will not queue any work
++		 * EXIT_IDLE will not queue any work.
+ 		 */
+-		amdgpu_dm_ism_commit_event(ism,
++		amdgpu_dm_ism_commit_event(&acrtc->ism,
+ 					   DM_ISM_EVENT_EXIT_IDLE_REQUESTED);
+ 	}
+ }
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.h b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.h
+index fde0ddc8d4e4bc..964408cd9a839c 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.h
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_ism.h
+@@ -146,6 +146,7 @@ void amdgpu_dm_ism_fini(struct amdgpu_dm_ism *ism);
+ void amdgpu_dm_ism_commit_event(struct amdgpu_dm_ism *ism,
+ 				enum amdgpu_dm_ism_event event);
+ void amdgpu_dm_ism_disable(struct amdgpu_display_manager *dm);
++void amdgpu_dm_ism_force_full_power(struct amdgpu_display_manager *dm);
+ void amdgpu_dm_ism_enable(struct amdgpu_display_manager *dm);
+ 
+ #endif
+
+From 8d131fe2a4d90f4b70f0ba6b10816edfd6c0348b Mon Sep 17 00:00:00 2001
+From: Imre Deak <imre.deak@intel.com>
+Date: Fri, 12 Jun 2026 20:26:17 +0300
+Subject: [PATCH] drm/i915/mtl+: Enable PPS before PLL
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Enabling PPS after a display port's PLL is enabled leads to PLL / DDI
+BUF timeouts during system resuming after a long (> 45 mins) suspended
+state, at least on some ARL and MTL laptops, either all or some of them
+also containing an Nvidia GPU. Enabling PPS first and then the PLL fixes
+the problem for all the reporters.
+
+A similar issue is seen when enabling an external DP output on PHY B
+(vs. PHY A in the above eDP cases), where this change will not have any
+effect (since no PPS is used in that case). There isn't any direct
+connection between PPS and PLL, so the fix for eDP works by some
+side-effect only. However Bspec does seem to require enabling PPS first,
+so let's do that. Further investigation continues on the actual root
+cause and a cure for external panels.
+
+Fixes: 1a7fad2aea74 ("drm/i915/cx0: Enable dpll framework for MTL+")
+Closes: https://gitlab.freedesktop.org/drm/i915/kernel/-/work_items/16098
+Closes: https://gitlab.freedesktop.org/drm/i915/kernel/-/work_items/16064
+Closes: https://gitlab.freedesktop.org/drm/i915/kernel/-/work_items/16042
+Cc: Mika Kahola <mika.kahola@intel.com>
+Cc: stable@vger.kernel.org # v7.0+
+Tested-by: Jouni Högander <jouni.hogander@intel.com>
+Tested-by: Marco Nenciarini <mnencia@kcore.it>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Signed-off-by: Imre Deak <imre.deak@intel.com>
+Link: https://patch.msgid.link/20260612172617.3427027-1-imre.deak@intel.com
+(cherry picked from commit 28783a274e886dd6da61419be6020bd9d0384e9f)
+Signed-off-by: Rodrigo Vivi <rodrigo.vivi@intel.com>
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/work_items/200
+---
+ drivers/gpu/drm/i915/display/intel_ddi.c | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_ddi.c b/drivers/gpu/drm/i915/display/intel_ddi.c
+index ebefa889bc8c59..0987eee38bd135 100644
+--- a/drivers/gpu/drm/i915/display/intel_ddi.c
++++ b/drivers/gpu/drm/i915/display/intel_ddi.c
+@@ -2652,9 +2652,6 @@ static void mtl_ddi_pre_enable_dp(struct intel_atomic_state *state,
+ 	/* 3. Select Thunderbolt */
+ 	mtl_port_buf_ctl_io_selection(encoder);
+ 
+-	/* 4. Enable Panel Power if PPS is required */
+-	intel_pps_on(intel_dp);
+-
+ 	/* 5. Enable the port PLL */
+ 	intel_ddi_enable_clock(encoder, crtc_state);
+ 
+@@ -3710,6 +3707,14 @@ intel_ddi_pre_pll_enable(struct intel_atomic_state *state,
+ 	else if (display->platform.geminilake || display->platform.broxton)
+ 		bxt_dpio_phy_set_lane_optim_mask(encoder,
+ 						 crtc_state->lane_lat_optim_mask);
++
++	/*
++	 * There is no direct connection between the PLL and PPS, however
++	 * enabling PPS before PLL is required to avoid PLL/DDI BUF timeouts
++	 * during system resume. Do that matching the Bspec order as well.
++	 */
++	if (DISPLAY_VER(display) >= 14)
++		intel_pps_on(&dig_port->dp);
+ }
+ 
+ static void adlp_tbt_to_dp_alt_switch_wa(struct intel_encoder *encoder)
+
+From 670abb1eb0cbb79c1d84f07081ffd6ae8de4f782 Mon Sep 17 00:00:00 2001
+From: Joseph Qi <joseph.qi@linux.alibaba.com>
+Date: Thu, 9 Jul 2026 10:01:45 +0800
+Subject: [PATCH] block: try slab allocation in bio_alloc_bioset() before
+ mempool
+
+When the per-CPU bio cache is enabled but empty, bio_alloc_percpu_cache()
+returns NULL and bio_alloc_bioset() falls straight through to the mempool
+fallback:
+
+    if (unlikely(!bio)) {
+        if (!(saved_gfp & __GFP_DIRECT_RECLAIM))
+            return NULL;
+        ...
+    }
+
+For non-sleeping allocations (no __GFP_DIRECT_RECLAIM) this returns NULL
+without ever attempting a slab allocation, even when there is plenty of
+free memory.
+
+Commit b520c4eef83d ("block: split bio_alloc_bioset more clearly into a
+fast and slowpath") introduced this. Before it, a percpu cache miss fell
+through to mempool_alloc(), which attempted the underlying slab allocation
+first and only failed when that slab allocation failed. The restructuring
+dropped the slab attempt that non-sleeping callers of a cache-enabled
+bioset (such as the default fs_bio_set used by bio_alloc()) relied on.
+
+Try a slab allocation with optimistic GFP_ flags before falling back to
+the mempool whenever the bio is still NULL, so both the cache-empty and
+non-cache paths share the same slab attempt. This restores the previous
+behavior for non-sleeping allocations.
+
+Fixes: b520c4eef83d ("block: split bio_alloc_bioset more clearly into a fast and slowpath")
+Suggested-by: Christoph Hellwig <hch@lst.de>
+Signed-off-by: Joseph Qi <joseph.qi@linux.alibaba.com>
+---
+ block/bio.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/block/bio.c b/block/bio.c
+index 5f10900b3f42a1..1574ccf396b24c 100644
+--- a/block/bio.c
++++ b/block/bio.c
+@@ -555,6 +555,14 @@ struct bio *bio_alloc_bioset(struct block_device *bdev, unsigned short nr_vecs,
+ 		bio = bio_alloc_percpu_cache(bs);
+ 	} else {
+ 		opf &= ~REQ_ALLOC_CACHE;
++	}
++
++	/*
++	 * For a bioset without a percpu cache, or when the percpu cache was
++	 * empty, try a slab allocation with optimistic GFP_ flags before
++	 * falling back to the mempool.
++	 */
++	if (!bio) {
+ 		p = kmem_cache_alloc(bs->bio_slab, gfp);
+ 		if (p)
+ 			bio = p + bs->front_pad;
+
+From 6fa4ba781ceaf58f950b07e549780e0789ceb5eb Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Christian=20K=C3=B6nig?= <christian.koenig@amd.com>
+Date: Wed, 24 Jun 2026 16:00:41 +0200
+Subject: [PATCH] drm/amdgpu: fix check in amdgpu_hmm_invalidate_gfx
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+For a short moment during alloc/free the userptr BO is not part of his VM,
+so bo->vm_bo can be NULL.
+
+Keep a reference to the VM root PD as parent of the userptr BO so that
+we can always use that to wait for all submissions of the VM instead of
+only the one involving the userptr BO.
+
+Signed-off-by: Christian König <christian.koenig@amd.com>
+Fixes: 91250893cbaa ("drm/amdgpu: fix waiting for all submissions for userptrs")
+Closes: https://gitlab.freedesktop.org/drm/amd/-/work_items/5399
+Reviewed-by: Alex Deucher <alexander.deucher@amd.com>
+Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+(cherry picked from commit 631849ff5d603841e74f19f4a5e30fe1f7d7cf30)
+Cc: stable@vger.kernel.org
+Cherry-picked-for: https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/work_items/203
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c | 1 +
+ drivers/gpu/drm/amd/amdgpu/amdgpu_hmm.c | 3 +--
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+index fe6d988e7f245c..648486a1ebc648 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+@@ -534,6 +534,7 @@ int amdgpu_gem_userptr_ioctl(struct drm_device *dev, void *data,
+ 	bo = gem_to_amdgpu_bo(gobj);
+ 	bo->preferred_domains = AMDGPU_GEM_DOMAIN_GTT;
+ 	bo->allowed_domains = AMDGPU_GEM_DOMAIN_GTT;
++	bo->parent = amdgpu_bo_ref(fpriv->vm.root.bo);
+ 	r = amdgpu_ttm_tt_set_userptr(&bo->tbo, args->addr, args->flags);
+ 	if (r)
+ 		goto release_object;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_hmm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_hmm.c
+index 99bc9ad67d5b83..a7d13e337d8468 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_hmm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_hmm.c
+@@ -67,7 +67,6 @@ static bool amdgpu_hmm_invalidate_gfx(struct mmu_interval_notifier *mni,
+ {
+ 	struct amdgpu_bo *bo = container_of(mni, struct amdgpu_bo, notifier);
+ 	struct amdgpu_device *adev = amdgpu_ttm_adev(bo->tbo.bdev);
+-	struct amdgpu_bo *vm_root = bo->vm_bo->vm->root.bo;
+ 	long r;
+ 
+ 	if (!mmu_notifier_range_blockable(range))
+@@ -78,7 +77,7 @@ static bool amdgpu_hmm_invalidate_gfx(struct mmu_interval_notifier *mni,
+ 	mmu_interval_set_seq(mni, cur_seq);
+ 
+ 	amdgpu_vm_bo_invalidate(bo, false);
+-	r = dma_resv_wait_timeout(vm_root->tbo.base.resv,
++	r = dma_resv_wait_timeout(bo->parent->tbo.base.resv,
+ 				  DMA_RESV_USAGE_BOOKKEEP, false,
+ 				  MAX_SCHEDULE_TIMEOUT);
+ 	mutex_unlock(&adev->notifier_lock);
