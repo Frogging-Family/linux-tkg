@@ -1,29 +1,39 @@
-From f5759c25a0ccbf8cf33ba661d5c6839259bc1d61 Mon Sep 17 00:00:00 2001
-From: Frogging-Family
-From: damachine <damachin3@proton.me>
+From 6686bca77194164171a7f362122203d2f79280e7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Christian=20K=C3=BChn?= <damachin3@proton.me>
 Date: Wed, 15 Apr 2026 21:55:26 +0200
-Subject: [PATCH] Add compiler optimization option
+Subject: [PATCH] Add O3 compiler optimization options
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 Add CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 Kconfig option that allows
 building the kernel with -O3 instead of the default -O2.
-Enable swing modulo scheduling (-fmodulo-sched, -fmodulo-sched-allow-regmoves,
--fivopts) for additional loop optimization by overlapping iterations
-of innermost loops.
+
+Enable swing modulo scheduling with the -fmodulo-sched,
+the -fmodulo-sched-allow-regmoves, and the -fivopts flags to improve
+innermost loop optimization by overlapping iterations.
+
 Enable LLVM pipeliner (-mllvm -enable-pipeliner) for additional
 loop pipelining on supported targets.
 
-Signed-off-by: damachine <damachin3@proton.me>
+Remove GCC's stack conservation flag and add the Zen/ClearLinux x86
+vectorization guard used with O3 builds.
 
+Includes compiler-tuning pieces from the Zen patchset and ClearLinux's
+x86 no-vectorization guard.
+
+Signed-off-by: Christian Kühn <damachin3@proton.me>
 ---
- Makefile     | 9 +++++++++
- init/Kconfig | 6 ++++++
- 2 files changed, 15 insertions(+)
+ Makefile          | 14 +++++++++-----
+ arch/x86/Makefile |  2 +-
+ init/Kconfig      |  6 ++++++
+ 3 files changed, 16 insertions(+), 6 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index 36d0a32fb..510119afd 100644
+index 9e4052181..ca446ff83 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -893,11 +893,20 @@ KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
+@@ -924,16 +924,25 @@ KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
  ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
  KBUILD_CFLAGS += -O2
  KBUILD_RUSTFLAGS += -Copt-level=2
@@ -44,11 +54,41 @@ index 36d0a32fb..510119afd 100644
  # Always set `debug-assertions` and `overflow-checks` because their default
  # depends on `opt-level` and `debug-assertions`, respectively.
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
+ KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
+ 
+ # Tell gcc to never replace conditional load with a non-conditional one
+ ifdef CONFIG_CC_IS_GCC
+ # gcc-10 renamed --param=allow-store-data-races=0 to
+@@ -1136,11 +1161,6 @@ KBUILD_CFLAGS	+= -fno-strict-overflow
+ # Make sure -fstack-check isn't enabled (like gentoo apparently did)
+ KBUILD_CFLAGS  += -fno-stack-check
+ 
+-# conserve stack if available
+-ifdef CONFIG_CC_IS_GCC
+-KBUILD_CFLAGS   += -fconserve-stack
+-endif
+-
+ # Ensure compilers do not transform certain loops into calls to wcslen()
+ KBUILD_CFLAGS += -fno-builtin-wcslen
+ 
+diff --git a/arch/x86/Makefile b/arch/x86/Makefile
+index 1d526a5d2..ccceed491 100644
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -73,7 +73,7 @@ export BITS
+ #
+ #    https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53383
+ #
+-KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mno-sse4a
++KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mno-sse4a -mno-avx2 -fno-tree-vectorize
+ KBUILD_RUSTFLAGS += --target=$(objtree)/scripts/target.json
+ KBUILD_RUSTFLAGS += -Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2
+ 
 diff --git a/init/Kconfig b/init/Kconfig
-index 7484cd703..a9975a9bd 100644
+index 2937c4d30..854c60996 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1582,6 +1582,12 @@ config CC_OPTIMIZE_FOR_PERFORMANCE
+@@ -1602,6 +1610,12 @@ config CC_OPTIMIZE_FOR_PERFORMANCE
  	  with the "-O2" compiler flag for best performance and most
  	  helpful compile-time warnings.
  
@@ -62,4 +102,4 @@ index 7484cd703..a9975a9bd 100644
  	bool "Optimize for size (-Os)"
  	help
 -- 
-2.53.0
+2.55.0
