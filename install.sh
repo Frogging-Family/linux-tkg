@@ -96,9 +96,9 @@ if [ "$1" = "install" ] || [ "$1" = "config" ]; then
   # Run init script that is also run in PKGBUILD, it will define some env vars that we will use
   _tkg_initscript
 
+  # Use LLVM libunwind for Kbuild host tools when requested.
   if [[ "${_compiler}" = "llvm" && "${_distro}" =~ ^(Generic|Gentoo)$ && "${_libunwind_replace}" = "true" ]]; then
-      export LDFLAGS_MODULE="-unwindlib=libunwind"
-      export HOSTLDFLAGS="-unwindlib=libunwind"
+    export HOSTLDFLAGS="-rtlib=compiler-rt -unwindlib=libunwind"
   fi
 
   # Install the needed dependencies if the user wants to install the kernel
