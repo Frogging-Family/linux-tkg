@@ -214,7 +214,7 @@ if [ "$1" = "install" ]; then
     fi
 
     if [[ "$_install_after_building" = "prompt" ]]; then
-      read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+      read -p "Do you want to install the new Kernel ? [N]/y: " _install
     fi
 
     if [[ "$_install_after_building" =~ ^(Y|y|Yes|yes)$ || "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
@@ -265,7 +265,7 @@ if [ "$1" = "install" ]; then
     fi
 
     if [[ "$_install_after_building" = "prompt" ]]; then
-      read -p "Do you want to install the new Kernel ? Y/[n]: " _install
+      read -p "Do you want to install the new Kernel ? [N]/y: " _install
     fi
 
     if [[ "$_install_after_building" =~ ^(Y|y|Yes|yes)$ || "$_install" =~ ^(Y|y|Yes|yes)$ ]]; then
@@ -294,7 +294,7 @@ if [ "$1" = "install" ]; then
         warning "By default, system kernel updates will overwrite your custom kernel."
         warning "Adding a lock will prevent this but skip system kernel updates."
         msg2 "You can remove the lock if needed with 'sudo zypper removelock kernel-default-devel kernel-default kernel-devel kernel-syms'"
-        read -p "Would you like to lock system kernel packages ? Y/[n]: " _lock
+        read -p "Would you like to lock system kernel packages ? [N]/y: " _lock
         if [[ "$_lock" =~ ^(Y|y|Yes|yes)$ ]]; then
           sudo zypper addlock kernel-default-devel kernel-default kernel-devel kernel-syms
         fi
@@ -366,7 +366,7 @@ if [ "$1" = "install" ]; then
     echo "    sudo make install"
 
     msg2 "Note: Uninstalling requires manual intervention, use './install.sh uninstall-help' for more information."
-    read -p "Continue ? Y/[n]: " _continue
+    read -p "Continue ? [N]/y: " _continue
 
     if ! [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
       exit 0
@@ -403,7 +403,7 @@ if [ "$1" = "install" ]; then
       sudo ln -sfn "/usr/src/$_headers_folder_name" "/usr/src/linux"
 
       msg2 "Rebuild kernel modules with \"emerge @module-rebuild\" ?"
-      read -p "Y/[n]: " _continue
+      read -p "[N]/y: " _continue
       if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
         sudo emerge @module-rebuild --keep-going
       fi
