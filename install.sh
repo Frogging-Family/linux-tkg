@@ -388,26 +388,30 @@ if [ "$1" = "install" ]; then
 
     sudo make modules_install $_STRIP_MODS
 
+    sudo cp "$(make ${llvm_opt} -s image_name)" "/lib/modules/$_kernelname/vmlinuz"
+
     msg2 "Removing modules from source folder in /usr/src/${_kernel_src_gentoo}"
     sudo find . -type f -name '*.ko' -delete
     sudo find . -type f -name '*.ko.cmd' -delete
-
-    msg2 "Installing kernel"
-    sudo make install
-
-    sudo cp "$(make ${llvm_opt} -s image_name)" "/lib/modules/$_kernelname/vmlinuz"
 
     if [ "$_distro" = "Gentoo" ]; then
 
       msg2 "Selecting the kernel source code as default source folder"
       sudo ln -sfn "/usr/src/$_headers_folder_name" "/usr/src/linux"
 
+      # Rebuild external modules before make install so installkernel hooks
+      # can include them in a generated initramfs or UKI.
       msg2 "Rebuild kernel modules with \"emerge @module-rebuild\" ?"
       read -p "[N]/y: " _continue
       if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
-        sudo emerge @module-rebuild --keep-going
+        if ! sudo emerge @module-rebuild --keep-going; then
+          warning "External kernel module rebuilds did not complete; continuing with kernel installation."
+        fi
       fi
     fi
+
+    msg2 "Installing kernel"
+    sudo make install
 
   fi
 fi
