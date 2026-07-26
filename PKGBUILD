@@ -156,11 +156,9 @@ hackbase() {
     'scx-scheds: to use sched-ext schedulers'
     'wireless-regdb: to set the correct wireless channels of your country'
   )
-  if [ -e "${srcdir}/ntsync.rules" ]; then
-    provides=("linux=${pkgver}" "${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE NTSYNC-MODULE ntsync-header)
-  else
-    provides=("linux=${pkgver}" "${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
-  fi
+  provides=("linux=${pkgver}" "${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+  [ -e "${srcdir}/ntsync.conf" ] && provides+=(NTSYNC-MODULE)
+  [ -e "${srcdir}/ntsync.rules" ] && provides+=(ntsync-header)
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
   cd "$_kernel_work_folder_abs"
