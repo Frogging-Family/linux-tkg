@@ -604,12 +604,6 @@ _setup_kernel_work_folder() {
 aggregate_user_config() {
   local _cfg="${_where}/customization.cfg"
 
-  # Resolve _EXT_CONFIG_PATH from customization.cfg if not already in env
-  [[ -z "${_EXT_CONFIG_PATH:-}" ]] && eval "$(grep -m1 '^_EXT_CONFIG_PATH=' "$_cfg")"
-
-  [[ -f "${_EXT_CONFIG_PATH}" ]] && \
-    msg2 "External configuration file ${_EXT_CONFIG_PATH} will be used and will override customization.cfg values."
-
   # Collect valid cfg keys to filter env overrides against
   local -A _keys=()
   local _k _v
@@ -617,17 +611,21 @@ aggregate_user_config() {
     [[ -n "$_k" && "$_k" != '#'* ]] && _keys["$_k"]=1
   done < "$_cfg"
 
-  # Emit env > ext > cfg, then strip blanks/comments and dedup by key (first wins)
-  {
-    while IFS='=' read -r _k _v; do
-      [[ -v "_keys[$_k]" ]] && printf '%s=%s\n' "$_k" "$_v"
-    done < <(printenv)
+  declare -p -x > current_env
 
-    [[ -f "${_EXT_CONFIG_PATH}" ]] && cat "${_EXT_CONFIG_PATH}"
-    cat "$_cfg"
-  } | grep -v -E '^[[:space:]]*(#|$)' \
-    | awk -F= '!seen[$1]++' \
-    > "${_where}/BIG_UGLY_FROGMINER"
+  source "$_cfg"
+
+  if [[ -f "${_EXT_CONFIG_PATH}" ]]; then
+    msg2 "External configuration file ${_EXT_CONFIG_PATH} will be used and will override customization.cfg values."
+    source "${_EXT_CONFIG_PATH}"
+  fi
+
+  source current_env
+  rm current_env
+
+  for _k in "${!_keys[@]}"; do
+    declare -p "$_k"
+  done > "${_where}/BIG_UGLY_FROGMINER"
 }
 
 
