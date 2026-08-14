@@ -111,8 +111,8 @@ build() {
     msg2 'ccache was found and will be used'
   fi
 
-  # document the TkG variables, excluding "_", "_EXT_CONFIG_PATH", "_where", and "_path".
-  declare -p | cut -d ' ' -f 3 | grep -P '^_(?!=|EXT_CONFIG_PATH|where|path)' > "${srcdir}/customization-full.cfg"
+  # document the TkG variables
+  sed -E 's|^declare -[^ ]* ||g' "$_where"/BIG_UGLY_FROGMINER > "${srcdir}/customization-full.cfg"
 
   # remove -O2 flag and place user optimization flag
   CFLAGS=${CFLAGS/-O2/}
