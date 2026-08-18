@@ -32,6 +32,10 @@ jobs:
             tag_regex: 'v$kver.'
             asset_name: 'linux-hardened-$tag.patch'
             copy_as: 0012-linux-hardened.patch
+          - description: MuQSS patches
+            type: muqss
+            repo: ckolivas/linux
+            copy_as: 0004-muqss.patch
 
     steps:
       - name: Checkout linux-tkg
@@ -130,6 +134,39 @@ jobs:
           done
 
           rm -rf remote-patch-repo
+
+      - name: Sync patches from tagged upstream fork
+        if: matrix.type == 'muqss'
+        id: muqss-sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+
+          all_tags=$(gh release list -R ckolivas/linux -L 100 --json tagName | jq --raw-output 'map(.tagName) | join("\n")')
+
+          cd linux-tkg-patches
+
+          for kver in *
+          do
+            [[ ! -d "$kver" ]] && continue
+            ! ( echo "$all_tags" | grep -q "$kver" ) && continue
+
+            tag=$(echo "$all_tags" | grep -E "v${kver}-ck" | head -n1)
+
+            file_link="https://github.com/ckolivas/linux/compare/v$kver...$tag.patch"
+            echo "Checking link $file_link"
+            if wget $file_link -O $kver/"${{ matrix.copy_as }}".new &> /dev/null
+            then
+              echo "Link exists"
+              echo "Overwriting linux-tkg-patches/$kver/${{ matrix.copy_as }} with remote file"
+              mv -f $kver/"${{ matrix.copy_as }}".new $kver/"${{ matrix.copy_as }}"
+              git add -N $kver/"${{ matrix.copy_as }}"
+            else
+              echo "Link doesn't exist"
+              rm $kver/"${{ matrix.copy_as }}".new
+            fi
+          done
 
       - name: Check for changes
         id: change-check
