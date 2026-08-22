@@ -196,7 +196,7 @@ if [ "$1" = "install" ]; then
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
-    make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor} EXTRAVERSION=""
+    make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor}
     msg2 "Building successfully finished!"
 
     # Create DEBS folder if it doesn't exist
@@ -247,7 +247,7 @@ if [ "$1" = "install" ]; then
 
     msg2 "Building kernel RPM packages"
     export RPMOPTS="--define '_topdir ${_fedora_work_dir}' --define 'install_mod_strip 1'"
-    make ${llvm_opt} -j ${_thread_num} binrpm-pkg LOCALVERSION="${_extra_ver_str}" EXTRAVERSION=""
+    make ${llvm_opt} -j ${_thread_num} binrpm-pkg LOCALVERSION="${_extra_ver_str}"
     msg2 "Building successfully finished!"
 
     # Create RPMS folder if it doesn't exist
@@ -321,7 +321,7 @@ if [ "$1" = "install" ]; then
     fi
 
     msg2 "Building kernel"
-    make ${llvm_opt} -j ${_thread_num} EXTRAVERSION=""
+    make ${llvm_opt} -j ${_thread_num}
     msg2 "Build successful"
 
     if [ "$_STRIP" = "true" ]; then
