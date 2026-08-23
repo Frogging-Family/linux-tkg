@@ -124,7 +124,7 @@ build() {
     _schedtool="command schedtool -B -n 1"
     _ionice="command ionice -n 1"
   fi
-  _runtime=$(
+  (
     if [ -n "$_schedtool" ]; then
       _pid="$(exec bash -c 'echo "$PPID"')"
       $_schedtool "$_pid" ||:
@@ -135,8 +135,7 @@ build() {
     export KCFLAGS
     export KRUSTFLAGS
 
-    time ( make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules 2>&1 ) 3>&1 1>&2 2>&3
-    return 0
+    time make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules
   )
 }
 
