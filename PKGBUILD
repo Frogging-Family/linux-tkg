@@ -273,6 +273,12 @@ hackheaders() {
   msg2 "Installing KConfig files..."
   find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
 
+  if [[ $(scripts/config -s CONFIG_RUST) = y ]]; then
+    msg2 "Installing Rust files..."
+    install -Dt "$builddir/rust" -m644 rust/*.rmeta
+    install -Dt "$builddir/rust" rust/*.so
+  fi
+
   msg2 "Removing unneeded architectures..."
   local arch
   for arch in "$builddir"/arch/*/; do
