@@ -279,6 +279,10 @@ hackheaders() {
     install -Dt "$builddir/rust" rust/*.so
   fi
 
+  msg2 "Installing unstripped VDSO..."
+  make INSTALL_MOD_PATH="$pkgdir/usr" vdso_install \
+    link=  # Suppress build-id symlinks
+
   msg2 "Removing unneeded architectures..."
   local arch
   for arch in "$builddir"/arch/*/; do
