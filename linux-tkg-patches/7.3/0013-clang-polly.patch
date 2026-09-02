@@ -1,0 +1,156 @@
+From 836c16fbbd981fcf4f6b39faad2e7e7be13d5434 Mon Sep 17 00:00:00 2001
+From: Peter Jung <admin@ptr1337.dev>
+Date: Thu, 12 Dec 2024 17:28:45 +0100
+Subject: [PATCH 1/3] kbuild: Add support for Clang's polyhedral loop
+ optimizer.
+
+Polly is able to optimize various loops throughout the kernel for cache
+locality. A mathematical representation of the program, based on
+polyhedra, is analysed to find opportunistic optimisations in memory
+access patterns which then leads to loop transformations.
+
+Polly is not built with LLVM by default, and requires LLVM to be compiled
+with the Polly "project". This can be done by adding Polly to
+-DLLVM_ENABLE_PROJECTS, for example:
+
+-DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi;polly"
+
+Preliminary benchmarking seems to show an improvement of around two
+percent across perf benchmarks:
+
+Benchmark                         | Control    | Polly
+--------------------------------------------------------
+bonnie++ -x 2 -s 4096 -r 0        | 12.610s    | 12.547s
+perf bench futex requeue          | 33.553s    | 33.094s
+perf bench futex wake             |  1.032s    |  1.021s
+perf bench futex wake-parallel    |  1.049s    |  1.025s
+perf bench futex requeue          |  1.037s    |  1.020s
+
+Furthermore, Polly does not produce a much larger image size netting it
+to be a "free" optimisation. A comparison of a bzImage for a kernel with
+and without Polly is shown below:
+
+bzImage        | stat --printf="%s\n"
+-------------------------------------
+Control        | 9333728
+Polly          | 9345792
+
+Compile times were one percent different at best, which is well within
+the range of noise. Therefore, I can say with certainty that Polly has
+a minimal effect on compile times, if none.
+
+Signed-off-by: Peter Jung <admin@ptr1337.dev>
+---
+ Makefile     | 16 ++++++++++++++++
+ init/Kconfig | 13 +++++++++++++
+ 2 files changed, 29 insertions(+)
+
+diff --git a/Makefile b/Makefile
+index 64c594bd7..5f0cb6238 100644
+--- a/Makefile
++++ b/Makefile
+@@ -870,6 +870,22 @@ endif
+ KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
+ KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
+ 
++ifdef CONFIG_POLLY_CLANG
++KBUILD_CFLAGS	+= -mllvm -polly \
++		   -mllvm -polly-ast-use-context \
++		   -mllvm -polly-invariant-load-hoisting \
++		   -mllvm -polly-opt-fusion=max \
++		   -mllvm -polly-run-inliner \
++		   -mllvm -polly-vectorizer=stripmine
++# Polly may optimise loops with dead paths beyound what the linker
++# can understand. This may negate the effect of the linker's DCE
++# so we tell Polly to perfom proven DCE on the loops it optimises
++# in order to preserve the overall effect of the linker's DCE.
++ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
++KBUILD_CFLAGS	+= -mllvm -polly-run-dce
++endif
++endif
++
+ # Tell gcc to never replace conditional load with a non-conditional one
+ ifdef CONFIG_CC_IS_GCC
+ # gcc-10 renamed --param=allow-store-data-races=0 to
+diff --git a/init/Kconfig b/init/Kconfig
+index a20e6efd3..66adb2fc9 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -251,6 +251,19 @@ config BUILD_SALT
+ 	  This is mostly useful for distributions which want to ensure the
+ 	  build is unique between builds. It's safe to leave the default.
+ 
++config POLLY_CLANG
++	bool "Use Clang Polly optimizations"
++	depends on CC_IS_CLANG && $(cc-option,-mllvm -polly -fplugin=LLVMPolly.so)
++	depends on !COMPILE_TEST
++	help
++	  This option enables Clang's polyhedral loop optimizer known as
++	  Polly. Polly is able to optimize various loops throughout the
++	  kernel for cache locality. This requires a Clang toolchain
++	  compiled with support for Polly. More information can be found
++	  from Polly's website:
++
++	    https://polly.llvm.org
++
+ config HAVE_KERNEL_GZIP
+ 	bool
+ 
+-- 
+2.47.1
+
+
+From 8b5347cd5e745e8d0a68b28e55b48c62e6c0c513 Mon Sep 17 00:00:00 2001
+From: Username404-59 <w.iron.zombie@gmail.com>
+Date: Thu, 12 Dec 2024 21:25:40 +0100
+Subject: [PATCH 2/3] kbuild: Update old polly option
+
+Signed-off-by: Username404-59 <w.iron.zombie@gmail.com>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 5f0cb6238..fa433f1d9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -874,7 +874,7 @@ ifdef CONFIG_POLLY_CLANG
+ KBUILD_CFLAGS	+= -mllvm -polly \
+ 		   -mllvm -polly-ast-use-context \
+ 		   -mllvm -polly-invariant-load-hoisting \
+-		   -mllvm -polly-opt-fusion=max \
++		   -mllvm -polly-loopfusion-greedy \
+ 		   -mllvm -polly-run-inliner \
+ 		   -mllvm -polly-vectorizer=stripmine
+ # Polly may optimise loops with dead paths beyound what the linker
+-- 
+2.47.1
+
+
+From 562335afe34f24f9940d198d536e941e326a9716 Mon Sep 17 00:00:00 2001
+From: Username404-59 <w.iron.zombie@gmail.com>
+Date: Thu, 12 Dec 2024 21:41:01 +0100
+Subject: [PATCH 3/3] kbuild: load polly llvm plugin
+
+Signed-off-by: Username404-59 <w.iron.zombie@gmail.com>
+---
+ Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index fa433f1d9..e8737f5ea 100644
+--- a/Makefile
++++ b/Makefile
+@@ -871,7 +871,8 @@ KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
+ KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
+ 
+ ifdef CONFIG_POLLY_CLANG
+-KBUILD_CFLAGS	+= -mllvm -polly \
++KBUILD_CFLAGS	+= -fplugin=LLVMPolly.so \
++		   -mllvm -polly \
+ 		   -mllvm -polly-ast-use-context \
+ 		   -mllvm -polly-invariant-load-hoisting \
+ 		   -mllvm -polly-loopfusion-greedy \
+-- 
+2.47.1
+
