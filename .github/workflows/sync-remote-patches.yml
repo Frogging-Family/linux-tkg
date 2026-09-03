@@ -16,7 +16,12 @@ jobs:
           - description: BORE patch from upstream
             type: patches-in-git-repo
             repo_link: https://github.com/firelzrd/bore-scheduler.git
-            patch_file_regex: '.*/patches/(stable|legacy)/linux-@kver@-bore/0001-linux.*\.patch'
+            # tried in order, the first one that matches wins
+            patch_file_regex:
+              # match @kver@ followed by a '.' or '-' so 6.1 doesn't match 6.12
+              - '.*/patches/testing/0001-linux@kver@[.-].*\.patch'
+              - '.*/patches/stable/linux-@kver@-bore/0001-linux.*\.patch'
+              - '.*/patches/legacy/linux-@kver@-bore/0001-linux.*\.patch'
             copy_as: 0001-bore.patch
           - description: Gentoo Kconfig patch
             type: direct-link
@@ -110,12 +115,15 @@ jobs:
         id: patches-in-git-repo-sync
         env:
           GH_TOKEN: ${{ github.token }}
+          PATCH_FILE_REGEXES: ${{ toJSON(matrix.patch_file_regex) }}
         run: |
           set -e
 
           _workspace=$(realpath .)
 
           git clone ${{ matrix.repo_link }} --depth=1 remote-patch-repo
+
+          readarray -t regexes < <(jq --raw-output '.[]' <<< "$PATCH_FILE_REGEXES")
 
           cd linux-tkg-patches
 
@@ -125,15 +133,26 @@ jobs:
 
             echo "Looking for patches for $kver"
 
-            regex="${{ matrix.patch_file_regex }}"
-            regex="${regex//@kver@/$kver}"
+            patch=""
 
-            patches=($(find "$_workspace"/remote-patch-repo -regextype posix-extended -regex "$regex" | sort))
+            for regex in "${regexes[@]}"
+            do
+              regex="${regex//@kver@/$kver}"
 
-            if [[ "${#patches[@]}" != 0 ]]
+              readarray -t matches < <(find "$_workspace"/remote-patch-repo -regextype posix-extended -regex "$regex" | sort -V)
+
+              # several versions of the same patch can sit side by side, take the newest
+              if [[ "${#matches[@]}" -ne 0 ]]
+              then
+                patch="${matches[-1]}"
+                break
+              fi
+            done
+
+            if [[ -n "$patch" ]]
             then
-              echo "Found ${patches[-1]}"
-              cp "${patches[-1]}" "$kver/${{ matrix.copy_as }}"
+              echo "Found $patch"
+              cp "$patch" "$kver/${{ matrix.copy_as }}"
               git add -N "$kver/${{ matrix.copy_as }}"
             else
               echo "Found none"
