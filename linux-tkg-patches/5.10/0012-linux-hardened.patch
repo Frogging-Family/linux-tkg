@@ -102,13 +102,13 @@ index e912a47765f3..69514ce4e99a 100644
  	If set, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index 1c3feb44c5ee..4f3e283e4cd1 100644
+index 60aa2a5e2c60..4d9b2949009d 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 5
  PATCHLEVEL = 10
- SUBLEVEL = 261
+ SUBLEVEL = 269
 -EXTRAVERSION =
 +EXTRAVERSION = -hardened1
  NAME = Dare mighty things
@@ -570,10 +570,10 @@ index 18e874b0441e..fc7a3a9aa72a 100644
  obj-$(CONFIG_USB)		+= usbcore.o
  
 diff --git a/drivers/usb/core/hub.c b/drivers/usb/core/hub.c
-index 667ab60a18db..91f8ee986ba7 100644
+index ef699092b610..b490f9ed66e2 100644
 --- a/drivers/usb/core/hub.c
 +++ b/drivers/usb/core/hub.c
-@@ -5386,6 +5386,12 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
+@@ -5391,6 +5391,12 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
  			goto done;
  		return;
  	}
@@ -677,7 +677,7 @@ index 7be4e8f77a5c..3c09007452d9 100644
  	usb_debugfs_cleanup();
  	idr_destroy(&usb_bus_idr);
 diff --git a/fs/exec.c b/fs/exec.c
-index 2979b458b650..155b62bb19b0 100644
+index 9796ba95e3ea..2f35998f3cce 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
 @@ -64,6 +64,7 @@
@@ -713,7 +713,7 @@ index 320b70ce79a7..00b5cdb71b69 100644
  {
  	return -ENXIO;
 diff --git a/fs/namei.c b/fs/namei.c
-index debebcbe702f..40a233851362 100644
+index 6ffa898ea3c8..9d33bb16ca14 100644
 --- a/fs/namei.c
 +++ b/fs/namei.c
 @@ -942,10 +942,10 @@ static inline void put_link(struct nameidata *nd)
@@ -846,10 +846,10 @@ index 1e7fe311cabe..a5b6d4c9acf5 100644
  {
  	return true;
 diff --git a/include/linux/fs.h b/include/linux/fs.h
-index 11294a89a53b..8671ba36017e 100644
+index 5417515c4111..e85687227682 100644
 --- a/include/linux/fs.h
 +++ b/include/linux/fs.h
-@@ -3643,4 +3643,15 @@ static inline int inode_drain_writes(struct inode *inode)
+@@ -3671,4 +3671,15 @@ static inline int inode_drain_writes(struct inode *inode)
  	return filemap_write_and_wait(inode->i_mapping);
  }
  
@@ -1474,7 +1474,7 @@ index a6a4eaec73c8..b31f654e5444 100644
  	bool "Page allocator randomization"
  	default SLAB_FREELIST_RANDOM && ACPI_NUMA
 diff --git a/kernel/audit.c b/kernel/audit.c
-index 7452719c659f..f3009946c918 100644
+index 907ed7b147c6..583b3286efeb 100644
 --- a/kernel/audit.c
 +++ b/kernel/audit.c
 @@ -1754,6 +1754,9 @@ static int __init audit_enable(char *str)
@@ -1518,7 +1518,7 @@ index de7eac903a2a..5602178f3d21 100644
  
  /**
 diff --git a/kernel/events/core.c b/kernel/events/core.c
-index c9cd1f622a1f..5f610a8b2a62 100644
+index 68df0d569f4c..d537adf3900e 100644
 --- a/kernel/events/core.c
 +++ b/kernel/events/core.c
 @@ -408,8 +408,13 @@ static cpumask_var_t perf_online_mask;
@@ -1535,7 +1535,7 @@ index c9cd1f622a1f..5f610a8b2a62 100644
  
  /* Minimum for 512 kiB + 1 user control page */
  int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024); /* 'free' kiB per user */
-@@ -11926,7 +11931,7 @@ SYSCALL_DEFINE5(perf_event_open,
+@@ -11932,7 +11937,7 @@ SYSCALL_DEFINE5(perf_event_open,
  		return err;
  
  	/* Do we allow access to perf_event_open(2) ? */
@@ -1917,7 +1917,7 @@ index ce396ea4de60..c3a6ef1f10ed 100644
  static DEFINE_MUTEX(userns_state_mutex);
  
 diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
-index c20729cd67b1..ce35b1518e31 100644
+index ee630c7fcd64..f58f188a7424 100644
 --- a/lib/Kconfig.debug
 +++ b/lib/Kconfig.debug
 @@ -365,6 +365,9 @@ config SECTION_MISMATCH_WARN_ONLY
@@ -2542,8 +2542,9 @@ index 30daba09da35..4eb1d7fc1949 100644
  	/* Clear memory outside IRQ disabled fastpath loop */
 -	if (unlikely(slab_want_init_on_alloc(flags, s))) {
 +	if (has_sanitize_verify(s)) {
-+		int j;
-+
+ 		int j;
+ 
+-		for (j = 0; j < i; j++)
 +		for (j = 0; j < i; j++) {
 +			/* KASAN hasn't unpoisoned the object yet (this is done
 +			 * in the post-alloc hook), so let's do it temporarily.
@@ -2555,9 +2556,8 @@ index 30daba09da35..4eb1d7fc1949 100644
 +			kasan_poison_object_data(s, p[j]);
 +		}
 +	} else if (unlikely(slab_want_init_on_alloc(flags, s))) {
- 		int j;
- 
--		for (j = 0; j < i; j++)
++		int j;
++
 +		for (j = 0; j < i; j++) {
  			memset(p[j], 0, s->object_size);
 +			if (s->ctor) {
@@ -3108,7 +3108,7 @@ index 9e921fc72538..ae851a826c26 100644
  	int "NSA SELinux sidtab hashtable size"
  	depends on SECURITY_SELINUX
 diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
-index 90935ed3d8d8..6b2798905f6a 100644
+index ae71959e7351..d06bc4888214 100644
 --- a/security/selinux/hooks.c
 +++ b/security/selinux/hooks.c
 @@ -136,21 +136,7 @@ static int __init selinux_enabled_setup(char *str)
