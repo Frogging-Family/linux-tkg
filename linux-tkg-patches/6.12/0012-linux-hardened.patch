@@ -102,13 +102,13 @@ index dcbb6f6caf6d..d9d2ea78cd4b 100644
  	If set, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index 69eb37d9d488..626d86bac556 100644
+index 1301fb7ea879..0832c0b0b632 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 6
  PATCHLEVEL = 12
- SUBLEVEL = 104
+ SUBLEVEL = 108
 -EXTRAVERSION =
 +EXTRAVERSION = -hardened1
  NAME = Baby Opossum Posse
@@ -483,10 +483,10 @@ index ac006abd13b3..9228b9d4b60d 100644
  ifdef CONFIG_USB_ONBOARD_DEV
  usbcore-y			+= ../misc/onboard_usb_dev_pdevs.o
 diff --git a/drivers/usb/core/hub.c b/drivers/usb/core/hub.c
-index 090b3a757112..8c3b07fd87ae 100644
+index 93f8ebdeccfd..9b693235e31a 100644
 --- a/drivers/usb/core/hub.c
 +++ b/drivers/usb/core/hub.c
-@@ -5445,6 +5445,12 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
+@@ -5450,6 +5450,12 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
  			goto done;
  		return;
  	}
@@ -582,7 +582,7 @@ index 118fa4c93a79..ab81a219c2de 100644
  	usb_debugfs_cleanup();
  	idr_destroy(&usb_bus_idr);
 diff --git a/fs/exec.c b/fs/exec.c
-index 20e165d48d3b..5e9d0edfe3ff 100644
+index 8d9775e15cd2..a7153b89f30a 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
 @@ -68,6 +68,7 @@
@@ -802,10 +802,10 @@ index 767c535dbd38..83bdbefbc0f5 100644
  {
  	return true;
 diff --git a/include/linux/fs.h b/include/linux/fs.h
-index 466a76771b0a..11805b7a22b5 100644
+index 19211eb49a8c..6b23ca9dbeff 100644
 --- a/include/linux/fs.h
 +++ b/include/linux/fs.h
-@@ -3757,4 +3757,15 @@ static inline bool vfs_empty_path(int dfd, const char __user *path)
+@@ -3822,4 +3822,15 @@ static inline bool vfs_empty_path(int dfd, const char __user *path)
  
  int generic_atomic_write_valid(struct kiocb *iocb, struct iov_iter *iter);
  
@@ -822,18 +822,19 @@ index 466a76771b0a..11805b7a22b5 100644
 +
  #endif /* _LINUX_FS_H */
 diff --git a/include/linux/fsnotify.h b/include/linux/fsnotify.h
-index 278620e063ab..2b12a47d7416 100644
+index 8d1849137a96..68a89a8c4920 100644
 --- a/include/linux/fsnotify.h
 +++ b/include/linux/fsnotify.h
-@@ -122,6 +122,8 @@ static inline int fsnotify_file(struct file *file, __u32 mask)
+@@ -124,6 +124,9 @@ static inline int fsnotify_file(struct file *file, __u32 mask)
+ 	if (FMODE_FSNOTIFY_NONE(file->f_mode))
  		return 0;
  
- 	path = &file->f_path;
 +	if (mask & (FS_ACCESS | FS_MODIFY) && is_sidechannel_device(file_inode(file)))
 +		return 0;
- 	/* Permission events require group prio >= FSNOTIFY_PRIO_CONTENT */
- 	if (mask & ALL_FSNOTIFY_PERM_EVENTS &&
- 	    !fsnotify_sb_has_priority_watchers(path->dentry->d_sb,
++
+ 	return fsnotify_path(&file->f_path, mask);
+ }
+ 
 diff --git a/include/linux/highmem.h b/include/linux/highmem.h
 index 3c3f6996f29f..48e7aece6dd2 100644
 --- a/include/linux/highmem.h
@@ -975,7 +976,7 @@ index 7183e5aca282..56573371a2f8 100644
  {
  	return &init_user_ns;
 diff --git a/include/net/tcp.h b/include/net/tcp.h
-index 5d39b0e8dd90..958b93080254 100644
+index 1cc25e0b3bde..b01be7b9f829 100644
 --- a/include/net/tcp.h
 +++ b/include/net/tcp.h
 @@ -261,6 +261,7 @@ static_assert((1 << ATO_BITS) > TCP_DELACK_MAX);
@@ -1128,7 +1129,7 @@ index dac4df77e376..68bb3279b14f 100644
  
  /**
 diff --git a/kernel/events/core.c b/kernel/events/core.c
-index da77f856e1c8..06b61d3b45cd 100644
+index 40e82ab016d9..24797c8056ac 100644
 --- a/kernel/events/core.c
 +++ b/kernel/events/core.c
 @@ -462,8 +462,13 @@ static struct kmem_cache *perf_event_cache;
@@ -1145,7 +1146,7 @@ index da77f856e1c8..06b61d3b45cd 100644
  
  /* Minimum for 512 kiB + 1 user control page */
  int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024); /* 'free' kiB per user */
-@@ -12873,7 +12878,7 @@ SYSCALL_DEFINE5(perf_event_open,
+@@ -12881,7 +12886,7 @@ SYSCALL_DEFINE5(perf_event_open,
  		return err;
  
  	/* Do we allow access to perf_event_open(2) ? */
@@ -1155,7 +1156,7 @@ index da77f856e1c8..06b61d3b45cd 100644
  		return err;
  
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 2b7577edffa2..2e332937b40f 100644
+index c0ecb097aa1d..8d1ad85c1a02 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -84,6 +84,7 @@
@@ -1340,7 +1341,7 @@ index aa0b2e47f2f2..d74d857b1696 100644
  static DEFINE_MUTEX(userns_state_mutex);
  
 diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
-index ffa3da358353..572cc846d7da 100644
+index 5a6415cfd828..eda30c736e3b 100644
 --- a/lib/Kconfig.debug
 +++ b/lib/Kconfig.debug
 @@ -512,6 +512,9 @@ config SECTION_MISMATCH_WARN_ONLY
@@ -1548,10 +1549,10 @@ index 41a58536531d..329a6e4b6271 100644
  	  Generate a warning if any W+X mappings are found at boot.
  
 diff --git a/mm/internal.h b/mm/internal.h
-index 151edc2f9ab2..0a70dce0c9de 100644
+index 9d277bc2c26e..3777ac483adc 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
-@@ -705,6 +705,9 @@ static inline struct folio *page_rmappable_folio(struct page *page)
+@@ -706,6 +706,9 @@ static inline struct folio *page_rmappable_folio(struct page *page)
  	return folio;
  }
  
@@ -2323,7 +2324,7 @@ index 63625a5038af..7b0822143f38 100644
  
  static struct ctl_table ipv4_net_table[] = {
 diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
-index 2fb68455679a..beab44651b7c 100644
+index 55b34cf309be..301172cdef72 100644
 --- a/net/ipv4/tcp_input.c
 +++ b/net/ipv4/tcp_input.c
 @@ -83,6 +83,7 @@
@@ -2334,7 +2335,7 @@ index 2fb68455679a..beab44651b7c 100644
  
  #define FLAG_DATA		0x01 /* Incoming frame contained data.		*/
  #define FLAG_WIN_UPDATE		0x02 /* Incoming ACK was a window update.	*/
-@@ -6621,7 +6622,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
+@@ -6651,7 +6652,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
  		SKB_DR_SET(reason, TCP_RFC7323_PAWS);
  		goto discard_and_undo;
  	}
