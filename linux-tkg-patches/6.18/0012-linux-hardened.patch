@@ -102,20 +102,20 @@ index 7a637e87005f..15e206771816 100644
  	If enabled, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index 392e92c29d42..1da91389cb04 100644
+index a009a1618fd7..89d41b02f5c0 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 6
  PATCHLEVEL = 18
- SUBLEVEL = 51
+ SUBLEVEL = 52
 -EXTRAVERSION =
 +EXTRAVERSION = -hardened1
  NAME = Baby Opossum Posse
  
  # *DOCUMENTATION*
 diff --git a/arch/Kconfig b/arch/Kconfig
-index 61130b88964b..17c0a3dbb249 100644
+index ee9fd0150f48..b98b7a0e1684 100644
 --- a/arch/Kconfig
 +++ b/arch/Kconfig
 @@ -1209,7 +1209,7 @@ config ARCH_MMAP_RND_BITS
@@ -145,7 +145,7 @@ index 61130b88964b..17c0a3dbb249 100644
  	  Kernel stack offset randomization is controlled by kernel boot param
  	  "randomize_kstack_offset=on/off", and this config chooses the default
 diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
-index 9e834f0f8dd0..e16cef2f246f 100644
+index f7c4cb4fbaf1..c5f61e96cf5b 100644
 --- a/arch/arm64/Kconfig
 +++ b/arch/arm64/Kconfig
 @@ -1730,6 +1730,7 @@ config ARM64_SW_TTBR0_PAN
@@ -156,7 +156,7 @@ index 9e834f0f8dd0..e16cef2f246f 100644
  	help
  	  Enabling this option prevents the kernel from accessing
  	  user-space memory directly by pointing TTBR0_EL1 to a reserved
-@@ -2334,6 +2335,7 @@ config RELOCATABLE
+@@ -2336,6 +2337,7 @@ config RELOCATABLE
  config RANDOMIZE_BASE
  	bool "Randomize the address of the kernel image"
  	select RELOCATABLE
@@ -306,7 +306,7 @@ index 00daedfefc1b..a00d167fe5ce 100644
  	native_write_cr4(cr4);
  }
 diff --git a/arch/x86/kernel/cpu/common.c b/arch/x86/kernel/cpu/common.c
-index 6cf7c2d0dc59..ea676d11ab78 100644
+index 3ffeadad0244..45f6db85cf47 100644
 --- a/arch/x86/kernel/cpu/common.c
 +++ b/arch/x86/kernel/cpu/common.c
 @@ -455,6 +455,7 @@ EXPORT_SYMBOL_GPL(native_write_cr4);
@@ -426,7 +426,7 @@ index 149f3d53b760..a3e62d52ebcf 100644
  	  Historically the kernel has allowed TIOCSTI, which will push
  	  characters into a controlling TTY. This continues to be used
 diff --git a/drivers/tty/tty_io.c b/drivers/tty/tty_io.c
-index e2d92cf70eb7..2f509955f2ec 100644
+index f779f8fb138e..92c40cfb5a0d 100644
 --- a/drivers/tty/tty_io.c
 +++ b/drivers/tty/tty_io.c
 @@ -171,6 +171,7 @@ static void free_tty_struct(struct tty_struct *tty)
@@ -466,7 +466,7 @@ index e2d92cf70eb7..2f509955f2ec 100644
  
  	return tty;
  }
-@@ -3620,6 +3629,15 @@ static const struct ctl_table tty_table[] = {
+@@ -3622,6 +3631,15 @@ static const struct ctl_table tty_table[] = {
  		.extra1		= SYSCTL_ZERO,
  		.extra2		= SYSCTL_ONE,
  	},
@@ -594,7 +594,7 @@ index 048cf28efd4e..4e8f19de342a 100644
  	usb_debugfs_cleanup();
  	idr_destroy(&usb_bus_idr);
 diff --git a/fs/inode.c b/fs/inode.c
-index 2c55ec49b023..0c07e033904b 100644
+index a931126398ce..9032a8536ac1 100644
 --- a/fs/inode.c
 +++ b/fs/inode.c
 @@ -167,6 +167,10 @@ late_initcall(mg_debugfs_init);
@@ -718,7 +718,7 @@ index 49ab74e0bfde..4be54d32a60a 100644
  		    (entry->proc_handler == proc_dointvec_jiffies) ||
  		    (entry->proc_handler == proc_dointvec_userhz_jiffies) ||
 diff --git a/fs/stat.c b/fs/stat.c
-index 6c79661e1b96..d02fadfdd34b 100644
+index 8c110555b3d7..796c4e4d41ad 100644
 --- a/fs/stat.c
 +++ b/fs/stat.c
 @@ -52,7 +52,10 @@ void fill_mg_cmtime(struct kstat *stat, u32 request_mask, struct inode *inode)
@@ -730,7 +730,7 @@ index 6c79661e1b96..d02fadfdd34b 100644
 +		stat->mtime = inode_get_ctime(inode);
 +	else
 +		stat->mtime = inode_get_mtime(inode);
- 	stat->ctime.tv_sec = inode->i_ctime_sec;
+ 	stat->ctime.tv_sec = inode_get_ctime_sec(inode);
  	stat->ctime.tv_nsec = (u32)atomic_read(pcn);
  	if (!(stat->ctime.tv_nsec & I_CTIME_QUERIED))
 @@ -84,6 +87,7 @@ void generic_fillattr(struct mnt_idmap *idmap, u32 request_mask,
@@ -814,7 +814,7 @@ index 37db92b3d6f8..873416ba884c 100644
  {
  	return true;
 diff --git a/include/linux/fs.h b/include/linux/fs.h
-index 14f5accc97b7..85fdce227ee4 100644
+index 55ecd9d26b4f..d8bbf810a503 100644
 --- a/include/linux/fs.h
 +++ b/include/linux/fs.h
 @@ -4093,4 +4093,15 @@ static inline bool extensible_ioctl_valid(unsigned int cmd_a,
@@ -944,10 +944,10 @@ index 0a46e4054dec..99c733852fb2 100644
  
  /* Each of a tty's open files has private_data pointing to tty_file_private */
 diff --git a/include/linux/usb.h b/include/linux/usb.h
-index 375ee6e202db..ba868cb0c95d 100644
+index f2adf7634095..8bc5dfac7511 100644
 --- a/include/linux/usb.h
 +++ b/include/linux/usb.h
-@@ -2111,6 +2111,17 @@ extern void usb_led_activity(enum usb_led_event ev);
+@@ -2112,6 +2112,17 @@ extern void usb_led_activity(enum usb_led_event ev);
  static inline void usb_led_activity(enum usb_led_event ev) {}
  #endif
  
@@ -1056,7 +1056,7 @@ index 6ce315af48c1..c0a863d59849 100644
  	  This option enables POSIX asynchronous I/O which may by used
  	  by some high performance threaded applications. Disabling
 diff --git a/io_uring/io_uring.c b/io_uring/io_uring.c
-index 9784463fb718..a45808ea6db1 100644
+index fd64ba7a0927..5b00fa15c7c7 100644
 --- a/io_uring/io_uring.c
 +++ b/io_uring/io_uring.c
 @@ -153,7 +153,7 @@ static __read_mostly DEFINE_STATIC_KEY_DEFERRED_FALSE(io_key_has_sqarray, HZ);
@@ -1124,7 +1124,7 @@ index 829f49ae07b9..5bb7ee4028ad 100644
  
  /**
 diff --git a/kernel/events/core.c b/kernel/events/core.c
-index 04c9d4915093..c0842a2877c8 100644
+index 76d048a48827..da0e3b62b69b 100644
 --- a/kernel/events/core.c
 +++ b/kernel/events/core.c
 @@ -463,8 +463,13 @@ static struct kmem_cache *perf_event_cache;
@@ -1141,7 +1141,7 @@ index 04c9d4915093..c0842a2877c8 100644
  
  /* Minimum for 512 kiB + 1 user control page. 'free' kiB per user. */
  static int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024);
-@@ -13484,7 +13489,7 @@ SYSCALL_DEFINE5(perf_event_open,
+@@ -13524,7 +13529,7 @@ SYSCALL_DEFINE5(perf_event_open,
  		return err;
  
  	/* Do we allow access to perf_event_open(2) ? */
@@ -1544,20 +1544,6 @@ index 32b65073d0cc..614bb7f4793f 100644
  	help
  	  Generate a warning if any W+X mappings are found at boot.
  
-diff --git a/mm/internal.h b/mm/internal.h
-index ef42eee87c7b..5d5646c46ae2 100644
---- a/mm/internal.h
-+++ b/mm/internal.h
-@@ -780,6 +780,9 @@ static inline struct folio *page_rmappable_folio(struct page *page)
- 	return folio;
- }
- 
-+extern void __init __gather_extra_latent_entropy(struct page *page,
-+						 unsigned int nr_pages);
-+
- static inline void prep_compound_head(struct page *page, unsigned int order)
- {
- 	struct folio *folio = (struct folio *)page;
 diff --git a/mm/kfence/report.c b/mm/kfence/report.c
 index 10e6802a2edf..01f8700fafc6 100644
 --- a/mm/kfence/report.c
@@ -1581,34 +1567,6 @@ index 10e6802a2edf..01f8700fafc6 100644
  	check_panic_on_warn("KFENCE");
  
  	/* We encountered a memory safety error, taint the kernel! */
-diff --git a/mm/mm_init.c b/mm/mm_init.c
-index 5789ad8ba9b6..b60350e73985 100644
---- a/mm/mm_init.c
-+++ b/mm/mm_init.c
-@@ -2019,6 +2019,7 @@ static void __init deferred_free_pages(unsigned long pfn,
- 		for (i = 0; i < nr_pages; i += pageblock_nr_pages)
- 			init_pageblock_migratetype(page + i, MIGRATE_MOVABLE,
- 					false);
-+		__gather_extra_latent_entropy(page, 1 << MAX_PAGE_ORDER);
- 		__free_pages_core(page, MAX_PAGE_ORDER, MEMINIT_EARLY);
- 		return;
- 	}
-@@ -2030,6 +2031,7 @@ static void __init deferred_free_pages(unsigned long pfn,
- 		if (pageblock_aligned(pfn))
- 			init_pageblock_migratetype(page, MIGRATE_MOVABLE,
- 					false);
-+		__gather_extra_latent_entropy(page, 1);
- 		__free_pages_core(page, 0, MEMINIT_EARLY);
- 	}
- }
-@@ -2519,6 +2521,7 @@ void __init memblock_free_pages(struct page *page, unsigned long pfn,
- 
- 	/* pages were reserved and not allocated */
- 	clear_page_tag_ref(page);
-+	__gather_extra_latent_entropy(page, 1 << order);
- 	__free_pages_core(page, order, MEMINIT_EARLY);
- }
- 
 diff --git a/mm/mmap.c b/mm/mmap.c
 index b29b31a29ef6..c49a6c353dbd 100644
 --- a/mm/mmap.c
@@ -1628,7 +1586,7 @@ index b29b31a29ef6..c49a6c353dbd 100644
  		mm->brk = brk;
  		goto success;
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index ec5ca89cbc00..22fda93aa13f 100644
+index ec5ca89cbc00..b2ebc2baa0f9 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -213,6 +213,15 @@ EXPORT_PER_CPU_SYMBOL(_numa_mem_);
@@ -1647,33 +1605,29 @@ index ec5ca89cbc00..22fda93aa13f 100644
  #ifdef CONFIG_GCC_PLUGIN_LATENT_ENTROPY
  volatile unsigned long latent_entropy __latent_entropy;
  EXPORT_SYMBOL(latent_entropy);
-@@ -1623,6 +1632,25 @@ static void __free_pages_ok(struct page *page, unsigned int order,
- 		free_one_page(zone, page, pfn, order, fpi_flags);
- }
+@@ -1653,6 +1662,21 @@ void __meminit __free_pages_core(struct page *page, unsigned int order,
+ 			set_page_count(p, 0);
+ 		}
  
-+void __init __gather_extra_latent_entropy(struct page *page,
-+					  unsigned int nr_pages)
-+{
-+	if (extra_latent_entropy && !PageHighMem(page) && page_to_pfn(page) < 0x100000) {
-+		unsigned long hash = 0;
-+		size_t index, end = PAGE_SIZE * nr_pages / sizeof hash;
-+		const unsigned long *data = lowmem_page_address(page);
++		if (extra_latent_entropy && !PageHighMem(page) && page_to_pfn(page) < 0x100000) {
++			unsigned long hash = 0;
++			size_t index, end = PAGE_SIZE * nr_pages / sizeof hash;
++			const unsigned long *data = lowmem_page_address(page);
 +
-+		for (index = 0; index < end; index++)
-+			hash ^= hash + data[index];
++			for (index = 0; index < end; index++)
++				hash ^= hash + data[index];
 +#ifdef CONFIG_GCC_PLUGIN_LATENT_ENTROPY
-+		latent_entropy ^= hash;
-+		add_device_randomness((const void *)&latent_entropy, sizeof(latent_entropy));
++			latent_entropy ^= hash;
++			add_device_randomness((const void *)&latent_entropy, sizeof(latent_entropy));
 +#else
-+		add_device_randomness((const void *)&hash, sizeof(hash));
++			add_device_randomness((const void *)&hash, sizeof(hash));
 +#endif
-+	}
-+}
++		}
 +
- void __meminit __free_pages_core(struct page *page, unsigned int order,
- 		enum meminit_context context)
- {
-@@ -1864,6 +1892,12 @@ inline void post_alloc_hook(struct page *page, unsigned int order,
+ 		/* memblock adjusts totalram_pages() manually. */
+ 		atomic_long_add(nr_pages, &page_zone(page)->managed_pages);
+ 	}
+@@ -1864,6 +1888,12 @@ inline void post_alloc_hook(struct page *page, unsigned int order,
  	 */
  	kernel_unpoison_pages(page, 1 << order);
  
@@ -2726,7 +2680,7 @@ index 6b34ba19358d..d83e715c9d40 100644
  	  secure!
  
 diff --git a/scripts/mod/modpost.c b/scripts/mod/modpost.c
-index 010c398f6a70..6c547d68a411 100644
+index 31f81f25968f..1f1933360671 100644
 --- a/scripts/mod/modpost.c
 +++ b/scripts/mod/modpost.c
 @@ -49,6 +49,8 @@ static bool sec_mismatch_warn_only = true;
@@ -3017,7 +2971,7 @@ index 4fe3b8b1958f..a7d88cc23a70 100644
     in /etc/sysctl.conf (e.g. kernel.perf_event_paranoid = <setting>)
  
 diff --git a/tools/perf/util/evsel.c b/tools/perf/util/evsel.c
-index 22e43a57dc95..a72e50dc7799 100644
+index e01103443b23..36adca423e25 100644
 --- a/tools/perf/util/evsel.c
 +++ b/tools/perf/util/evsel.c
 @@ -3850,6 +3850,7 @@ int evsel__open_strerror(struct evsel *evsel, struct target *target,
