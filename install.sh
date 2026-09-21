@@ -35,6 +35,16 @@ plain() {
  echo -e "$1" >&2
 }
 
+# Discard anything typed while the previous step was running, so that stray
+# keypresses during a long build don't get eaten by the next prompt.
+_flush_stdin() {
+  [ -t 0 ] || return 0
+  local _discard
+  while read -r -t 0; do
+    read -r _discard || break
+  done
+}
+
 ####################################################################
 
 ################### Config sourcing
@@ -214,6 +224,7 @@ if [ "$1" = "install" ]; then
     fi
 
     if [[ "$_install_after_building" = "prompt" ]]; then
+      _flush_stdin
       read -p "Do you want to install the new Kernel ? [N]/y: " _install
     fi
 
@@ -265,6 +276,7 @@ if [ "$1" = "install" ]; then
     fi
 
     if [[ "$_install_after_building" = "prompt" ]]; then
+      _flush_stdin
       read -p "Do you want to install the new Kernel ? [N]/y: " _install
     fi
 
@@ -294,6 +306,7 @@ if [ "$1" = "install" ]; then
         warning "By default, system kernel updates will overwrite your custom kernel."
         warning "Adding a lock will prevent this but skip system kernel updates."
         msg2 "You can remove the lock if needed with 'sudo zypper removelock kernel-default-devel kernel-default kernel-devel kernel-syms'"
+        _flush_stdin
         read -p "Would you like to lock system kernel packages ? [N]/y: " _lock
         if [[ "$_lock" =~ ^(Y|y|Yes|yes)$ ]]; then
           sudo zypper addlock kernel-default-devel kernel-default kernel-devel kernel-syms
@@ -366,6 +379,7 @@ if [ "$1" = "install" ]; then
     echo "    sudo make install"
 
     msg2 "Note: Uninstalling requires manual intervention, use './install.sh uninstall-help' for more information."
+    _flush_stdin
     read -p "Continue ? [N]/y: " _continue
 
     if ! [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
@@ -402,6 +416,7 @@ if [ "$1" = "install" ]; then
       # Rebuild external modules before make install so installkernel hooks
       # can include them in a generated initramfs or UKI.
       msg2 "Rebuild kernel modules with \"emerge @module-rebuild\" ?"
+      _flush_stdin
       read -p "[N]/y: " _continue
       if [[ "$_continue" =~ ^(Y|y|Yes|yes)$ ]];then
         if ! sudo emerge @module-rebuild --keep-going; then
