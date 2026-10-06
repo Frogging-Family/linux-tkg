@@ -50,15 +50,15 @@ makedepends=(
   pahole
   perl
   python
-  rust
-  rust-bindgen
-  rust-src
   tar
   xxhash
   xz
   zlib
   zstd
 )
+if [ "$_rustdisable" != "true" ]; then
+  makedepends+=('rust' 'rust-bindgen' 'rust-src')
+fi
 if [ "$_compiler_name" = "-llvm" ]; then
   makedepends+=('clang' 'llvm' 'lld')
 fi
