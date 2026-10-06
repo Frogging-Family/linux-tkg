@@ -1148,7 +1148,7 @@ _tkg_srcprep() {
         return 1
       fi
     fi
-    if which rustc &> /dev/null; then
+    if [ "$_rustdisable" != "true" ] && which rustc &> /dev/null; then
       if ! ( rustc --print target-cpus | grep "$1" &> /dev/null ) ; then
         return 1
       fi
@@ -1904,6 +1904,15 @@ fi
     fi
   fi
 
+  # Disable Rust support if requested
+  if [ "$_rustdisable" = "true" ]; then
+    msg2 "Disabling Rust support" |& tee -a "$_where/logs/prepare.log"
+    _disable "RUST"
+    if [[ $(scripts/config -s DRM_PANIC_SCREEN) = "qr_code" ]]; then
+      scripts/config --set-str "DRM_PANIC_SCREEN" "kmsg"
+    fi
+  fi
+
   # rewrite configuration
   msg2 "Setting config"
   make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
@@ -2004,7 +2013,7 @@ fi
     [[ "$_nofallback" = "true" ]] && _die "Since _nofallback is enabled, exiting..."
   fi
 
-  if (( "$_kver" >= 601 )); then
+  if [ "$_rustdisable" != "true" ] && (( "$_kver" >= 601 )); then
     local rustflags_source_line_number=$(grep -E -n '^KBUILD_RUSTFLAGS[[:space:]]+\+=[[:space:]]+\$\(KRUSTFLAGS\)' Makefile 2> /dev/null | head -n1 | cut -d":" -f1)
     if [[ -n "$rustflags_source_line_number" ]]; then
       sed -i "${rustflags_source_line_number}i KBUILD_RUSTFLAGS += -Ztune-cpu=$_mtune" Makefile
