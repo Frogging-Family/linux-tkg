@@ -277,6 +277,10 @@ hackheaders() {
     msg2 "Installing Rust files..."
     install -Dt "$builddir/rust" -m644 rust/*.rmeta
     install -Dt "$builddir/rust" rust/*.so
+    # Include generated Rust sources needed by external modules.
+    while IFS= read -r -d '' _gen; do
+      install -Dm644 "$_gen" "$builddir/$_gen"
+    done < <(find rust -type f -name 'generated_*.rs' -print0)
   fi
 
   msg2 "Installing unstripped VDSO..."
