@@ -50,15 +50,15 @@ makedepends=(
   pahole
   perl
   python
-  rust
-  rust-bindgen
-  rust-src
   tar
   xxhash
   xz
   zlib
   zstd
 )
+if [ "$_rustdisable" != "true" ]; then
+  makedepends+=('rust' 'rust-bindgen' 'rust-src')
+fi
 if [ "$_compiler_name" = "-llvm" ]; then
   makedepends+=('clang' 'llvm' 'lld')
 fi
@@ -276,6 +276,8 @@ hackheaders() {
     msg2 "Installing Rust files..."
     install -Dt "$builddir/rust" -m644 rust/*.rmeta
     install -Dt "$builddir/rust" rust/*.so
+    # Include generated Rust sources needed by external modules.
+    find rust -type f -name 'generated_*.rs' -exec sh -c 'for f do install -Dm644 "$f" "$0/$f" || exit; done' "$builddir" {} +
   fi
 
   msg2 "Installing unstripped VDSO..."
