@@ -283,7 +283,7 @@ _set_kver_internal_vars() {
     _sub="$SUBLEVEL"
   fi
 
-  msg2 "kernel version to build is $VERSION.$PATCHLEVEL.$_sub"
+  msg2 "kernel version to build is $VERSION.$PATCHLEVEL.$_sub" |& tee -a "$_where/logs/prepare.log.txt"
 
   # Append a zero to the minor if it has single digit
   [[ ${#PATCHLEVEL} == "1" ]] && PATCHLEVEL="0$PATCHLEVEL"
@@ -437,7 +437,7 @@ _set_cpu_scheduler() {
     _cpusched="${_selected_key}"
   fi
 
-  msg2 "Using $_cpusched CPU scheduler"
+  msg2 "Using $_cpusched CPU scheduler" |& tee -a "$_where/logs/prepare.log.txt"
 
   echo -e "_cpusched='$_cpusched'" >> "$_where"/BIG_UGLY_FROGMINER
 }
@@ -570,7 +570,7 @@ _setup_kernel_work_folder() {
   cd "$_where"
 
   if ! [ -d "$_kernel_source_folder_abs" ]; then
-    msg2 "First initialization of the linux source code git folder"  | tee -a "$_where/logs/git_work.log.txt"
+    msg2 "First initialization of the linux source code git folder" |& tee -a "$_where/logs/git_work.log.txt"
     mkdir -p "$_kernel_source_folder_abs"
     cd "$_kernel_source_folder_abs"
     git -c init.defaultBranch=master init --bare
@@ -579,19 +579,18 @@ _setup_kernel_work_folder() {
   cd "$_kernel_source_folder_abs"
 
   if [[ ! "$_offline" =~ ^(y|Y|yes|true|True)$ ]]; then
-    msg2 "Fetching tag: $_kernel_git_tag from remote $_git_mirror" | tee -a "$_where/logs/git_work.log.txt"
+    msg2 "Fetching tag: $_kernel_git_tag from remote $_git_mirror" |& tee -a "$_where/logs/git_work.log.txt"
     git fetch --depth 1 $_git_mirror tag "$_kernel_git_tag" &>> "$_where/logs/git_work.log.txt"
   fi
 
-  msg2 "Checking out tag: $_kernel_git_tag" | tee -a "$_where/logs/git_work.log.txt"
-  msg2 "   in the work folder: $_kernel_work_folder_abs" | tee -a "$_where/logs/git_work.log.txt"
+  msg2 "Checking out tag: $_kernel_git_tag in $_kernel_work_folder_abs" |& tee -a "$_where/logs/git_work.log.txt"
 
   # The space ' ' in grep -w "$_kernel_work_folder_abs " is important
   # to not match an existing folder with a longer name with the same prefix name
   if [ -d "$_kernel_work_folder_abs" ] && \
      ( git worktree list | grep -w "$_kernel_work_folder_abs " &> /dev/null ) && \
      ( cd "$_kernel_work_folder_abs" && git status &> /dev/null ); then
-    msg2 "Worktree folder $_kernel_work_folder_abs exists and is a valid worktree folder" | tee -a "$_where/logs/git_work.log.txt"
+    msg2 "Worktree folder $_kernel_work_folder_abs exists and is a valid worktree folder" |& tee -a "$_where/logs/git_work.log.txt"
     cd "$_kernel_work_folder_abs"
     git reset --hard &>> "$_where/logs/git_work.log.txt"
     git clean -ffdx &>> "$_where/logs/git_work.log.txt"
@@ -600,7 +599,7 @@ _setup_kernel_work_folder() {
     git checkout "$_kernel_git_tag" &>> "$_where/logs/git_work.log.txt"
   else
     # In all other cases, just force create the work tree
-    msg2 "Force creating fresh git worktree folder $_kernel_work_folder_abs" | tee -a "$_where/logs/git_work.log.txt"
+    msg2 "Force creating fresh git worktree folder $_kernel_work_folder_abs" |& tee -a "$_where/logs/git_work.log.txt"
     rm -rf "$_kernel_work_folder_abs" &>> "$_where/logs/git_work.log.txt"
     git worktree add -f "$_kernel_work_folder_abs" "$_kernel_git_tag" &>> "$_where/logs/git_work.log.txt"
   fi
@@ -748,7 +747,7 @@ _tkg_patcher() {
     return 0
   fi
   if [ -e "$tkgpatch" ] && [[ $(wc -l <"$tkgpatch") -ge 7 ]]; then
-    msg2 "$_msg"
+    msg2 "$_msg" |& tee -a "$_where/logs/prepare.log.txt"
     echo -e "### Applying ${tkgpatch##*/}... ###" >> "$_where"/logs/prepare.log.txt
     if ! patch -Np1 -i "$tkgpatch" >> "$_where"/logs/prepare.log.txt; then
       error "Patch application failed. Debug logs in prepare.log.txt file."
@@ -756,7 +755,7 @@ _tkg_patcher() {
     fi
     echo -e "\n" >> "$_where"/logs/prepare.log.txt
   else
-    msg2 "Skipping patch ${tkgpatch##*/}...\n         (unavailable for this kernel version)"
+    msg2 "Skipping patch ${tkgpatch##*/}...\n         (unavailable for this kernel version)" |& tee -a "$_where/logs/prepare.log.txt"
   fi
 }
 
@@ -968,23 +967,23 @@ _tkg_srcprep() {
   fi
 
   if [ -z "${_configfile}" ]; then
-    msg2 "Using archlinux's default config file for kernel ${_basekernel}"
+    msg2 "Using archlinux's default config file for kernel ${_basekernel}" |& tee -a "$_where/logs/prepare.log.txt"
     cat "${srcdir}"/config.x86_64 > ./.config
   elif [ "${_configfile}" = "config_hardened.x86_64" ]; then
-    msg2 "Using archlinux's hardened config file for kernel ${_basekernel}"
+    msg2 "Using archlinux's hardened config file for kernel ${_basekernel}" |& tee -a "$_where/logs/prepare.log.txt"
     cat "${srcdir}"/config_hardened.x86_64 > ./.config
   elif [ "${_configfile}" = "running-kernel" ]; then
     if [ -f /boot/config-`uname -r` ];then
-      msg2 "Using /boot/config-`uname -r` as config file"
+      msg2 "Using /boot/config-`uname -r` as config file" |& tee -a "$_where/logs/prepare.log.txt"
       cp /boot/config-`uname -r` .config
     elif [ -f /proc/config.gz ];then
-      msg2 "Using /proc/config.gz as config file"
+      msg2 "Using /proc/config.gz as config file" |& tee -a "$_where/logs/prepare.log.txt"
       zcat --verbose /proc/config.gz > .config
     else
       _die "Cannot get config file of running kernel"
     fi
   else
-    msg2 "Using user-provided config file in ${_where}/${_configfile}"
+    msg2 "Using user-provided config file in ${_where}/${_configfile}" |& tee -a "$_where/logs/prepare.log.txt"
     cat "${_where}/${_configfile}" > ./.config
   fi
 
@@ -1192,7 +1191,7 @@ _tkg_srcprep() {
     _processor_opt="${_selected_key}"
   fi
 
-  msg2 "Setting cpu micro architecture to $_processor_opt"
+  msg2 "Setting cpu micro architecture to $_processor_opt" |& tee -a "$_where/logs/prepare.log.txt"
 
   echo "_processor_opt='$_processor_opt'" >> "$_where"/BIG_UGLY_FROGMINER
 
@@ -1852,7 +1851,7 @@ fi
   fi
 
   if [[ "$_modprobeddb" = "true" || "$_kernel_on_diet" == "true" ]]; then
-    msg2 "Using modprobed-db"
+    msg2 "Using modprobed-db" |& tee -a "$_where/logs/prepare.log.txt"
     if [[ -n "$_modprobeddb_db_path" && -f "$_where/$_modprobeddb_db_path" ]]; then
       _modprobeddb_db_path="$_where"/"$_modprobeddb_db_path"
     fi
@@ -1865,7 +1864,7 @@ fi
       done
     fi
     if [ "$_kernel_on_diet" == "true" ]; then
-      msg2 "Using linux-tkg diet db"
+      msg2 "Using linux-tkg diet db" |& tee -a "$_where/logs/prepare.log.txt"
       _modprobeddb_db_path="$_where/minimal-modprobed.db"
     fi
     if [[ ! -f "$_modprobeddb_db_path" ]]; then
@@ -1900,17 +1899,17 @@ fi
     fi
 
     if [ 0 -lt "${#fragments[@]}" ]; then
-      scripts/kconfig/merge_config.sh -m .config "${fragments[@]}"
+      ( set -o pipefail; scripts/kconfig/merge_config.sh -m .config "${fragments[@]}" |& tee -a "$_where/logs/prepare.log.txt" )
     fi
   fi
 
   # rewrite configuration
-  msg2 "Setting config"
+  msg2 "Setting config" |& tee -a "$_where/logs/prepare.log.txt"
   make ${_config_updating} ${llvm_opt} |& tee -a "$_where"/logs/prepare.log.txt
 
   # Modify the kernel config file to fit Fedora SELinux configuration
   if [ "$_distro" = "Fedora" ] ; then
-    msg2 "SELinux activation for Fedora"
+    msg2 "SELinux activation for Fedora" |& tee -a "$_where/logs/prepare.log.txt"
     _enable "AUDIT"
     _enable "SECURITY_SELINUX"
     _enable "DEFAULT_SECURITY_SELINUX"
