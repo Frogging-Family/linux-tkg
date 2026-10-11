@@ -60,18 +60,20 @@ _run_schedtool() {
 
 ################### Config sourcing
 
+source linux-tkg-config/prepare
+aggregate_user_config
+source "$_where/BIG_UGLY_FROGMINER"
+
 if which script &> /dev/null && [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   # using script is enabled, but we are not within the script sub-command
   export SCRIPT=1
   msg2 "Using script"
+  trap - EXIT
   script -q -e -c "$0 $@" shell-output.log
   exit
 fi
 
-source linux-tkg-config/prepare
 _frog_banner
-aggregate_user_config
-source "$_where/BIG_UGLY_FROGMINER"
 
 ####################################################################
 
