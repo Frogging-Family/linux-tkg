@@ -135,7 +135,8 @@ build() {
     export KCFLAGS
     export KRUSTFLAGS
 
-    time make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules
+    set -o pipefail
+    time make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules |& tee "$_where/logs/build.log.txt"
   )
 }
 
