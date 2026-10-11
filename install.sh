@@ -45,6 +45,17 @@ _flush_stdin() {
   done
 }
 
+# Set optional CPU and I/O priorities for the current build shell.
+_run_schedtool() {
+  if command -v schedtool >/dev/null 2>&1; then
+    msg2 "Using schedtool"
+    schedtool -B -n 1 "$BASHPID" >/dev/null 2>&1 || :
+  fi
+  if command -v ionice >/dev/null 2>&1; then
+    ionice -n 1 -p "$BASHPID" >/dev/null 2>&1 || :
+  fi
+}
+
 ####################################################################
 
 ################### Config sourcing
@@ -190,10 +201,6 @@ if [ "$1" = "install" ]; then
     _kernel_subver="${_sub}"
   fi
 
-  #_timed_build() {
-    #_runtime=$( time ( schedtool -B -n 1 -e ionice -n 1 "$@" 2>&1 ) 3>&1 1>&2 2>&3 ) || _runtime=$( time ( "$@" 2>&1 ) 3>&1 1>&2 2>&3 ) - Bash 5.2 is broken https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1018727
-  #}
-
   cd "$_kernel_work_folder_abs"
 
   msg2 "Add patched files to the diff.patch"
@@ -206,7 +213,11 @@ if [ "$1" = "install" ]; then
   if [[ "$_distro" =~ ^(Ubuntu|Debian)$ ]]; then
 
     msg2 "Building kernel DEB packages"
-    time make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor}
+    (
+      _run_schedtool
+      set -o pipefail
+      time make ${llvm_opt} -j ${_thread_num} bindeb-pkg LOCALVERSION=-${_kernel_flavor} |& tee "$_where/logs/build.log.txt"
+    )
     msg2 "Building successfully finished!"
 
     # Create DEBS folder if it doesn't exist
@@ -258,7 +269,11 @@ if [ "$1" = "install" ]; then
 
     msg2 "Building kernel RPM packages"
     export RPMOPTS="--define '_topdir ${_fedora_work_dir}' --define 'install_mod_strip 1'"
-    time make ${llvm_opt} -j ${_thread_num} binrpm-pkg LOCALVERSION="${_extra_ver_str}"
+    (
+      _run_schedtool
+      set -o pipefail
+      time make ${llvm_opt} -j ${_thread_num} binrpm-pkg LOCALVERSION="${_extra_ver_str}" |& tee "$_where/logs/build.log.txt"
+    )
     msg2 "Building successfully finished!"
 
     # Create RPMS folder if it doesn't exist
@@ -334,7 +349,11 @@ if [ "$1" = "install" ]; then
     fi
 
     msg2 "Building kernel"
-    time make ${llvm_opt} -j ${_thread_num}
+    (
+      _run_schedtool
+      set -o pipefail
+      time make ${llvm_opt} -j ${_thread_num} |& tee "$_where/logs/build.log.txt"
+    )
     msg2 "Build successful"
 
     if [ "$_STRIP" = "true" ]; then
