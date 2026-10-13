@@ -137,6 +137,11 @@ build() {
 
     set -o pipefail
     time make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules |& tee "$_where/logs/build.log.txt"
+
+    if [[ $_kver -ge 509 && $(scripts/config -s CONFIG_DEBUG_INFO_BTF) = y ]]; then
+      msg2 "Generating BPF kernel type header..."
+      CFLAGS= make ${llvm_opt} -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1 |& tee -a "$_where/logs/build.log.txt"
+    fi
   )
 }
 
@@ -239,20 +244,24 @@ hackheaders() {
   msg2 "Installing build files..."
   install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map \
     localversion.* version vmlinux
+  if [[ -f tools/bpf/bpftool/vmlinux.h ]]; then
+    install -Dt "$builddir" -m644 tools/bpf/bpftool/vmlinux.h
+  fi
   install -Dt "$builddir/kernel" -m644 kernel/Makefile
   install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
   cp -t "$builddir" -a scripts
+  ln -srt "$builddir" "$builddir/scripts/gdb/vmlinux-gdb.py"
 
-  # add objtool for external module building and enabled VALIDATION_STACK option
-  install -Dt "$builddir/tools/objtool" tools/objtool/objtool
+  if [[ $(scripts/config -s CONFIG_HAVE_STACK_VALIDATION) = y ]]; then
+    install -Dt "$builddir/tools/objtool" tools/objtool/objtool
+  fi
+
+  if [[ $(scripts/config -s CONFIG_DEBUG_INFO_BTF_MODULES) = y ]]; then
+    install -Dt "$builddir/tools/bpf/resolve_btfids" tools/bpf/resolve_btfids/resolve_btfids
+  fi
 
   # add xfs and shmem for aufs building
   mkdir -p "$builddir"/{fs/xfs,mm}
-
-  # add resolve_btfids on 5.16+
-  if [[ $_kver -ge 516 ]]; then
-    install -Dt "$builddir"/tools/bpf/resolve_btfids tools/bpf/resolve_btfids/resolve_btfids || ( warning "$builddir/tools/bpf/resolve_btfids was not found. This is undesirable and might break dkms modules !!! Please review your config changes and consider using the provided defconfig and tweaks without further modification." && read -rp "Press enter to continue anyway" )
-  fi
 
   msg2 "Installing headers..."
   cp -t "$builddir" -a include
@@ -269,6 +278,9 @@ hackheaders() {
   install -Dt "$builddir/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
   install -Dt "$builddir/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
   install -Dt "$builddir/drivers/media/tuners" -m644 drivers/media/tuners/*.h
+
+  # https://bugs.archlinux.org/task/71392
+  install -Dt "$builddir/drivers/iio/common/hid-sensors" -m644 drivers/iio/common/hid-sensors/*.h
 
   msg2 "Installing KConfig files..."
   find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
