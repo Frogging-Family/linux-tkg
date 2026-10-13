@@ -138,7 +138,7 @@ build() {
     set -o pipefail
     time make ${_force_all_threads} ${llvm_opt} LOCALVERSION= bzImage modules |& tee "$_where/logs/build.log.txt"
 
-    if [[ $_kver -ge 509 && $(scripts/config -s CONFIG_DEBUG_INFO_BTF) = y ]]; then
+    if [[ "$_generate_vmlinux_bpf_header" = "true" && $_kver -ge 509 && $(scripts/config -s CONFIG_DEBUG_INFO_BTF) = y ]]; then
       msg2 "Generating BPF kernel type header..."
       CFLAGS= make ${llvm_opt} -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1 |& tee -a "$_where/logs/build.log.txt"
     fi
@@ -244,7 +244,7 @@ hackheaders() {
   msg2 "Installing build files..."
   install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map \
     localversion.* version vmlinux
-  if [[ -f tools/bpf/bpftool/vmlinux.h ]]; then
+  if [[ "$_generate_vmlinux_bpf_header" = "true" && -f tools/bpf/bpftool/vmlinux.h ]]; then
     install -Dt "$builddir" -m644 tools/bpf/bpftool/vmlinux.h
   fi
   install -Dt "$builddir/kernel" -m644 kernel/Makefile
