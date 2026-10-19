@@ -11,7 +11,14 @@ _print_unknown_kmods()
     return 1
   fi
 
-  yes "" | _kernel_on_diet=true _version="${_kernel_ver}-latest" "$script_dir"/../install.sh config 2>&1 | grep -F 'config not found!' | awk '{print $1}'
+  local - # saves current shell opts and restores them at the end of this function, so next 'set -o pipefail' gets reverted
+  set -o pipefail
+
+  # 'yes "" |' cannot exit with code 0: with the pipefail above, doing it would make this function never exit 0
+  # --> we do '< <(yes "")' instead
+  _logging_use_script=false _modprobeddb=false _kernel_on_diet=true _version="${_kernel_ver}-latest" \
+    "$script_dir"/../install.sh config < <(yes "") 2>&1 | awk '/config not found!/ {print $1}'
+
 }
 
 _cleanup_unknown_diet_kmodules()
@@ -30,8 +37,12 @@ _cleanup_unknown_diet_kmodules()
     return 1
   fi
 
-  if _unknown_kmods=$(_print_unknown_kmods "$_kernel_ver") && [[ -n "$_unknown_kmods" ]]; then
-    grep -vFxf <(printf '%s\n' "$_unknown_kmods") "$_db" > "$_db.tmp" && mv "$_db.tmp" "$_db"
+  if _unknown_kmods=$(_print_unknown_kmods "$_kernel_ver"); then
+    if [[ -n "$_unknown_kmods" ]]; then
+      grep -vFxf <(printf '%s\n' "$_unknown_kmods") "$_db" > "$_db.tmp" && mv "$_db.tmp" "$_db"
+    fi
+  else
+    echo "Errors happened, DB hasn't been cleaned up."
   fi
 
 }
