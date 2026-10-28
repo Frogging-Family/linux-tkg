@@ -197,7 +197,7 @@ hackbase() {
   # ntsync
   if [ -e "${srcdir}/ntsync.conf" ]; then
     # workaround for missing header on <6.14 with ntsync
-    if [ $_basever -lt 614 ]; then
+    if [ "$_kver" -lt 614 ]; then
       if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/ntsync.h" ] && [ ! -e "/usr/include/linux/ntsync.h" ]; then
         msg2 "Workaround missing ntsync header"
         install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/ntsync.h "${pkgdir}/usr/include/linux/ntsync.h"
