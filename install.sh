@@ -423,6 +423,26 @@ if [ "$1" = "install" ]; then
 
     sudo make modules_install $_STRIP_MODS
 
+    # ntsync
+    if [ -e "${_where}/ntsync.conf" ]; then
+      # workaround for missing header on <6.14 with ntsync
+      if [ "$_kver" -lt 614 ]; then
+        if [ -e "${_kernel_work_folder_abs}/include/uapi/linux/ntsync.h" ] && [ ! -e "/usr/include/linux/ntsync.h" ]; then
+          msg2 "Workaround missing ntsync header"
+          sudo install -Dm644 "${_kernel_work_folder_abs}"/include/uapi/linux/ntsync.h /usr/include/linux/ntsync.h
+        fi
+      fi
+      # load ntsync module at boot
+      msg2 "Set the ntsync module to be loaded at boot through /etc/modules-load.d"
+      sudo install -Dm644 "${_where}/ntsync.conf" /etc/modules-load.d/ntsync-linux-tkg.conf
+    fi
+
+    # install udev rule for ntsync if needed (<6.14)
+    if [ -e "${_where}/ntsync.rules" ]; then
+      msg2 "Installing udev rule for ntsync"
+      sudo install -Dm644 "${_where}"/ntsync.rules /etc/udev/rules.d/ntsync.rules
+    fi
+
     sudo cp "$(make ${llvm_opt} -s image_name)" "/lib/modules/$_kernelname/vmlinuz"
 
     msg2 "Removing modules from source folder in /usr/src/${_kernel_src_gentoo}"
