@@ -355,6 +355,12 @@ if [ "$1" = "install" ]; then
       _run_schedtool
       set -o pipefail
       time make ${llvm_opt} -j ${_thread_num} |& tee "$_where/logs/build.log.txt"
+
+      if [[ "$_generate_vmlinux_bpf_header" = "true" && $_kver -ge 509 && $(scripts/config -s CONFIG_DEBUG_INFO_BTF) = y ]]; then
+        rm -f tools/bpf/bpftool/vmlinux.h
+        msg2 "Generating BPF kernel type header..."
+        CFLAGS= make ${llvm_opt} -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1 |& tee -a "$_where/logs/build.log.txt"
+      fi
     )
     msg2 "Build successful"
 
