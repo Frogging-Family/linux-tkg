@@ -161,7 +161,7 @@ hackbase() {
     'scx-scheds: to use sched-ext schedulers'
     'wireless-regdb: to set the correct wireless channels of your country'
   )
-  provides=("linux=${pkgver}" "${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+  provides=("${pkgbase}" KSMBD-MODULE VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
   [ -e "${srcdir}/ntsync.conf" ] && provides+=(NTSYNC-MODULE)
   [ -e "${srcdir}/ntsync.rules" ] && provides+=(ntsync-header)
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
@@ -224,7 +224,7 @@ hackheaders() {
   source "$_where"/BIG_UGLY_FROGMINER
 
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel - https://github.com/Frogging-Family/linux-tkg"
-  provides=("linux-headers=${pkgver}" "${pkgbase}-headers=${pkgver}")
+  provides=("${pkgbase}-headers=${pkgver}" LINUX-HEADERS)
   depends=(
     binutils
     glibc
