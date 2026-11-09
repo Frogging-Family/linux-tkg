@@ -64,7 +64,7 @@ source linux-tkg-config/prepare
 aggregate_user_config
 source "$_where/BIG_UGLY_FROGMINER"
 
-if which script &> /dev/null && [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
+if command -v script &> /dev/null && [[ "$_logging_use_script" =~ ^(Y|y|Yes|yes)$ && -z "$SCRIPT" ]]; then
   # using script is enabled, but we are not within the script sub-command
   export SCRIPT=1
   msg2 "Using script"
