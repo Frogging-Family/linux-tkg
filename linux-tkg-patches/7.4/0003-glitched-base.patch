@@ -414,14 +414,14 @@ index ee902a468..742c0117d 100644
  /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
  static DEFINE_MUTEX(pcp_batch_high_lock);
  #define MIN_PERCPU_PAGELIST_HIGH_FRACTION (8)
-@@ -4741,6 +4743,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -4796,6 +4798,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  	int reserve_flags;
  	bool compact_first = false;
- 	bool can_retry_reserves = true;
+ 	bool can_retry_reserves;
 +	bool woke_kswapd = false;
  	unsigned long alloc_start_time = jiffies;
  
- 	if (unlikely(nofail)) {
+ 	/*
 @@ -4811,8 +4814,13 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  
  retry:
@@ -437,13 +437,19 @@ index ee902a468..742c0117d 100644
  
  	/*
  	 * The adjusted alloc_flags might result in immediate success, so try
-@@ -5017,9 +5025,12 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -5115,8 +5123,6 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  		goto retry;
  	}
  fail:
 -	warn_alloc(gfp_mask, ac->nodemask,
 -			"page allocation failure: order:%u", order);
  got_pg:
+ 	/* A rebuild during the walk may have handed out an ineligible zone. */
+ 	if (page && check_retry_zonelist(zonelist_iter_cookie)) {
+@@ -5124,6 +5130,11 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+ 		page = NULL;
+ 		goto restart;
+ 	}
 +	if (woke_kswapd)
 +		atomic_long_dec(&kswapd_waiters);
 +	if (!page)
