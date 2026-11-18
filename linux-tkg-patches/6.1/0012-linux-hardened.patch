@@ -102,13 +102,13 @@ index 3fd6e0f0d3c9..0ea6bc744400 100644
  	If set, provide RFC2861 behavior and time out the congestion
  	window after an idle period.  An idle period is defined at
 diff --git a/Makefile b/Makefile
-index 7efb7366912b..a494489b1f80 100644
+index 56d1cbfcb16b..726b0784d5ad 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@
  VERSION = 6
  PATCHLEVEL = 1
- SUBLEVEL = 191
+ SUBLEVEL = 192
 -EXTRAVERSION =
 +EXTRAVERSION = -hardened1
  NAME = Curry Ramen
@@ -2080,7 +2080,7 @@ index d89e0846cb16..ae94d5694295 100644
  	kmemleak_free(object);
  	kasan_kfree_large(object);
 diff --git a/mm/slub.c b/mm/slub.c
-index bafb09a3c00a..c5f113dcbc08 100644
+index bafb09a3c00a..8870618b478d 100644
 --- a/mm/slub.c
 +++ b/mm/slub.c
 @@ -213,6 +213,12 @@ static inline bool slub_debug_orig_size(struct kmem_cache *s)
@@ -2207,7 +2207,25 @@ index bafb09a3c00a..c5f113dcbc08 100644
  	return kasan_reset_tag(p + alloc);
  }
  
-@@ -904,6 +942,9 @@ static void print_trailer(struct kmem_cache *s, struct slab *slab, u8 *p)
+@@ -830,6 +868,8 @@ static inline void set_orig_size(struct kmem_cache *s,
+ 		return;
+ 
+ 	p += get_info_end(s);
++	if (IS_ENABLED(CONFIG_SLAB_CANARY))
++		p = (void *)p + sizeof(void *);
+ 	p += sizeof(struct track) * 2;
+ 
+ 	*(unsigned int *)p = orig_size;
+@@ -843,6 +883,8 @@ static inline unsigned int get_orig_size(struct kmem_cache *s, void *object)
+ 		return s->object_size;
+ 
+ 	p += get_info_end(s);
++	if (IS_ENABLED(CONFIG_SLAB_CANARY))
++		p = (void *)p + sizeof(void *);
+ 	p += sizeof(struct track) * 2;
+ 
+ 	return *(unsigned int *)p;
+@@ -904,6 +946,9 @@ static void print_trailer(struct kmem_cache *s, struct slab *slab, u8 *p)
  
  	off = get_info_end(s);
  
@@ -2217,7 +2235,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  	if (s->flags & SLAB_STORE_USER)
  		off += 2 * sizeof(struct track);
  
-@@ -1047,9 +1088,10 @@ static int check_bytes_and_report(struct kmem_cache *s, struct slab *slab,
+@@ -1047,9 +1092,10 @@ static int check_bytes_and_report(struct kmem_cache *s, struct slab *slab,
   * 	Meta data starts here.
   *
   * 	A. Free pointer (if we cannot overwrite object on free)
@@ -2226,12 +2244,12 @@ index bafb09a3c00a..c5f113dcbc08 100644
 - *	D. Padding to reach required alignment boundary or at minimum
 + * 	B. Canary for SLAB_CANARY
 + * 	C. Tracking data for SLAB_STORE_USER
-+ *	D. Original request size for kmalloc object (SLAB_STORE_USER enabled)
-+ *	E. Padding to reach required alignment boundary or at minimum
++ * 	D. Original request size for kmalloc object (SLAB_STORE_USER enabled)
++ * 	E. Padding to reach required alignment boundary or at minimum
   * 		one word if debugging is on to be able to detect writes
   * 		before the word boundary.
   *
-@@ -1067,6 +1109,9 @@ static int check_pad_bytes(struct kmem_cache *s, struct slab *slab, u8 *p)
+@@ -1067,6 +1113,9 @@ static int check_pad_bytes(struct kmem_cache *s, struct slab *slab, u8 *p)
  {
  	unsigned long off = get_info_end(s);	/* The end of info */
  
@@ -2241,7 +2259,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  	if (s->flags & SLAB_STORE_USER) {
  		/* We also have user information there */
  		off += 2 * sizeof(struct track);
-@@ -1699,8 +1744,16 @@ static bool freelist_corrupted(struct kmem_cache *s, struct slab *slab,
+@@ -1699,8 +1748,16 @@ static bool freelist_corrupted(struct kmem_cache *s, struct slab *slab,
   * production configuration these hooks all should produce no code at all.
   */
  static __always_inline bool slab_free_hook(struct kmem_cache *s,
@@ -2259,7 +2277,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  	kmemleak_free_recursive(x, s->flags);
  	kmsan_slab_free(s, x);
  
-@@ -1730,7 +1783,14 @@ static __always_inline bool slab_free_hook(struct kmem_cache *s,
+@@ -1730,7 +1787,14 @@ static __always_inline bool slab_free_hook(struct kmem_cache *s,
  		rsize = (s->flags & SLAB_RED_ZONE) ? s->red_left_pad : 0;
  		memset((char *)kasan_reset_tag(x) + s->inuse, 0,
  		       s->size - s->inuse - rsize);
@@ -2274,7 +2292,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  	/* KASAN might put x into memory quarantine, delaying its reuse. */
  	return kasan_slab_free(s, x, init);
  }
-@@ -1745,7 +1805,7 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+@@ -1745,7 +1809,7 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
  	void *old_tail = *tail ? *tail : *head;
  
  	if (is_kfence_address(next)) {
@@ -2283,7 +2301,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  		return true;
  	}
  
-@@ -1758,7 +1818,7 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+@@ -1758,7 +1822,7 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
  		next = get_freepointer(s, object);
  
  		/* If object's reuse doesn't have to be delayed */
@@ -2292,7 +2310,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  			/* Move object to the new freelist */
  			set_freepointer(s, object, *head);
  			*head = object;
-@@ -1770,6 +1830,22 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+@@ -1770,6 +1834,22 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
  			 * accordingly if object's reuse is delayed.
  			 */
  			--(*cnt);
@@ -2315,7 +2333,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  		}
  	} while (object != old_tail);
  
-@@ -1782,8 +1858,9 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
+@@ -1782,8 +1862,9 @@ static inline bool slab_free_freelist_hook(struct kmem_cache *s,
  static void *setup_object(struct kmem_cache *s, void *object)
  {
  	setup_object_debug(s, object);
@@ -2326,7 +2344,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  		kasan_unpoison_object_data(s, object);
  		s->ctor(object);
  		kasan_poison_object_data(s, object);
-@@ -3360,7 +3437,24 @@ static __always_inline void *slab_alloc_node(struct kmem_cache *s, struct list_l
+@@ -3360,7 +3441,24 @@ static __always_inline void *slab_alloc_node(struct kmem_cache *s, struct list_l
  	}
  
  	maybe_wipe_obj_freeptr(s, object);
@@ -2352,7 +2370,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  
  out:
  	slab_post_alloc_hook(s, objcg, gfpflags, 1, &object, init);
-@@ -3820,8 +3914,9 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+@@ -3820,8 +3918,9 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
  			  void **p)
  {
  	struct kmem_cache_cpu *c;
@@ -2363,7 +2381,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  
  	/* memcg and kmem_cache debug support */
  	s = slab_pre_alloc_hook(s, NULL, &objcg, size, flags);
-@@ -3880,12 +3975,35 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
+@@ -3880,12 +3979,35 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
  	local_unlock_irq(&s->cpu_slab->lock);
  	slub_put_cpu_ptr(s->cpu_slab);
  
@@ -2401,7 +2419,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  	return i;
  error:
  	slub_put_cpu_ptr(s->cpu_slab);
-@@ -3915,9 +4033,9 @@ EXPORT_SYMBOL(kmem_cache_alloc_bulk);
+@@ -3915,9 +4037,9 @@ EXPORT_SYMBOL(kmem_cache_alloc_bulk);
   * and increases the number of allocations possible without having to
   * take the list_lock.
   */
@@ -2414,7 +2432,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  
  /*
   * Calculate the order of allocation given an slab object size.
-@@ -4100,6 +4218,7 @@ static void early_kmem_cache_node_alloc(int node)
+@@ -4100,6 +4222,7 @@ static void early_kmem_cache_node_alloc(int node)
  	init_object(kmem_cache_node, n, SLUB_RED_ACTIVE);
  	init_tracking(kmem_cache_node, n);
  #endif
@@ -2422,7 +2440,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  	n = kasan_slab_alloc(kmem_cache_node, n, GFP_KERNEL, false);
  	slab->freelist = get_freepointer(kmem_cache_node, n);
  	slab->inuse = 1;
-@@ -4263,6 +4382,9 @@ static int calculate_sizes(struct kmem_cache *s)
+@@ -4263,6 +4386,9 @@ static int calculate_sizes(struct kmem_cache *s)
  		s->offset = ALIGN_DOWN(s->object_size / 2, sizeof(void *));
  	}
  
@@ -2432,7 +2450,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  #ifdef CONFIG_SLUB_DEBUG
  	if (flags & SLAB_STORE_USER) {
  		/*
-@@ -4336,6 +4458,10 @@ static int kmem_cache_open(struct kmem_cache *s, slab_flags_t flags)
+@@ -4336,6 +4462,10 @@ static int kmem_cache_open(struct kmem_cache *s, slab_flags_t flags)
  #ifdef CONFIG_SLAB_FREELIST_HARDENED
  	s->random = get_random_long();
  #endif
@@ -2443,7 +2461,7 @@ index bafb09a3c00a..c5f113dcbc08 100644
  
  	if (!calculate_sizes(s))
  		goto error;
-@@ -4599,6 +4725,10 @@ void __check_heap_object(const void *ptr, unsigned long n,
+@@ -4599,6 +4729,10 @@ void __check_heap_object(const void *ptr, unsigned long n,
  		offset -= s->red_left_pad;
  	}
  
@@ -2810,14 +2828,14 @@ index 8cd544714ed2..5d59ed6c23c4 100644
  	  Detect overflows of buffers in common string and memory functions
  	  where the compiler can determine and validate the buffer sizes.
 diff --git a/security/Kconfig.hardening b/security/Kconfig.hardening
-index 0f295961e773..a4da72be013c 100644
+index 0f295961e773..9b202b873fa0 100644
 --- a/security/Kconfig.hardening
 +++ b/security/Kconfig.hardening
 @@ -226,6 +226,7 @@ config STACKLEAK_RUNTIME_DISABLE
  
  config INIT_ON_ALLOC_DEFAULT_ON
  	bool "Enable heap memory zeroing on allocation by default"
-+	default yes
++	default y
  	depends on !KMSAN
  	help
  	  This has the effect of setting "init_on_alloc=1" on the kernel
@@ -2825,7 +2843,7 @@ index 0f295961e773..a4da72be013c 100644
  
  config INIT_ON_FREE_DEFAULT_ON
  	bool "Enable heap memory zeroing on free by default"
-+	default yes
++	default y
  	depends on !KMSAN
  	help
  	  This has the effect of setting "init_on_free=1" on the kernel
